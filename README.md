@@ -1,0 +1,117 @@
+# Impex Microservices Platform
+
+A modular multi-tenant enterprise system for import-export trade management, logistics, and multi-organization operations.
+
+---
+
+## 🏗️ Architecture & Project Structure
+
+```text
+impex/
+│
+├── frontend/
+│   ├── super-admin/               # Next.js 14 Management Console
+│   └── dashboard/                 # Next.js Client / Tenant Portal (Planned)
+│
+├── services/
+│   ├── auth-service/              # FastAPI Authentication & User Identity
+│   │   ├── app/
+│   │   │   └── main.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── organization-service/      # FastAPI Tenant & Organization Management
+│   │   ├── app/
+│   │   │   └── main.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── inventory-service/         # Warehousing & Stock Tracking (Planned)
+│   ├── sales-service/             # Quotations, Orders & Shipments (Planned)
+│   └── finance-service/           # Invoicing, Customs & Duties (Planned)
+│
+├── gateway/
+│   └── nginx.conf                 # NGINX Reverse Proxy & API Gateway
+│
+├── docker-compose.yml             # Container Orchestration
+├── .env.example                   # Environment Variables Template
+├── .gitignore                     # Git Ignore Definitions
+└── README.md
+```
+
+---
+
+## 🚀 Quick Start (Docker Compose)
+
+### 1. Copy Environment Variables
+```bash
+cp .env.example .env
+```
+
+### 2. Build and Start All Services
+```bash
+docker compose up --build
+```
+
+### 3. Access Services
+- **Super Admin Frontend**: [http://localhost](http://localhost) (or directly at [http://localhost:3000](http://localhost:3000))
+- **Auth Service Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Organization Service Docs**: [http://localhost:8001/docs](http://localhost:8001/docs)
+
+---
+
+## 🌐 API Gateway Routing (NGINX)
+
+All external traffic enters through port `80` managed by the NGINX API gateway:
+
+| Route Path | Upstream Target | Description |
+| :--- | :--- | :--- |
+| `/` | `super-admin:3000` | Super Admin Next.js Frontend |
+| `/_next/webpack-hmr` | `super-admin:3000` | Next.js HMR WebSocket stream |
+| `/api/v1/auth/` | `auth-service:8000` | Authentication, Token, and Profile endpoints |
+| `/api/v1/organizations/` | `organization-service:8001` | Tenant and Organization CRUD endpoints |
+
+---
+
+## 🛠️ Local Development (Without Docker)
+
+### Auth Service (FastAPI)
+```bash
+cd services/auth-service
+python -m venv .venv
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+# source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Organization Service (FastAPI)
+```bash
+cd services/organization-service
+python -m venv .venv
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+# source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+### Super Admin (Next.js)
+```bash
+cd frontend/super-admin
+npm install
+npm run dev
+```
+
+---
+
+## 🗺️ Roadmap & Planned Services
+
+- **`frontend/dashboard`**: Tenant-facing analytics, inventory tracking, and order placement.
+- **`services/inventory-service`**: Multi-warehouse stock tracking, SKU management, barcodes, and customs batch tracking.
+- **`services/sales-service`**: Order processing, quotes, purchase orders, and sales pipeline.
+- **`services/finance-service`**: Multi-currency accounting, invoices, VAT/tax compliance, and customs tariff ledger.
+

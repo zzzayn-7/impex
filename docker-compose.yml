@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  gateway:
+    image: nginx:alpine
+    container_name: impex-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - organization-service
+      - super-admin
+    networks:
+      - impex-network
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: impex-auth-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - SECRET_KEY=${AUTH_SECRET_KEY:-default_dev_secret_key_change_me}
+      - DATABASE_URL=${AUTH_DATABASE_URL:-sqlite:///./auth.db}
+    networks:
+      - impex-network
+
+  organization-service:
+    build:
+      context: ./services/organization-service
+      dockerfile: Dockerfile
+    container_name: impex-organization-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - DATABASE_URL=${ORG_DATABASE_URL:-sqlite:///./organization.db}
+    networks:
+      - impex-network
+
+  super-admin:
+    build:
+      context: ./frontend/super-admin
+      dockerfile: Dockerfile
+    container_name: impex-super-admin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_API_GATEWAY_URL=${NEXT_PUBLIC_API_GATEWAY_URL:-http://localhost}
+    networks:
+      - impex-network
+
+networks:
+  impex-network:
+    driver: bridge
+
