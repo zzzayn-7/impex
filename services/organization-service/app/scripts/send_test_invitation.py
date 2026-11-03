@@ -49,6 +49,11 @@ def check_settings(settings: SmtpSettings) -> Tuple[List[str], List[str]]:
             "SMTP_HOST is 'mailpit': the email will only appear in the local Mailpit inbox "
             "(http://localhost:8025), NOT in a real mailbox. Set SMTP_* in .env to send real email."
         )
+    if settings.host.lower().endswith(("gmail.com", "googlemail.com")) and not settings.username:
+        errors.append(
+            "SMTP_HOST is Gmail but SMTP_USERNAME / SMTP_PASSWORD are empty. Put your Gmail address in "
+            "SMTP_USERNAME and SMTP_FROM_ADDRESS, and a Google App Password in SMTP_PASSWORD (see .env.example)."
+        )
     if bool(settings.username) != bool(settings.password):
         errors.append("SMTP_USERNAME and SMTP_PASSWORD must both be set (or both empty).")
     if settings.username and not (settings.starttls or settings.use_ssl):

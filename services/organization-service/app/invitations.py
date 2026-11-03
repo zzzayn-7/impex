@@ -79,6 +79,18 @@ def issue_invitation(
     # Serialize concurrent invite/resend requests for the same organization.
     db.execute(select(Organization.id).where(Organization.id == organization.id).with_for_update())
 
+    # Lock the pending invitation too: if the administrator is activating right now, wait for that to
+    # finish (the row then no longer matches) instead of revoking a token that is being accepted.
+    pending = db.scalar(
+        select(OrganizationInvitation)
+        .where(
+            OrganizationInvitation.organization_id == organization.id,
+            OrganizationInvitation.accepted_at.is_(None),
+            OrganizationInvitation.revoked_at.is_(None),
+        )
+        .with_for_update()
+    )
+
     accepted = db.scalar(
         select(OrganizationInvitation.id).where(
             OrganizationInvitation.organization_id == organization.id,
@@ -87,14 +99,6 @@ def issue_invitation(
     )
     if accepted is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The administrator has already accepted an invitation.")
-
-    pending = db.scalar(
-        select(OrganizationInvitation).where(
-            OrganizationInvitation.organization_id == organization.id,
-            OrganizationInvitation.accepted_at.is_(None),
-            OrganizationInvitation.revoked_at.is_(None),
-        )
-    )
 
     if resend and pending is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no pending invitation to resend.")

@@ -9,6 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.activation import (
+    accept_invitation,
+    create_internal_auth_client,
+    get_internal_auth_client,
+    lookup_invitation,
+    require_activation_key,
+)
 from app.auth import create_auth_client, require_super_admin
 from app.database import get_db
 from app.invitations import invitation_status, issue_invitation
@@ -18,8 +25,10 @@ from app.models import Organization, OrganizationInvitation
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.auth_client = create_auth_client()
+    app.state.internal_auth_client = create_internal_auth_client()
     yield
     await app.state.auth_client.aclose()
+    app.state.internal_auth_client.close()
 
 
 app = FastAPI(
@@ -187,6 +196,33 @@ def resend_primary_admin_invitation(org_id: str, db: Session = Depends(get_db)):
     """Invalidate the pending invitation and email a new one."""
     org = find_organization(db, org_id)
     return to_invitation_response(issue_invitation(db, org, resend=True))
+
+
+# ---------------------------------------------------------------------------
+# Internal activation API. Called only by the Super Admin portal's server-side routes, which hold
+# ACTIVATION_API_KEY. Not routed by the gateway and hidden from the public docs. The invitation
+# token in the request body is the invited person's credential; the organization, email and role
+# are always taken from our own records, never from the request.
+# ---------------------------------------------------------------------------
+class ActivationLookup(BaseModel):
+    token: str
+
+
+class ActivationAccept(BaseModel):
+    token: str
+    full_name: str
+    password: str
+
+
+@app.post("/internal/invitations/lookup", include_in_schema=False, dependencies=[Depends(require_activation_key)])
+def lookup_activation(payload: ActivationLookup, db: Session = Depends(get_db)):
+    return lookup_invitation(db, payload.token)
+
+
+@app.post("/internal/invitations/accept", status_code=status.HTTP_201_CREATED, include_in_schema=False,
+          dependencies=[Depends(require_activation_key)])
+def accept_activation(payload: ActivationAccept, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)):
+    return accept_invitation(db, auth_client, token=payload.token, full_name=payload.full_name, password=payload.password)
 
 
 if __name__ == "__main__":

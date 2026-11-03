@@ -1,8 +1,9 @@
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.organization_admins import provision_organization_admin, require_internal_key
 from app.security import hash_password, verify_password
 
 # ---------------------------------------------------------------------------
@@ -65,6 +67,7 @@ class UserProfile(BaseModel):
     email: EmailStr
     full_name: str
     role: str
+    organization_id: Optional[str] = None
     is_active: bool
     created_at: str
 
@@ -83,6 +86,7 @@ def to_profile(user: User) -> UserProfile:
         email=user.email,
         full_name=user.full_name,
         role=user.role,
+        organization_id=str(user.organization_id) if user.organization_id else None,
         is_active=user.is_active,
         created_at=user.created_at.isoformat(),
     )
@@ -158,6 +162,53 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/v1/auth/me", response_model=UserProfile, tags=["Auth"])
 def get_me(current_user: User = Depends(get_current_user)):
     return to_profile(current_user)
+
+
+# ---------------------------------------------------------------------------
+# Internal service-to-service API (not routed by the gateway, not in the public docs).
+# Only the Organization Service holds the key. No role or organization can be chosen by a caller:
+# the role is fixed and the organization id comes from the Organization Service's invitation record.
+# ---------------------------------------------------------------------------
+class OrganizationAdminProvision(BaseModel):
+    organization_id: uuid.UUID
+    full_name: str
+    email: EmailStr
+    password: str  # validated in code (not by pydantic) so a rejected password is never echoed back
+
+
+class OrganizationAdminResult(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    organization_id: str
+    created: bool
+
+
+@app.post(
+    "/internal/organization-admins",
+    response_model=OrganizationAdminResult,
+    include_in_schema=False,
+    dependencies=[Depends(require_internal_key)],
+)
+def provision_admin(payload: OrganizationAdminProvision, response: Response, db: Session = Depends(get_db)):
+    result = provision_organization_admin(
+        db,
+        organization_id=payload.organization_id,
+        full_name=payload.full_name,
+        email=str(payload.email),
+        password=payload.password,
+    )
+    response.status_code = status.HTTP_201_CREATED if result.created else status.HTTP_200_OK
+    user = result.user
+    return OrganizationAdminResult(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        organization_id=str(user.organization_id),
+        created=result.created,
+    )
 
 
 if __name__ == "__main__":

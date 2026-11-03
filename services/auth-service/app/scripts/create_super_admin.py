@@ -18,11 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import User
-from app.security import hash_password
+from app.security import MIN_PASSWORD_LENGTH, hash_password, password_problems  # noqa: F401
 
 ROLE = "super-admin"
 MAX_ATTEMPTS = 3
-MIN_PASSWORD_LENGTH = 12
 # Arbitrary constant key. Serialises concurrent runs of this command so two
 # terminals can never both create a Super Admin.
 ADVISORY_LOCK_KEY = 7_340_001
@@ -43,24 +42,6 @@ def validate_email(raw: str) -> str:
     except ValidationError as exc:
         reason = exc.errors()[0].get("msg", "invalid email address")
         raise ValueError(reason.removeprefix("value is not a valid email address: "))
-
-
-def password_problems(password: str, email: str) -> List[str]:
-    problems = []
-    if len(password) < MIN_PASSWORD_LENGTH:
-        problems.append(f"at least {MIN_PASSWORD_LENGTH} characters")
-    if not any(c.islower() for c in password):
-        problems.append("a lowercase letter")
-    if not any(c.isupper() for c in password):
-        problems.append("an uppercase letter")
-    if not any(c.isdigit() for c in password):
-        problems.append("a digit")
-    if all(c.isalnum() for c in password):
-        problems.append("a symbol (e.g. ! @ # $ %)")
-    local_part = email.split("@")[0]
-    if len(local_part) >= 3 and local_part in password.lower():
-        problems.append("no part of your email address")
-    return problems
 
 
 # ---------------------------------------------------------------------------

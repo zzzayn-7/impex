@@ -163,6 +163,8 @@ def test_main_warns_when_mail_only_goes_to_mailpit(smtp, capsys):
 def test_settings_check():
     assert cli.check_settings(settings())[0] == []
     assert "both be set" in cli.check_settings(settings(password=None))[0][0]
+    assert "Gmail" in cli.check_settings(settings(username=None, password=None))[0][0]  # Gmail needs a login
+    assert cli.check_settings(settings(host="smtp.example.com", username=None, password=None))[0] == []
     assert "unencrypted" in cli.check_settings(settings(starttls=False))[0][0]
     assert cli.check_settings(settings(from_address="no-reply@impex.local"))[1]  # note about the sender
 
