@@ -50,7 +50,7 @@ def client(auth_calls):
     app.dependency_overrides[get_auth_client] = lambda: fake_auth
     with TestClient(app) as test_client:
         yield test_client
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_auth_client, None)
 
 
 def bearer(token: str) -> dict:
@@ -95,16 +95,20 @@ def test_inactive_super_admin_returns_403(client):
 def test_super_admin_can_list_get_and_create(client):
     headers = bearer("admin-token")
 
-    listing = client.get("/api/v1/organizations", headers=headers)
-    assert listing.status_code == 200
-    assert any(org["id"] == "org_default_01" for org in listing.json())  # existing records are kept
-
-    assert client.get("/api/v1/organizations/org_default_01", headers=headers).status_code == 200
-    assert client.get("/api/v1/organizations/does-not-exist", headers=headers).status_code == 404
+    assert client.get("/api/v1/organizations", headers=headers).json() == []
 
     created = client.post("/api/v1/organizations", json=NEW_ORG, headers=headers)
     assert created.status_code == 201
     assert created.json()["slug"] == "acme-imports"
+    org_id = created.json()["id"]
+
+    listing = client.get("/api/v1/organizations", headers=headers)
+    assert listing.status_code == 200
+    assert [org["id"] for org in listing.json()] == [org_id]
+
+    assert client.get(f"/api/v1/organizations/{org_id}", headers=headers).status_code == 200
+    assert client.get("/api/v1/organizations/acme-imports", headers=headers).status_code == 200
+    assert client.get("/api/v1/organizations/does-not-exist", headers=headers).status_code == 404
 
 
 def test_token_is_forwarded_to_auth_service(client, auth_calls):
@@ -142,7 +146,7 @@ def test_auth_service_unreachable_returns_503(auth_calls):
             assert test_client.get("/api/v1/organizations", headers=bearer("admin-token")).status_code == 503
             assert test_client.get("/health").status_code == 200  # health stays up even if auth is down
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_auth_client, None)
 
 
 # --- health stays public ----------------------------------------------------

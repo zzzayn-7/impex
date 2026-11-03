@@ -1,11 +1,17 @@
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.auth import create_auth_client, require_super_admin
+from app.database import get_db
+from app.models import Organization
 
 
 @asynccontextmanager
@@ -38,12 +44,13 @@ app.add_middleware(
 
 
 # Schemas
+# max_length values match the database column sizes
 class OrganizationCreate(BaseModel):
-    name: str
-    slug: str
-    country_code: str
-    tax_identifier: Optional[str] = None
-    contact_email: str
+    name: str = Field(max_length=255)
+    slug: str = Field(max_length=100)
+    country_code: str = Field(max_length=10)
+    tax_identifier: Optional[str] = Field(default=None, max_length=100)
+    contact_email: str = Field(max_length=320)
 
 
 class OrganizationResponse(BaseModel):
@@ -57,19 +64,21 @@ class OrganizationResponse(BaseModel):
     created_at: str
 
 
-# In-memory mock storage
-organizations_db: List[dict] = [
-    {
-        "id": "org_default_01",
-        "name": "Global Trade Logistics Corp",
-        "slug": "global-trade-logistics",
-        "country_code": "US",
-        "tax_identifier": "US-987654321",
-        "contact_email": "ops@globaltrade.local",
-        "is_active": True,
-        "created_at": "2026-01-15T08:00:00Z"
-    }
-]
+def to_response(org: Organization) -> OrganizationResponse:
+    return OrganizationResponse(
+        id=str(org.id),
+        name=org.name,
+        slug=org.slug,
+        country_code=org.country_code,
+        tax_identifier=org.tax_identifier,
+        contact_email=org.contact_email,
+        is_active=org.is_active,
+        created_at=org.created_at.isoformat(),
+    )
+
+
+def slug_exists(db: Session, slug: str) -> bool:
+    return db.scalar(select(Organization.id).where(Organization.slug == slug)) is not None
 
 
 # Routes
@@ -84,41 +93,53 @@ async def health_check():
 
 
 @app.get("/api/v1/organizations", response_model=List[OrganizationResponse], tags=["Organizations"], dependencies=super_admin_only)
-async def list_organizations():
-    return organizations_db
+def list_organizations(db: Session = Depends(get_db)):
+    orgs = db.scalars(select(Organization).order_by(Organization.created_at, Organization.id)).all()
+    return [to_response(org) for org in orgs]
 
 
 @app.post("/api/v1/organizations", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED, tags=["Organizations"], dependencies=super_admin_only)
-async def create_organization(payload: OrganizationCreate):
-    for org in organizations_db:
-        if org["slug"] == payload.slug:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Organization slug '{payload.slug}' already exists."
-            )
-    new_org = {
-        "id": f"org_{len(organizations_db) + 1:04d}",
-        "name": payload.name,
-        "slug": payload.slug,
-        "country_code": payload.country_code,
-        "tax_identifier": payload.tax_identifier,
-        "contact_email": payload.contact_email,
-        "is_active": True,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    organizations_db.append(new_org)
-    return new_org
+def create_organization(payload: OrganizationCreate, db: Session = Depends(get_db)):
+    slug_conflict = HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=f"Organization slug '{payload.slug}' already exists."
+    )
+    if slug_exists(db, payload.slug):
+        raise slug_conflict
+
+    org = Organization(
+        name=payload.name,
+        slug=payload.slug,
+        country_code=payload.country_code,
+        tax_identifier=payload.tax_identifier,
+        contact_email=payload.contact_email,
+    )
+    db.add(org)
+    try:
+        db.commit()
+    except IntegrityError:  # two requests with the same slug raced past the check above
+        db.rollback()
+        raise slug_conflict
+    db.refresh(org)
+    return to_response(org)
 
 
 @app.get("/api/v1/organizations/{org_id}", response_model=OrganizationResponse, tags=["Organizations"], dependencies=super_admin_only)
-async def get_organization(org_id: str):
-    for org in organizations_db:
-        if org["id"] == org_id or org["slug"] == org_id:
-            return org
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Organization '{org_id}' not found."
-    )
+def get_organization(org_id: str, db: Session = Depends(get_db)):
+    # Look up by id (UUID) or by slug, as before.
+    org = None
+    try:
+        org = db.get(Organization, uuid.UUID(org_id))
+    except ValueError:
+        pass
+    if org is None:
+        org = db.scalar(select(Organization).where(Organization.slug == org_id))
+    if org is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Organization '{org_id}' not found."
+        )
+    return to_response(org)
 
 
 if __name__ == "__main__":

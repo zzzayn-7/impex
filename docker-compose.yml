@@ -47,8 +47,15 @@ services:
       - "8001:8001"
     environment:
       - PORT=8001
-      - DATABASE_URL=${ORG_DATABASE_URL:-sqlite:///./organization.db}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${ORG_DB_NAME:-impex_organizations}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - impex-network
 
