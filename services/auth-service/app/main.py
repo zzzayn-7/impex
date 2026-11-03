@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
-from app.organization_admins import provision_organization_admin, require_internal_key
+from app.organization_admins import (
+    delete_organization_admin,
+    precheck_organization_admin,
+    provision_organization_admin,
+    require_internal_key,
+    update_organization_admin,
+)
 from app.security import hash_password, verify_password
 
 # ---------------------------------------------------------------------------
@@ -174,6 +180,7 @@ class OrganizationAdminProvision(BaseModel):
     full_name: str
     email: EmailStr
     password: str  # validated in code (not by pydantic) so a rejected password is never echoed back
+    allow_weak_password: bool = False  # demo mode only; refused (403) unless DEMO_MODE is on
 
 
 class OrganizationAdminResult(BaseModel):
@@ -183,6 +190,45 @@ class OrganizationAdminResult(BaseModel):
     role: str
     organization_id: str
     created: bool
+
+
+class OrganizationAdminUpdate(BaseModel):
+    organization_id: uuid.UUID
+    email: EmailStr
+    new_email: Optional[EmailStr] = None
+    new_full_name: Optional[str] = None
+
+
+class OrganizationAdminRef(BaseModel):
+    organization_id: uuid.UUID
+    email: EmailStr
+
+
+@app.post("/internal/organization-admins/update", include_in_schema=False, dependencies=[Depends(require_internal_key)])
+def update_admin(payload: OrganizationAdminUpdate, db: Session = Depends(get_db)):
+    user = update_organization_admin(
+        db,
+        organization_id=payload.organization_id,
+        email=str(payload.email),
+        new_email=str(payload.new_email) if payload.new_email else None,
+        new_full_name=payload.new_full_name,
+    )
+    return {"email": user.email, "full_name": user.full_name}
+
+
+@app.post("/internal/organization-admins/delete", include_in_schema=False, dependencies=[Depends(require_internal_key)])
+def delete_admin(payload: OrganizationAdminRef, db: Session = Depends(get_db)):
+    return {"deleted": delete_organization_admin(db, organization_id=payload.organization_id, email=str(payload.email))}
+
+
+class OrganizationAdminPrecheck(BaseModel):
+    organization_id: uuid.UUID
+    email: EmailStr
+
+
+@app.post("/internal/organization-admins/precheck", include_in_schema=False, dependencies=[Depends(require_internal_key)])
+def precheck_admin(payload: OrganizationAdminPrecheck, db: Session = Depends(get_db)):
+    return {"state": precheck_organization_admin(db, organization_id=payload.organization_id, email=str(payload.email))}
 
 
 @app.post(
@@ -198,6 +244,7 @@ def provision_admin(payload: OrganizationAdminProvision, response: Response, db:
         full_name=payload.full_name,
         email=str(payload.email),
         password=payload.password,
+        allow_weak_password=payload.allow_weak_password,
     )
     response.status_code = status.HTTP_201_CREATED if result.created else status.HTTP_200_OK
     user = result.user

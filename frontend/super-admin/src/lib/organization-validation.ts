@@ -22,7 +22,7 @@ export type Organization = {
   created_at: string;
 };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
 export function normalizeOrganizationInput(input: OrganizationInput): OrganizationInput {

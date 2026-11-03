@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { describeFailure, inviteAdministrator } from "@/lib/administrators";
 import { getSessionToken } from "@/lib/auth";
 import {
   FieldErrors,
@@ -33,6 +34,15 @@ function fieldErrorsFromApi(detail: unknown): FieldErrors {
     if (field && !errors[field]) errors[field] = item.msg ?? "Invalid value.";
   }
   return errors;
+}
+
+// Optional first-administrator invitation. The organization already exists at this point, so a failure here
+// (for example the mail server being down) is reported as a warning and never undoes the registration.
+// Nothing is stored when the email fails, so retrying with "Add Administrator" cannot create duplicates.
+async function sendFirstInvitation(token: string, organizationId: string, email: string) {
+  const result = await inviteAdministrator(token, organizationId, email);
+  if (result && result.status === 201) return { sent: true, email };
+  return { sent: false, email, message: describeFailure(result).message };
 }
 
 export async function POST(req: NextRequest) {
@@ -87,7 +97,12 @@ export async function POST(req: NextRequest) {
       return fail("The organization service is unavailable. Please try again shortly.", 503);
     }
 
-    if (res.status === 201) return NextResponse.json(await res.json(), { status: 201 });
+    if (res.status === 201) {
+      const organization = await res.json();
+      const invitation =
+        body.sendInvitation === true ? await sendFirstInvitation(token, organization.id, input.primaryAdminEmail) : null;
+      return NextResponse.json({ ...organization, invitation }, { status: 201 });
+    }
     if (res.status === 409) continue; // slug taken: try the next candidate
     if (res.status === 401) return fail("Your session has expired. Please sign in again.", 401);
     if (res.status === 403) return fail("You do not have permission to manage organizations.", 403);

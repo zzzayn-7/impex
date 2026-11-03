@@ -2,7 +2,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
@@ -15,6 +15,15 @@ from app.activation import (
     get_internal_auth_client,
     lookup_invitation,
     require_activation_key,
+)
+from app.administrators import (
+    ADMINISTRATOR_ROLE,
+    administrator_status,
+    delete_administrator,
+    invite_administrator,
+    list_administrators,
+    resend_administrator_invitation,
+    update_administrator,
 )
 from app.auth import create_auth_client, require_super_admin
 from app.database import get_db
@@ -114,6 +123,49 @@ def to_invitation_response(invitation: OrganizationInvitation) -> InvitationResp
     )
 
 
+class AdministratorCreate(BaseModel):
+    """Only a name and an email. The role is fixed and the organization comes from the URL."""
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    email: EmailStr
+
+
+class AdministratorUpdate(BaseModel):
+    """Editable fields only. The role and the organization can never be changed here."""
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[EmailStr] = None
+
+
+class AdministratorResponse(BaseModel):
+    """An administrator and their invitation/account state. Never contains a token or hash."""
+    id: str
+    organization_id: str
+    organization_name: str
+    organization_slug: str
+    full_name: Optional[str] = None
+    email: str
+    role: str
+    status: str  # pending | active | expired
+    invited_at: str
+    expires_at: str
+    activated_at: Optional[str] = None
+
+
+def to_administrator_response(invitation: OrganizationInvitation, organization: Organization) -> AdministratorResponse:
+    return AdministratorResponse(
+        id=str(invitation.id),
+        organization_id=str(organization.id),
+        organization_name=organization.name,
+        organization_slug=organization.slug,
+        full_name=invitation.full_name,
+        email=invitation.email,
+        role=ADMINISTRATOR_ROLE,
+        status=administrator_status(invitation),
+        invited_at=invitation.created_at.isoformat(),
+        expires_at=invitation.expires_at.isoformat(),
+        activated_at=invitation.accepted_at.isoformat() if invitation.accepted_at else None,
+    )
+
+
 def find_organization(db: Session, org_id: str) -> Organization:
     # Look up by id (UUID) or by slug.
     org = None
@@ -179,6 +231,11 @@ def create_organization(payload: OrganizationCreate, db: Session = Depends(get_d
     return to_response(org)
 
 
+@app.get("/api/v1/organizations/administrators", response_model=List[AdministratorResponse], tags=["Administrators"], dependencies=super_admin_only)
+def list_organization_administrators(db: Session = Depends(get_db)):
+    return [to_administrator_response(invitation, org) for invitation, org in list_administrators(db)]
+
+
 @app.get("/api/v1/organizations/{org_id}", response_model=OrganizationResponse, tags=["Organizations"], dependencies=super_admin_only)
 def get_organization(org_id: str, db: Session = Depends(get_db)):
     return to_response(find_organization(db, org_id))
@@ -189,6 +246,51 @@ def invite_primary_admin(org_id: str, db: Session = Depends(get_db)):
     """Email an activation link (valid 24 hours, single use) to the organization's primary administrator."""
     org = find_organization(db, org_id)
     return to_invitation_response(issue_invitation(db, org, resend=False))
+
+
+@app.post("/api/v1/organizations/{org_id}/administrators", response_model=AdministratorResponse, status_code=status.HTTP_201_CREATED, tags=["Administrators"], dependencies=super_admin_only)
+def add_organization_administrator(
+    org_id: str, payload: AdministratorCreate, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)
+):
+    """Invite a person to administer the organization: creates a pending invitation and emails the activation link."""
+    org = find_organization(db, org_id)
+    invitation = invite_administrator(db, auth_client, org, email=str(payload.email), full_name=payload.full_name)
+    return to_administrator_response(invitation, org)
+
+
+@app.patch("/api/v1/organizations/{org_id}/administrators/{admin_id}", response_model=AdministratorResponse, tags=["Administrators"], dependencies=super_admin_only)
+def edit_organization_administrator(
+    org_id: str, admin_id: str, payload: AdministratorUpdate, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)
+):
+    """Edit an administrator's name and/or email."""
+    if payload.full_name is None and payload.email is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Provide a name or an email to change.")
+    org = find_organization(db, org_id)
+    invitation = update_administrator(
+        db, auth_client, org, admin_id,
+        full_name=payload.full_name, email=str(payload.email) if payload.email else None,
+    )
+    return to_administrator_response(invitation, org)
+
+
+@app.delete("/api/v1/organizations/{org_id}/administrators/{admin_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Administrators"], dependencies=super_admin_only)
+def remove_organization_administrator(
+    org_id: str, admin_id: str, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)
+):
+    """Remove an administrator: their account (if activated) and their invitations."""
+    org = find_organization(db, org_id)
+    delete_administrator(db, auth_client, org, admin_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/v1/organizations/{org_id}/administrators/{admin_id}/resend", response_model=AdministratorResponse, status_code=status.HTTP_201_CREATED, tags=["Administrators"], dependencies=super_admin_only)
+def resend_organization_administrator(
+    org_id: str, admin_id: str, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)
+):
+    """Replace a pending or expired invitation with a fresh one (the old link stops working)."""
+    org = find_organization(db, org_id)
+    invitation = resend_administrator_invitation(db, auth_client, org, admin_id)
+    return to_administrator_response(invitation, org)
 
 
 @app.post("/api/v1/organizations/{org_id}/invitations/resend", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED, tags=["Invitations"], dependencies=super_admin_only)

@@ -39,15 +39,27 @@ class FakeAuthService:
 
     def __init__(self):
         self.users = {}  # email -> {"org": ..., "password": ..., "name": ...}
-        self.calls = []  # (json body, headers)
+        self.calls = []  # (json body, headers) of account-creation calls
+        self.prechecks = []  # json bodies of precheck calls
+        self.updates = []  # json bodies of update calls
+        self.deletes = []  # json bodies of delete calls
+        self.demo = True  # does the "Auth Service" accept demo (weak) passwords?
         self.mode = None  # "down" | "500"
         self.delay = 0.0
         self._lock = threading.Lock()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        is_precheck = request.url.path.endswith("/precheck")
         with self._lock:
-            self.calls.append((body, dict(request.headers)))
+            if is_precheck:
+                self.prechecks.append(body)
+            elif request.url.path.endswith("/update"):
+                self.updates.append(body)
+            elif request.url.path.endswith("/delete"):
+                self.deletes.append(body)
+            else:
+                self.calls.append((body, dict(request.headers)))
         if self.delay:
             time.sleep(self.delay)
         if self.mode == "down":
@@ -56,7 +68,39 @@ class FakeAuthService:
             return httpx.Response(500, json={"detail": "boom"})
         if request.headers.get("x-internal-key") != AUTH_KEY:
             return httpx.Response(401, json={"detail": "Invalid service credentials"})
-        if len(body["password"]) < 12:
+        if is_precheck:
+            existing = self.users.get(body["email"])
+            if existing is None:
+                state = "available"
+            elif existing["org"] == body["organization_id"]:
+                state = "already_administrator"
+            else:
+                state = "email_taken"
+            return httpx.Response(200, json={"state": state})
+        if request.url.path.endswith("/update"):
+            with self._lock:
+                key = next((e for e in (body["email"], body.get("new_email")) if e in self.users
+                            and self.users[e]["org"] == body["organization_id"]), None)
+                if key is None:
+                    return httpx.Response(404, json={"detail": {"code": "not_found", "message": "Administrator account not found."}})
+                target = body.get("new_email")
+                if target and target != key and target in self.users:
+                    return httpx.Response(409, json={"detail": {"code": "email_taken", "message": "An account with this email address already exists."}})
+                record = self.users.pop(key)
+                if body.get("new_full_name"):
+                    record["name"] = body["new_full_name"]
+                self.users[target or key] = record
+            return httpx.Response(200, json={"email": target or key})
+        if request.url.path.endswith("/delete"):
+            with self._lock:
+                record = self.users.get(body["email"])
+                deleted = bool(record and record["org"] == body["organization_id"])
+                if deleted:
+                    del self.users[body["email"]]
+            return httpx.Response(200, json={"deleted": deleted})
+        if body.get("allow_weak_password") and not self.demo:
+            return httpx.Response(403, json={"detail": {"code": "demo_disabled", "message": "Demo passwords are not enabled."}})
+        if len(body["password"]) < (8 if body.get("allow_weak_password") else 12):
             return httpx.Response(422, json={"detail": {
                 "code": "weak_password", "message": "Password must contain: at least 12 characters.",
                 "problems": ["at least 12 characters"]}})
@@ -141,7 +185,7 @@ def test_lookup_shows_only_the_organization_name_and_invited_email(client, smtp)
     response = lookup(client, token)
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"organization_name", "email", "expires_at"}
+    assert set(body) == {"organization_name", "email", "full_name", "expires_at"}
     assert (body["organization_name"], body["email"]) == ("Acme Imports", ADMIN_EMAIL)
     assert token not in response.text
 

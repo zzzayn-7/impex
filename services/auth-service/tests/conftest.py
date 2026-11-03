@@ -101,3 +101,9 @@ def database(engine, session_factory, monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture(autouse=True)
+def demo_mode_off_by_default(monkeypatch):
+    """Tests never inherit DEMO_MODE from a developer's .env; the demo tests switch it on explicitly."""
+    monkeypatch.delenv("DEMO_MODE", raising=False)

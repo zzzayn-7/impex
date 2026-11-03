@@ -191,3 +191,45 @@ def test_delivery_error_carries_the_safe_reason(smtp, monkeypatch):
     smtp.fail_on_connect = smtplib.SMTPAuthenticationError(535, b"nope")
     with pytest.raises(EmailDeliveryError, match="App Password"):
         mailer.send_invitation_email("o@x.org", "Acme", "http://l/activate#token=t", datetime.now(timezone.utc))
+
+
+# --- misleading "could not connect" when the real problem is the login -------
+def test_empty_password_with_a_username_is_reported_clearly_and_never_connects(gmail, monkeypatch):
+    monkeypatch.setenv("SMTP_PASSWORD", "")
+    with pytest.raises(EmailDeliveryError, match="SMTP_PASSWORD is empty"):
+        mailer.send_invitation_email("o@x.org", "Acme", "http://l/activate#token=t", datetime.now(timezone.utc))
+    assert gmail.connections == []  # fails before any connection is attempted
+
+
+def test_a_server_hanging_up_during_login_is_not_reported_as_a_connection_problem(gmail):
+    gmail.fail_on_login = smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+    with pytest.raises(EmailDeliveryError) as raised:
+        mailer.send_invitation_email("o@x.org", "Acme", "http://l/activate#token=t", datetime.now(timezone.utc))
+    assert "closed the connection during login" in str(raised.value)
+    assert "App Password" in str(raised.value)
+    assert "could not connect" not in str(raised.value)
+    assert gmail.connections[0]["starttls"] is True  # it did connect and upgrade to TLS
+
+
+def test_a_real_connection_failure_still_says_so(gmail):
+    gmail.fail_on_connect = ConnectionRefusedError("refused")
+    with pytest.raises(EmailDeliveryError, match="could not connect to smtp.gmail.com:587"):
+        mailer.send_invitation_email("o@x.org", "Acme", "http://l/activate#token=t", datetime.now(timezone.utc))
+
+
+def test_the_api_error_explains_why_the_email_failed(gmail, session_factory):
+    """What the Super Admin sees when an invitation email cannot be sent."""
+    from fastapi import HTTPException
+    from app.invitations import issue_invitation
+    from app.models import Organization
+
+    gmail.fail_on_login = smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
+    with session_factory() as db:
+        org = Organization(name="Acme", slug="acme", country_code="DE", contact_email="a@b.org", primary_admin_email="o@x.org")
+        db.add(org)
+        db.commit()
+        with pytest.raises(HTTPException) as raised:
+            issue_invitation(db, org, resend=False)
+    assert raised.value.status_code == 502
+    assert "could not be sent" in raised.value.detail and "App Password" in raised.value.detail
+    assert "super-secret-app-password" not in raised.value.detail

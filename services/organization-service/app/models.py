@@ -35,10 +35,12 @@ class OrganizationInvitation(Base):
 
     __tablename__ = "organization_invitations"
     __table_args__ = (
-        # At most one pending (not accepted, not revoked) invitation per organization.
+        # At most one pending (not accepted, not revoked) invitation per organization and email.
+        # An organization can have several administrators, but never two live invitations for the same person.
         Index(
             "uq_organization_invitations_pending",
             "organization_id",
+            "email",
             unique=True,
             postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
         ),
@@ -51,6 +53,9 @@ class OrganizationInvitation(Base):
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    # Name given by the Super Admin when inviting (prefills the activation form); replaced by the name the
+    # administrator confirms on activation. Optional: the primary-admin invitations carry no name.
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

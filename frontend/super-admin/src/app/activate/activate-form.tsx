@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { passwordChecks, passwordProblems } from "@/lib/password-policy";
 
-type Invitation = { organizationName: string; email: string };
+type Invitation = { organizationName: string; email: string; loginUrl?: string };
 type View =
   | { kind: "loading" }
   | { kind: "missing" }
@@ -61,7 +61,10 @@ export default function ActivateForm() {
         });
         const data = await res.json().catch(() => null);
         if (cancelled) return;
-        if (res.ok) setView({ kind: "ready", invitation: data });
+        if (res.ok) {
+          setView({ kind: "ready", invitation: data });
+          if (typeof data?.fullName === "string" && data.fullName) setFullName(data.fullName); // name chosen by the Super Admin
+        }
         else setView({ kind: "problem", code: data?.code ?? "unavailable", message: data?.message ?? "Please try again later." });
       } catch {
         if (!cancelled) setView({ kind: "problem", code: "unavailable", message: "Unable to reach the server. Check your connection and reload." });
@@ -99,7 +102,7 @@ export default function ActivateForm() {
         tokenRef.current = null;
         setPassword("");
         setConfirmPassword("");
-        setView({ kind: "done", invitation: view.invitation });
+        setView({ kind: "done", invitation: { ...view.invitation, loginUrl: typeof data?.loginUrl === "string" ? data.loginUrl : undefined } });
         return;
       }
       const code = data?.code as string | undefined;
@@ -151,8 +154,16 @@ export default function ActivateForm() {
         <h2 className="text-base font-semibold text-white">Your account is active</h2>
         <p className="text-sm text-slate-400">
           You are now the administrator of <strong className="text-slate-200">{view.invitation.organizationName}</strong>.
-          Administrator sign-in will be available soon.
+          You can now sign in with the email and password you just set.
         </p>
+        {view.invitation.loginUrl && /^https?:\/\//.test(view.invitation.loginUrl) && (
+          <a
+            href={view.invitation.loginUrl}
+            className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+          >
+            Go to organization sign in
+          </a>
+        )}
       </div>
     );
   }

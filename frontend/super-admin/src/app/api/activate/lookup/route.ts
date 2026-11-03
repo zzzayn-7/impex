@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     {
       organizationName: result.data.organization_name,
       email: result.data.email,
+      fullName: result.data.full_name ?? null,
       expiresAt: result.data.expires_at,
     },
     { headers: { "Cache-Control": "no-store" } }

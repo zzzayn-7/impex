@@ -113,6 +113,7 @@ class FakeSMTPServer:
         self.connections = []  # one dict per connection: host, port, ssl, starttls, login
         self.fail_on_connect = None  # an exception instance to raise when connecting
         self.fail_on_send = None
+        self.fail_on_login = None
 
     def factory(self, use_ssl):
         server = self
@@ -134,6 +135,8 @@ class FakeSMTPServer:
                 self.info["starttls"] = True
 
             def login(self, user, password):
+                if server.fail_on_login:
+                    raise server.fail_on_login
                 self.info["login"] = (user, password)
 
             def send_message(self, message):
@@ -176,3 +179,10 @@ def fake_auth_client(tokens: dict) -> httpx.AsyncClient:
         return httpx.Response(status, json=body)
 
     return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://auth-service:8000")
+
+
+@pytest.fixture(autouse=True)
+def demo_mode_off_by_default(monkeypatch):
+    """Tests never inherit DEMO_MODE from a developer's .env; the demo tests switch it on explicitly."""
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    monkeypatch.delenv("DEMO_ADMIN_PASSWORD", raising=False)

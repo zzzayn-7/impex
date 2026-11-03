@@ -15,6 +15,15 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
+# Automated tests (not part of the runtime image):
+#   docker build --target test -t impex-super-admin-test ./frontend/super-admin
+#   docker run --rm impex-super-admin-test
+FROM base AS test
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+CMD ["npm", "test"]
+
 # Production runner
 FROM base AS runner
 WORKDIR /app

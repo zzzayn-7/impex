@@ -94,6 +94,7 @@ def lookup_invitation(db: Session, token: str) -> dict:
     return {
         "organization_name": organization.name,
         "email": invitation.email,
+        "full_name": invitation.full_name,
         "expires_at": invitation.expires_at.isoformat(),
     }
 
@@ -155,13 +156,14 @@ def create_admin_account(
 
 # --- completion --------------------------------------------------------------
 def finalize(db: Session, invitation: OrganizationInvitation) -> None:
-    """Mark the invitation accepted and retire any other pending invitation for the organization."""
+    """Mark the invitation accepted and retire any other pending invitation for the same administrator."""
     now = utcnow()
     invitation.accepted_at = now
     db.execute(
         update(OrganizationInvitation)
         .where(
             OrganizationInvitation.organization_id == invitation.organization_id,
+            OrganizationInvitation.email == invitation.email,
             OrganizationInvitation.id != invitation.id,
             OrganizationInvitation.accepted_at.is_(None),
             OrganizationInvitation.revoked_at.is_(None),
@@ -197,6 +199,7 @@ def accept_invitation(db: Session, auth_client: httpx.Client, *, token: str, ful
         raise
 
     try:
+        invitation.full_name = " ".join(full_name.split()) or invitation.full_name  # the name they confirmed
         finalize(db, invitation)
     except SQLAlchemyError:
         db.rollback()

@@ -36,8 +36,10 @@ export async function POST(req: NextRequest) {
   const result = await callOrgService("/internal/invitations/accept", { token: body.token, full_name: fullName, password });
   if (!result || result.status !== 201) return forwardFailure(result);
 
+  // Where this administrator signs in from now on: the separate organization portal.
+  const portal = (process.env.TENANT_PORTAL_URL || "http://localhost:3001").replace(/\/$/, "");
   return NextResponse.json(
-    { organizationName: result.data.organization_name, email: result.data.email },
+    { organizationName: result.data.organization_name, email: result.data.email, loginUrl: `${portal}/login` },
     { status: 201, headers: { "Cache-Control": "no-store" } }
   );
 }

@@ -62,18 +62,33 @@ def is_active(invitation: OrganizationInvitation, now: Optional[datetime] = None
     return invitation_status(invitation, now) == "pending"
 
 
+def build_login_url() -> str:
+    base = os.getenv("TENANT_PORTAL_URL", "http://localhost:3001").rstrip("/")
+    return f"{base}/login"
+
+
 # --- workflow ---------------------------------------------------------------
 def issue_invitation(
-    db: Session, organization: Organization, *, resend: bool, now: Optional[datetime] = None
+    db: Session,
+    organization: Organization,
+    *,
+    resend: bool,
+    email: Optional[str] = None,
+    full_name: Optional[str] = None,
+    now: Optional[datetime] = None,
 ) -> OrganizationInvitation:
-    """Create (or, with resend=True, replace) the invitation for the organization's primary admin.
+    """Create (or, with resend=True, replace) the invitation for ONE administrator of the organization.
+
+    Without `email` the organization's primary administrator email is used. An organization may have
+    several administrators; each (organization, email) pair has at most one live invitation.
 
     Everything happens in one transaction, including the email: if the email cannot be sent,
-    nothing changes and any previous invitation stays valid.
+    nothing changes and any previous invitation stays valid, so a retry can never create duplicates.
     """
     now = now or utcnow()
+    email = (email or organization.primary_admin_email or "").strip().lower()
 
-    if not organization.primary_admin_email:
+    if not email:
         raise HTTPException(status.HTTP_409_CONFLICT, "This organization has no primary administrator email.")
 
     # Serialize concurrent invite/resend requests for the same organization.
@@ -85,6 +100,7 @@ def issue_invitation(
         select(OrganizationInvitation)
         .where(
             OrganizationInvitation.organization_id == organization.id,
+            OrganizationInvitation.email == email,
             OrganizationInvitation.accepted_at.is_(None),
             OrganizationInvitation.revoked_at.is_(None),
         )
@@ -94,6 +110,7 @@ def issue_invitation(
     accepted = db.scalar(
         select(OrganizationInvitation.id).where(
             OrganizationInvitation.organization_id == organization.id,
+            OrganizationInvitation.email == email,
             OrganizationInvitation.accepted_at.is_not(None),
         )
     )
@@ -108,6 +125,8 @@ def issue_invitation(
             "An active invitation already exists. Use resend to replace it.",
         )
 
+    carried_name = full_name or (pending.full_name if pending is not None else None)
+
     if pending is not None:
         pending.revoked_at = now  # invalidates the previous token (also when it had merely expired)
         db.flush()  # must hit the database before the new row, or the pending-unique index would clash
@@ -115,7 +134,8 @@ def issue_invitation(
     token = generate_token()
     invitation = OrganizationInvitation(
         organization_id=organization.id,
-        email=organization.primary_admin_email,
+        email=email,
+        full_name=carried_name,
         token_hash=hash_token(token),
         expires_at=now + INVITATION_TTL,
         created_at=now,
@@ -133,12 +153,14 @@ def issue_invitation(
             organization_name=organization.name,
             activation_link=build_activation_link(token),
             expires_at=invitation.expires_at,
+            recipient_name=invitation.full_name,
+            login_url=build_login_url(),
         )
-    except EmailDeliveryError:
+    except EmailDeliveryError as exc:
         db.rollback()
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            "The invitation email could not be sent. Nothing was changed; please try again.",
+            f"The invitation email could not be sent ({exc}). Nothing was changed; please try again.",
         )
 
     db.commit()
