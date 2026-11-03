@@ -4,13 +4,18 @@ import os
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import User
 
 # ---------------------------------------------------------------------------
 # Config (from environment, see .env.example)
@@ -44,7 +49,6 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    organization_id: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -63,15 +67,8 @@ class UserProfile(BaseModel):
     email: EmailStr
     full_name: str
     role: str
-    organization_id: Optional[str] = None
+    is_active: bool
     created_at: str
-
-
-# ---------------------------------------------------------------------------
-# In-memory storage (replace with a real database later)
-# keyed by lowercase email
-# ---------------------------------------------------------------------------
-users_db: Dict[str, dict] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -94,24 +91,31 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode({"sub": user_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def to_profile(user: dict) -> UserProfile:
-    return UserProfile(**{k: v for k, v in user.items() if k != "password_hash"})
+def to_profile(user: User) -> UserProfile:
+    return UserProfile(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        user_id = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub")
-    except JWTError:
+        user_id = uuid.UUID(jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub"))
+    except (JWTError, ValueError, TypeError):
         raise unauthorized
-    for user in users_db.values():
-        if user["id"] == user_id:
-            return user
-    raise unauthorized
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise unauthorized
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -128,40 +132,45 @@ async def health_check():
 
 
 @app.post("/api/v1/auth/register", response_model=UserProfile, status_code=status.HTTP_201_CREATED, tags=["Auth"])
-async def register(payload: UserRegister):
+def register(payload: UserRegister, db: Session = Depends(get_db)):
     email = payload.email.lower()
-    if email in users_db:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     if len(payload.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password must be at least 8 characters")
+    if db.scalar(select(User.id).where(User.email == email)) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    user = {
-        "id": f"usr_{uuid.uuid4().hex[:12]}",
-        "email": email,
-        "full_name": payload.full_name,
-        # First registered user becomes super-admin; everyone else is a plain user
-        "role": "super-admin" if not users_db else "user",
-        "organization_id": payload.organization_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "password_hash": hash_password(payload.password),
-    }
-    users_db[email] = user
+    # Public registration always creates a plain "user". Elevated roles are never self-assigned.
+    user = User(
+        email=email,
+        full_name=payload.full_name,
+        password_hash=hash_password(payload.password),
+        role="user",
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:  # concurrent registration with the same email
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    db.refresh(user)
     return to_profile(user)
 
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse, tags=["Auth"])
-async def login(credentials: UserLogin):
-    user = users_db.get(credentials.email.lower())
-    if not user or not verify_password(credentials.password, user["password_hash"]):
+def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.email == credentials.email.lower()))
+    if not user or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
     return TokenResponse(
-        access_token=create_access_token(user["id"]),
+        access_token=create_access_token(str(user.id)),
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
 @app.get("/api/v1/auth/me", response_model=UserProfile, tags=["Auth"])
-async def get_me(current_user: dict = Depends(get_current_user)):
+def get_me(current_user: User = Depends(get_current_user)):
     return to_profile(current_user)
 
 
