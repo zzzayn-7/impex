@@ -1,4 +1,4 @@
-import LogoutButton from "@/components/logout-button";
+import PortalHeader from "@/components/portal-header";
 import { requireSuperAdmin } from "@/lib/auth";
 
 export default async function SuperAdminDashboard() {
@@ -22,31 +22,7 @@ export default async function SuperAdminDashboard() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Top Navbar */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-indigo-600/30">
-            IX
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white">IMPEX Super Admin</h1>
-            <p className="text-xs text-slate-400">Microservices Architecture Platform</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            Gateway Online
-          </span>
-          <LogoutButton />
-          <div
-            title={`${user.full_name} (${user.email})`}
-            className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-200"
-          >
-            SA
-          </div>
-        </div>
-      </header>
+      <PortalHeader user={user} current="dashboard" />
 
       {/* Main Content */}
       <main className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">

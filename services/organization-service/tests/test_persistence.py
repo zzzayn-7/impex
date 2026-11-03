@@ -88,7 +88,8 @@ def test_created_organization_is_stored_in_postgres(client, session_factory):
     assert row.created_at.tzinfo is not None
     assert body["is_active"] is True
     assert set(body) == {  # response shape is unchanged from the in-memory version
-        "id", "name", "slug", "country_code", "tax_identifier", "contact_email", "is_active", "created_at",
+        "id", "name", "slug", "country_code", "tax_identifier", "contact_email", "primary_admin_email",
+        "is_active", "created_at",
     }
 
 
@@ -98,6 +99,20 @@ def test_optional_tax_identifier_can_be_omitted(client):
     response = client.post(URL, json=payload, headers=HEADERS)
     assert response.status_code == 201
     assert response.json()["tax_identifier"] is None
+
+
+def test_primary_admin_email_is_stored_lowercased(client, session_factory):
+    response = client.post(URL, json=new_org(primary_admin_email="Owner@Acme.Example"), headers=HEADERS)
+    assert response.status_code == 201
+    assert response.json()["primary_admin_email"] == "owner@acme.example"
+    with session_factory() as db:
+        assert db.query(Organization).one().primary_admin_email == "owner@acme.example"
+
+
+def test_invalid_primary_admin_email_is_rejected(client, session_factory):
+    assert client.post(URL, json=new_org(primary_admin_email="not-an-email"), headers=HEADERS).status_code == 422
+    with session_factory() as db:
+        assert db.query(Organization).count() == 0
 
 
 # --- persistence across a service restart -----------------------------------

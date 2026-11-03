@@ -36,6 +36,10 @@ export async function fetchCurrentUser(token: string): Promise<AuthUser | null> 
   }
 }
 
+export function getSessionToken(): string | undefined {
+  return cookies().get(SESSION_COOKIE)?.value;
+}
+
 // Returns the logged-in Super Admin, or null if there is no valid Super Admin session.
 export async function getSuperAdmin(): Promise<AuthUser | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;

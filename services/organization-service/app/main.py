@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -51,6 +51,8 @@ class OrganizationCreate(BaseModel):
     country_code: str = Field(max_length=10)
     tax_identifier: Optional[str] = Field(default=None, max_length=100)
     contact_email: str = Field(max_length=320)
+    # Recorded now; the invitation flow that uses it comes later.
+    primary_admin_email: Optional[EmailStr] = Field(default=None, max_length=320)
 
 
 class OrganizationResponse(BaseModel):
@@ -60,6 +62,7 @@ class OrganizationResponse(BaseModel):
     country_code: str
     tax_identifier: Optional[str] = None
     contact_email: str
+    primary_admin_email: Optional[str] = None
     is_active: bool
     created_at: str
 
@@ -72,6 +75,7 @@ def to_response(org: Organization) -> OrganizationResponse:
         country_code=org.country_code,
         tax_identifier=org.tax_identifier,
         contact_email=org.contact_email,
+        primary_admin_email=org.primary_admin_email,
         is_active=org.is_active,
         created_at=org.created_at.isoformat(),
     )
@@ -113,6 +117,7 @@ def create_organization(payload: OrganizationCreate, db: Session = Depends(get_d
         country_code=payload.country_code,
         tax_identifier=payload.tax_identifier,
         contact_email=payload.contact_email,
+        primary_admin_email=str(payload.primary_admin_email).lower() if payload.primary_admin_email else None,
     )
     db.add(org)
     try:

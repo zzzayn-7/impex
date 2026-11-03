@@ -13,5 +13,6 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login$|login/|api/auth/|_next/|favicon.ico$).*)"],
+  // /api/* route handlers enforce auth themselves and answer with JSON 401, not an HTML redirect.
+  matcher: ["/((?!login$|login/|api/|_next/|favicon.ico$).*)"],
 };
