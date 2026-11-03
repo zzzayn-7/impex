@@ -58,6 +58,30 @@ services:
     networks:
       - impex-network
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: impex-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U $${POSTGRES_USER} -d impex_auth -c 'SELECT 1' && psql -U $${POSTGRES_USER} -d impex_organizations -c 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - impex-network
+
+volumes:
+  postgres_data:
+
 networks:
   impex-network:
     driver: bridge
