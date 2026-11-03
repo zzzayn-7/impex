@@ -53,9 +53,21 @@ services:
       - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
+      - SMTP_HOST=${SMTP_HOST:-mailpit}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-false}
+      - SMTP_SSL=${SMTP_SSL:-false}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-no-reply@impex.local}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Impex}
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
+        required: false  # only a local mail catcher; not needed when SMTP_HOST points at a real server
     networks:
       - impex-network
 
@@ -72,6 +84,16 @@ services:
       - NEXT_PUBLIC_API_GATEWAY_URL=${NEXT_PUBLIC_API_GATEWAY_URL:-http://localhost}
       - AUTH_SERVICE_URL=http://auth-service:8000
       - ORG_SERVICE_URL=http://organization-service:8001
+    networks:
+      - impex-network
+
+  # Local email testing: catches all outgoing mail. Web inbox at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: impex-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     networks:
       - impex-network
 

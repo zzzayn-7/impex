@@ -9,9 +9,12 @@ Run them inside Docker (so the postgres hostname and credentials are available):
         "pip install -q -r requirements-dev.txt && python -m pytest -v"
 """
 import os
+import re
+import smtplib
 from contextlib import contextmanager
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic.config import Config
 from sqlalchemy import create_engine, text
@@ -87,7 +90,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with an empty organizations table and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE organizations"))
+        conn.execute(text("TRUNCATE TABLE organizations CASCADE"))  # also clears invitations
 
     def override_get_db():
         db = session_factory()
@@ -99,3 +102,77 @@ def database(engine, session_factory):
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.pop(get_db, None)
+
+
+# --- fake SMTP + helpers shared by the invitation/mailer tests ----------------
+class FakeSMTPServer:
+    """Stands in for smtplib.SMTP / SMTP_SSL and records everything that is sent."""
+
+    def __init__(self):
+        self.messages = []
+        self.connections = []  # one dict per connection: host, port, ssl, starttls, login
+        self.fail_on_connect = None  # an exception instance to raise when connecting
+        self.fail_on_send = None
+
+    def factory(self, use_ssl):
+        server = self
+
+        class _Connection:
+            def __init__(self, host, port, timeout=None, **_):
+                if server.fail_on_connect:
+                    raise server.fail_on_connect
+                self.info = {"host": host, "port": port, "ssl": use_ssl, "starttls": False, "login": None}
+                server.connections.append(self.info)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def starttls(self, context=None):
+                self.info["starttls"] = True
+
+            def login(self, user, password):
+                self.info["login"] = (user, password)
+
+            def send_message(self, message):
+                if server.fail_on_send:
+                    raise server.fail_on_send
+                server.messages.append(message)
+
+        return _Connection
+
+
+@pytest.fixture
+def smtp(monkeypatch):
+    server = FakeSMTPServer()
+    monkeypatch.setattr(smtplib, "SMTP", server.factory(use_ssl=False))
+    monkeypatch.setattr(smtplib, "SMTP_SSL", server.factory(use_ssl=True))
+    for name in ("SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_STARTTLS", "SMTP_SSL",
+                 "SMTP_FROM_ADDRESS", "SMTP_FROM_NAME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("APP_BASE_URL", "http://app.test")
+    return server
+
+
+TOKEN_IN_LINK = re.compile(r"/activate#token=([A-Za-z0-9_-]+)")
+
+
+def token_from_message(message) -> str:
+    """The plaintext token exists only in the email; tests read it from there."""
+    body = message.get_body(preferencelist=("plain",)).get_content()
+    found = TOKEN_IN_LINK.search(body)
+    assert found, "activation link not found in email"
+    return found.group(1)
+
+
+def fake_auth_client(tokens: dict) -> httpx.AsyncClient:
+    """An Auth Service stand-in. tokens: bearer token -> (status code, JSON body)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        status, body = tokens.get(token, (401, {"detail": "Invalid or expired token"}))
+        return httpx.Response(status, json=body)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://auth-service:8000")
