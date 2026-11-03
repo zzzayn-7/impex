@@ -62,6 +62,7 @@ services:
     environment:
       - PORT=3000
       - NEXT_PUBLIC_API_GATEWAY_URL=${NEXT_PUBLIC_API_GATEWAY_URL:-http://localhost}
+      - AUTH_SERVICE_URL=http://auth-service:8000
     networks:
       - impex-network
 

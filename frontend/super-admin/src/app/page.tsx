@@ -1,4 +1,10 @@
-export default function SuperAdminDashboard() {
+import LogoutButton from "@/components/logout-button";
+import { requireSuperAdmin } from "@/lib/auth";
+
+export default async function SuperAdminDashboard() {
+  // Redirects to /login unless the session belongs to an active super-admin
+  const user = await requireSuperAdmin();
+
   const services = [
     { name: "Auth Service", status: "Operational", port: 8000, route: "/api/v1/auth" },
     { name: "Organization Service", status: "Operational", port: 8001, route: "/api/v1/organizations" },
@@ -32,7 +38,11 @@ export default function SuperAdminDashboard() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             Gateway Online
           </span>
-          <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-200">
+          <LogoutButton />
+          <div
+            title={`${user.full_name} (${user.email})`}
+            className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-200"
+          >
             SA
           </div>
         </div>
