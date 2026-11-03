@@ -1,15 +1,31 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from app.auth import create_auth_client, require_super_admin
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.auth_client = create_auth_client()
+    yield
+    await app.state.auth_client.aclose()
+
 
 app = FastAPI(
     title="Impex Organization Service",
     version="1.0.0",
     docs_url="/docs",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
+
+# Organization management is restricted to active Super Admins (verified by the Auth Service).
+# Health endpoints below intentionally do not use this.
+super_admin_only = [Depends(require_super_admin)]
 
 # CORS Middleware
 app.add_middleware(
@@ -67,12 +83,12 @@ async def health_check():
     }
 
 
-@app.get("/api/v1/organizations", response_model=List[OrganizationResponse], tags=["Organizations"])
+@app.get("/api/v1/organizations", response_model=List[OrganizationResponse], tags=["Organizations"], dependencies=super_admin_only)
 async def list_organizations():
     return organizations_db
 
 
-@app.post("/api/v1/organizations", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED, tags=["Organizations"])
+@app.post("/api/v1/organizations", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED, tags=["Organizations"], dependencies=super_admin_only)
 async def create_organization(payload: OrganizationCreate):
     for org in organizations_db:
         if org["slug"] == payload.slug:
@@ -94,7 +110,7 @@ async def create_organization(payload: OrganizationCreate):
     return new_org
 
 
-@app.get("/api/v1/organizations/{org_id}", response_model=OrganizationResponse, tags=["Organizations"])
+@app.get("/api/v1/organizations/{org_id}", response_model=OrganizationResponse, tags=["Organizations"], dependencies=super_admin_only)
 async def get_organization(org_id: str):
     for org in organizations_db:
         if org["id"] == org_id or org["slug"] == org_id:
