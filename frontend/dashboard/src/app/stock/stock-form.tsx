@@ -26,6 +26,12 @@ type Props = {
   warehouses: Warehouse[]; // active warehouses
   onDone: (message: string) => void;
   onCancel: () => void;
+  /** Which operations to offer (default: all four). The Scan Product page offers in / out / transfer. */
+  actions?: StockAction[];
+  /** Ask "are you sure?" with a plain-language summary before anything is sent. */
+  requireConfirmation?: boolean;
+  /** The product was chosen by a scan: show it, but do not let the form silently switch to another one. */
+  lockProduct?: boolean;
 };
 
 const selectClass =
@@ -39,13 +45,17 @@ const HELP: Record<StockAction, string> = {
   transfer: "Move stock between two warehouses. Both sides are recorded together or not at all.",
 };
 
-export default function StockForm({ initialAction, initialProductId, products, warehouses, onDone, onCancel }: Props) {
+export default function StockForm({
+  initialAction, initialProductId, products, warehouses, onDone, onCancel, actions = STOCK_ACTIONS, requireConfirmation = false, lockProduct = false,
+}: Props) {
   const router = useRouter();
   const [action, setAction] = useState<StockAction>(initialAction);
   const [values, setValues] = useState<StockFormValues>({ ...EMPTY_STOCK_FORM, productId: initialProductId ?? "" });
   const [errors, setErrors] = useState<StockFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Set after the values pass validation when confirmation is required: nothing is sent until the user presses Confirm.
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   // One Idempotency-Key per intended action. Resubmitting the SAME values (a double click, a retry after a
   // timeout) reuses the key, so the change is applied once; changing anything starts a new action with a new key.
@@ -56,6 +66,7 @@ export default function StockForm({ initialAction, initialProductId, products, w
 
   function update(field: keyof StockFormValues, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }));
+    setConfirming(null); // any change cancels a pending confirmation: what was summarised is no longer what is in the form
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
   }
 
@@ -63,12 +74,26 @@ export default function StockForm({ initialAction, initialProductId, products, w
     setAction(next);
     setErrors({});
     setFormError(null);
+    setConfirming(null);
     attempt.current = null;
+  }
+
+  const warehouseLabel = (id: string) => warehouses.find((w) => w.id === id)?.code ?? "the warehouse";
+
+  function summary(normalized: StockFormValues): string {
+    const what = `${normalized.quantity} ${product?.unit ?? ""} of ${product?.name ?? "the product"}`.replace(/\s+/g, " ");
+    switch (action) {
+      case "in": return `Add ${what} to ${warehouseLabel(normalized.warehouseId)}?`;
+      case "out": return `Remove ${what} from ${warehouseLabel(normalized.warehouseId)}?`;
+      case "opening": return `Record an opening balance of ${what} in ${warehouseLabel(normalized.warehouseId)}?`;
+      case "transfer": return `Transfer ${what} from ${warehouseLabel(normalized.fromWarehouseId)} to ${warehouseLabel(normalized.toWarehouseId)}?`;
+    }
   }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return; // a second click while the first is in flight does nothing
+    if (confirming) return; // Enter (or a scanner's Enter) while the question is showing must NOT count as "Confirm"
     setFormError(null);
 
     const normalized = normalizeStock(values);
@@ -76,6 +101,15 @@ export default function StockForm({ initialAction, initialProductId, products, w
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
+    if (requireConfirmation) {
+      setConfirming(summary(normalized));
+      return;
+    }
+    await send(normalized);
+  }
+
+  async function send(normalized: StockFormValues) {
+    if (loading) return;
     const body = toStockBody(action, normalized);
     const fingerprint = JSON.stringify([action, body]);
     if (!attempt.current || attempt.current.fingerprint !== fingerprint) attempt.current = { fingerprint, key: newIdempotencyKey() };
@@ -116,6 +150,7 @@ export default function StockForm({ initialAction, initialProductId, products, w
       setFormError("Unable to reach the server. You can safely press the button again; the change will not be applied twice.");
     } finally {
       setLoading(false);
+      setConfirming(null);
     }
   }
 
@@ -125,7 +160,7 @@ export default function StockForm({ initialAction, initialProductId, products, w
     <form onSubmit={onSubmit} noValidate aria-label={ACTION_LABELS[action].title} className="space-y-4 rounded-xl border border-indigo-500/30 bg-slate-900/60 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Stock action" className="flex gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
-          {STOCK_ACTIONS.map((a) => (
+          {actions.map((a) => (
             <button
               key={a}
               type="button"
@@ -147,7 +182,7 @@ export default function StockForm({ initialAction, initialProductId, products, w
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-xs font-medium text-slate-400 sm:col-span-2">
           Product
-          <select value={values.productId} onChange={(e) => update("productId", e.target.value)} aria-invalid={Boolean(errors.productId)} className={`${selectClass} ${fieldBorder(errors.productId)}`}>
+          <select value={values.productId} onChange={(e) => update("productId", e.target.value)} disabled={lockProduct} aria-invalid={Boolean(errors.productId)} className={`${selectClass} ${fieldBorder(errors.productId)}`}>
             <option value="">Choose a product…</option>
             {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku}) — counted in {p.unit}</option>)}
           </select>
@@ -215,12 +250,27 @@ export default function StockForm({ initialAction, initialProductId, products, w
         </label>
       </div>
 
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-        <button type="submit" disabled={loading || noOptions} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
-          {loading ? "Saving…" : ACTION_LABELS[action].submit}
-        </button>
-      </div>
+      {confirming ? (
+        // Nothing has been sent yet. Only a deliberate press of "Confirm" changes the inventory; the buttons are plain
+        // buttons (not the form's submit), so a stray Enter from a scanner cannot confirm.
+        <div role="alertdialog" aria-label="Confirm stock change" className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-medium text-amber-200">{confirming}</p>
+          <p className="text-xs text-amber-300/80">This changes your inventory and is recorded in the stock history.</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setConfirming(null)} disabled={loading} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-60">Back</button>
+            <button type="button" onClick={() => send(normalizeStock(values))} disabled={loading} className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+              {loading ? "Saving…" : "Confirm"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+          <button type="submit" disabled={loading || noOptions} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+            {loading ? "Saving…" : requireConfirmation ? "Review" : ACTION_LABELS[action].submit}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

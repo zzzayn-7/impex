@@ -82,6 +82,8 @@ export function describeFailure(result: InventoryResult): { status: number; mess
     case 404:
       return { status: 404, message: "Product not found." };
     case 409:
+      // The unit of measurement is locked once a product has stock movements: show that under the Unit field, not the SKU.
+      if (text && text.includes("unit of measurement")) return { status: 409, message: text, fieldErrors: { unit: text } };
       return { status: 409, message: text ?? "That SKU is already in use.", fieldErrors: { sku: text ?? "That SKU is already in use." } };
     case 422: {
       const fieldErrors: ProductFieldErrors = {};
@@ -183,6 +185,8 @@ export function describeStockFailure(result: InventoryResult, notFound = "Not fo
       return { status: 404, message: text ?? notFound };
     case 409:
       return { status: 409, message: text ?? "That change conflicts with existing data." };
+    case 410:
+      return { status: 410, message: text ?? "That code is no longer in use." };
     case 422: {
       const fieldErrors: Record<string, string> = {};
       if (Array.isArray(detail)) {
@@ -207,3 +211,49 @@ export function stockFailureResponse(result: InventoryResult, notFound?: string)
 }
 
 export type { StockFieldErrors };
+
+// ======================================================================================================
+// Scannable codes and labels (Step 15). Server-side only; nothing here names an organization.
+// ======================================================================================================
+export type Identifier = {
+  id: string;
+  product_id: string;
+  kind: "generated" | "manufacturer" | "supplier";
+  value: string;
+  label: string | null;
+  is_active: boolean;
+  created_by_email: string;
+  created_at: string;
+  retired_at: string | null;
+};
+
+export type Label = {
+  product: { id: string; sku: string; name: string; unit: string };
+  identifier: Identifier;
+  code: string;
+  qr_svg: string;
+  barcode_svg: string;
+};
+
+export type CodesResult =
+  | { ok: true; product: Product; identifiers: Identifier[]; label: Label | null }
+  | { ok: false; reason: "unauthorized" | "forbidden" | "not-found" | "unavailable" };
+
+// Everything the product's "Codes & labels" page shows. The label (QR + barcode SVGs) is only requested when the product
+// already has its Impex code: viewing a page never creates one (the "Generate codes" button does).
+export async function loadCodes(token: string, productId: string): Promise<CodesResult> {
+  const base = `/api/v1/inventory/products/${productId}`;
+  const [product, list] = await Promise.all([inventoryRequest("GET", base, token), inventoryRequest("GET", `${base}/identifiers`, token)]);
+  for (const result of [product, list]) {
+    if (!result || result.status !== 200) return { ok: false, reason: result?.status === 404 ? "not-found" : reason(result) };
+  }
+  const identifiers: Identifier[] = list!.data.items;
+  const generated = identifiers.find((i) => i.kind === "generated");
+  let label: Label | null = null;
+  if (generated) {
+    const made = await inventoryRequest("GET", `${base}/label`, token);
+    if (!made || made.status !== 200) return { ok: false, reason: reason(made) };
+    label = made.data;
+  }
+  return { ok: true, product: product!.data, identifiers, label };
+}

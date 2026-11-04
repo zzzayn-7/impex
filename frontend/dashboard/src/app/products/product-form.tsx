@@ -152,7 +152,11 @@ export default function ProductForm({ product, categories, onDone, onCancel }: P
           {errors.description && <p className="mt-1.5 text-xs text-red-400">{errors.description}</p>}
         </div>
         {field("category", "Category", { type: "text", list: "category-options", placeholder: "Hardware", autoComplete: "off", maxLength: 100 })}
-        {field("unit", "Unit of measurement", { type: "text", list: "unit-options", placeholder: "pcs", autoComplete: "off", maxLength: 20 })}
+        {field("unit", "Unit of measurement", {
+          type: "text", list: "unit-options", placeholder: "pcs", autoComplete: "off", maxLength: 20,
+          // Once a product has stock movements its unit is part of what every recorded quantity means: it cannot change.
+          ...(product?.unit_locked ? { disabled: true, hint: "Locked: this product already has stock movements, so its unit can no longer change." } : {}),
+        })}
         {field("hsCode", "HS code", { type: "text", placeholder: "7318.15", autoComplete: "off", maxLength: 16, optional: true, hint: "Customs tariff code, e.g. 8517.12.00." })}
         {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "Up to 4 decimals." })}
         {field("sellingPrice", "Selling price", { type: "text", inputMode: "decimal", placeholder: "19.99", autoComplete: "off", hint: "Up to 4 decimals." })}

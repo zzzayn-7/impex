@@ -131,6 +131,10 @@ The tests insert such rows directly to prove it. Warehouse codes are unique per 
 Idempotency keys are per organization (`UNIQUE (organization_id, idempotency_key)`), so one tenant can never replay
 another's result, and the same key in two organizations is two independent operations.
 
+## Scannable codes (Step 15)
+
+`product_identifiers` is tenant-owned like everything else: `organization_id NOT NULL`, a composite foreign key `(organization_id, product_id)` to `products`, and `UNIQUE (organization_id, value)` so one code means at most one product *inside* an organization while two organizations may reuse the same text. A scan lookup runs only through the scoped helpers; a code or SKU of another organization is a plain 404, byte-for-byte the answer for a code that does not exist, so a scan cannot be used to discover that another tenant has a product. Codes are retired, never deleted or re-pointed (trigger).
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

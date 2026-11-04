@@ -66,6 +66,20 @@ def fingerprint(kind: str, **fields) -> str:
     return hashlib.sha256(body.encode()).hexdigest()
 
 
+def _load_product_locked(db: Session, tenant: TenantContext, product_id: uuid.UUID) -> Product:
+    """The tenant's product, with a shared row lock held until the transaction ends.
+
+    The lock makes "change the unit" and "record stock" mutually exclusive: an UPDATE of the product waits for us,
+    and (because the row is re-read after the lock is taken) we always see the unit that is really in force.
+    """
+    product = db.scalar(
+        scoped_select(Product, tenant).where(Product.id == product_id).with_for_update(read=True).execution_options(populate_existing=True)
+    )
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found.")
+    return product
+
+
 def _require_active(product: Product, *warehouses: Warehouse) -> None:
     if not product.is_active:
         raise HTTPException(status.HTTP_409_CONFLICT, f"{product.name} is archived. Restore it before changing its stock.")
@@ -218,7 +232,7 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
             db.rollback()
             return _replay(db, tenant, key, kind, request_hash)
 
-        product = get_scoped_or_404(db, Product, tenant, payload.product_id, "Product")
+        product = _load_product_locked(db, tenant, payload.product_id)
         warehouse = get_scoped_or_404(db, Warehouse, tenant, payload.warehouse_id, "Warehouse")
         _require_active(product, warehouse)
         _check_quantity_for_unit(product, payload.quantity)
@@ -260,7 +274,7 @@ def execute_transfer(db: Session, tenant: TenantContext, payload: StockTransfer,
             db.rollback()
             return _replay(db, tenant, key, "transfer", request_hash)
 
-        product = get_scoped_or_404(db, Product, tenant, payload.product_id, "Product")
+        product = _load_product_locked(db, tenant, payload.product_id)
         source = get_scoped_or_404(db, Warehouse, tenant, payload.from_warehouse_id, "Warehouse")
         destination = get_scoped_or_404(db, Warehouse, tenant, payload.to_warehouse_id, "Warehouse")
         _require_active(product, source, destination)
@@ -308,6 +322,39 @@ def list_movements(
     return MovementList(items=[_to_response(*row) for row in rows], total=total, limit=limit, offset=offset)
 
 
+def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product], warehouse_id: Optional[uuid.UUID] = None) -> List[StockProduct]:
+    """Quantities per warehouse and totals for the given products (all of them the tenant's), tenant-scoped."""
+    lines: Dict[uuid.UUID, List[StockLine]] = {p.id: [] for p in products}
+    if products:
+        line_query = (
+            scoped_select(StockBalance, tenant)
+            .add_columns(Warehouse)
+            .join(Warehouse, and_(Warehouse.id == StockBalance.warehouse_id, Warehouse.organization_id == StockBalance.organization_id))
+            .where(StockBalance.product_id.in_(list(lines)), StockBalance.quantity > 0)
+            .order_by(Warehouse.code)
+        )
+        if warehouse_id:
+            line_query = line_query.where(StockBalance.warehouse_id == warehouse_id)
+        for balance, warehouse in db.execute(line_query).all():
+            lines[balance.product_id].append(
+                StockLine(
+                    warehouse_id=warehouse.id, warehouse_code=warehouse.code, warehouse_name=warehouse.name,
+                    warehouse_active=warehouse.is_active, quantity=balance.quantity,
+                )
+            )
+
+    return [
+        StockProduct(
+            product_id=p.id, sku=p.sku, name=p.name, category=p.category, unit=p.unit,
+            unit_allows_fractions=allows_fractions(p.unit), is_active=p.is_active,
+            total_quantity=sum((line.quantity for line in lines[p.id]), ZERO),
+            available_quantity=sum((line.quantity for line in lines[p.id] if line.warehouse_active), ZERO),
+            lines=lines[p.id],
+        )
+        for p in products
+    ]
+
+
 def stock_overview(
     db: Session,
     tenant: TenantContext,
@@ -343,35 +390,7 @@ def stock_overview(
         scoped_select(Product, tenant).where(*filters).order_by(Product.name, Product.sku, Product.id).limit(limit).offset(offset)
     ).all()
 
-    lines: Dict[uuid.UUID, List[StockLine]] = {p.id: [] for p in products}
-    if products:
-        line_query = (
-            scoped_select(StockBalance, tenant)
-            .add_columns(Warehouse)
-            .join(Warehouse, and_(Warehouse.id == StockBalance.warehouse_id, Warehouse.organization_id == StockBalance.organization_id))
-            .where(StockBalance.product_id.in_(list(lines)), StockBalance.quantity > 0)
-            .order_by(Warehouse.code)
-        )
-        if warehouse_id:
-            line_query = line_query.where(StockBalance.warehouse_id == warehouse_id)
-        for balance, warehouse in db.execute(line_query).all():
-            lines[balance.product_id].append(
-                StockLine(
-                    warehouse_id=warehouse.id, warehouse_code=warehouse.code, warehouse_name=warehouse.name,
-                    warehouse_active=warehouse.is_active, quantity=balance.quantity,
-                )
-            )
-
-    items = [
-        StockProduct(
-            product_id=p.id, sku=p.sku, name=p.name, category=p.category, unit=p.unit,
-            unit_allows_fractions=allows_fractions(p.unit), is_active=p.is_active,
-            total_quantity=sum((line.quantity for line in lines[p.id]), ZERO),
-            available_quantity=sum((line.quantity for line in lines[p.id] if line.warehouse_active), ZERO),
-            lines=lines[p.id],
-        )
-        for p in products
-    ]
+    items = stock_items(db, tenant, products, warehouse_id)
     return StockOverview(items=items, total=total, limit=limit, offset=offset)
 
 

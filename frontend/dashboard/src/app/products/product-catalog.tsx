@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { ProductFilters, ProductListResult } from "@/lib/inventory";
@@ -221,7 +222,10 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
                             <button type="button" onClick={() => setConfirmingId(null)} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800">No</button>
                           </div>
                         ) : (
-                          <div className="flex gap-1.5">
+                          <div className="flex flex-wrap gap-1.5">
+                            <Link href={`/products/${product.id}/codes`} aria-label={`QR code and barcode for ${product.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
+                              Codes
+                            </Link>
                             <button type="button" onClick={() => { setMessage(null); setPanel({ mode: "edit", product }); }} aria-label={`Edit ${product.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
                               Edit
                             </button>

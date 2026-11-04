@@ -108,6 +108,8 @@ class ProductResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # True once the product has stock movements: its unit of measurement can no longer be changed.
+    unit_locked: bool = False
 
     @computed_field  # the portal asks the service instead of keeping its own list of units
     @property
@@ -291,3 +293,65 @@ class StockOverview(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# =====================================================================================================
+# Scannable codes (QR / Code 128 / supplier barcodes) and scan lookup
+# =====================================================================================================
+class IdentifierCreate(BaseModel):
+    """Attach a manufacturer or supplier barcode to a product. No organization or product field: the product is in the URL."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    kind: Literal["manufacturer", "supplier"]
+    value: str = Field(min_length=1, max_length=64)
+    label: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("label")
+    @classmethod
+    def _blank_label_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return None if value == "" else value
+
+
+class IdentifierResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    product_id: uuid.UUID
+    kind: Literal["generated", "manufacturer", "supplier"]
+    value: str
+    label: Optional[str]
+    is_active: bool
+    created_by_email: str
+    created_at: datetime
+    retired_at: Optional[datetime]
+
+
+class IdentifierList(BaseModel):
+    items: List[IdentifierResponse]
+
+
+class LabelProduct(BaseModel):
+    id: uuid.UUID
+    sku: str
+    name: str
+    unit: str
+
+
+class LabelResponse(BaseModel):
+    """Everything needed to print one product label. The SVGs are generated here; the QR contains `code` as plain text."""
+
+    product: LabelProduct
+    identifier: IdentifierResponse
+    code: str
+    qr_svg: str
+    barcode_svg: str
+
+
+class ScanResult(BaseModel):
+    """What a scanned code means for the caller's organization, including current stock. Reading only: nothing changes."""
+
+    matched_by: Literal["identifier", "sku"]
+    identifier_kind: Optional[Literal["generated", "manufacturer", "supplier"]]
+    product: ProductResponse
+    stock: StockProduct

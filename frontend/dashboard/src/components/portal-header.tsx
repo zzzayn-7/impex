@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { key: "products", href: "/products", label: "Products" },
   { key: "warehouses", href: "/warehouses", label: "Warehouses" },
   { key: "stock", href: "/stock", label: "Stock" },
+  { key: "scan", href: "/scan", label: "Scan Product" },
   { key: "movements", href: "/movements", label: "Movements" },
 ] as const;
 
@@ -27,8 +28,8 @@ export default function PortalHeader({
       .join("") || "OA";
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-8">
+    <header className="print:hidden border-b border-slate-800 bg-slate-900/60 backdrop-blur px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-y-3">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-indigo-600/30">
             IX
@@ -38,7 +39,7 @@ export default function PortalHeader({
             <p className="text-xs text-slate-400">Organization workspace</p>
           </div>
         </div>
-        <nav aria-label="Main" className="flex items-center gap-1">
+        <nav aria-label="Main" className="flex flex-wrap items-center gap-1">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.key}

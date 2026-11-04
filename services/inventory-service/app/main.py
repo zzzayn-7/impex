@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, create_auth_client, create_org_client, require_active_tenant
 from app.database import get_db
+from app.identifiers import annotate_unit_lock, has_stock_history
 from app.models import Product
 from app.schemas import ProductCreate, ProductList, ProductResponse, ProductUpdate
 from app.search import like_pattern
+from app.scan_api import router as scan_router
 from app.stock_api import router as stock_router
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
 
@@ -35,6 +37,7 @@ app = FastAPI(
 )
 
 app.include_router(stock_router)  # warehouses and stock
+app.include_router(scan_router)  # scannable codes, labels and scan lookup
 
 # Every product endpoint depends on this: an ACTIVE organization administrator whose organization is active.
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.
@@ -58,6 +61,14 @@ def sku_taken(db: Session, tenant: TenantContext, sku: str, exclude: Optional[uu
     if exclude is not None:
         query = query.where(Product.id != exclude)
     return db.scalar(query) > 0
+
+
+def unit_locked_error() -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        "The unit of measurement cannot be changed because this product already has stock movements. "
+        "Create a new product with the other unit instead.",
+    )
 
 
 def sku_conflict(sku: str) -> HTTPException:
@@ -101,6 +112,7 @@ def list_products(
         .limit(limit)
         .offset(offset)
     ).all()
+    annotate_unit_lock(db, tenant, items)
     return ProductList(items=items, total=total, limit=limit, offset=offset)
 
 
@@ -123,12 +135,15 @@ def create_product(payload: ProductCreate, tenant: TenantContext = Tenant, db: S
         db.rollback()
         raise sku_conflict(payload.sku)
     db.refresh(product)
+    product.unit_locked = False  # type: ignore[attr-defined]  # a brand-new product has no stock history
     return product
 
 
 @app.get(f"{PREFIX}/products/{{product_id}}", response_model=ProductResponse, tags=["Products"])
 def get_product(product_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    return get_scoped_or_404(db, Product, tenant, product_id, "Product")
+    product = get_scoped_or_404(db, Product, tenant, product_id, "Product")
+    annotate_unit_lock(db, tenant, [product])
+    return product
 
 
 @app.patch(f"{PREFIX}/products/{{product_id}}", response_model=ProductResponse, tags=["Products"])
@@ -137,14 +152,19 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate, tenant: Tenant
     changes = payload.model_dump(exclude_unset=True)
     if "sku" in changes and changes["sku"] != product.sku and sku_taken(db, tenant, changes["sku"], exclude=product.id):
         raise sku_conflict(changes["sku"])
+    if "unit" in changes and changes["unit"] != product.unit and has_stock_history(db, tenant, product.id):
+        raise unit_locked_error()
     for field, value in changes.items():
         setattr(product, field, value)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
+        if "unit of measurement" in str(exc.orig):  # the database trigger caught a stock movement we could not see yet
+            raise unit_locked_error()
         raise sku_conflict(changes.get("sku", product.sku))
     db.refresh(product)
+    annotate_unit_lock(db, tenant, [product])
     return product
 
 
@@ -154,6 +174,7 @@ def _set_active(db: Session, tenant: TenantContext, product_id: uuid.UUID, activ
         product.is_active = active
         db.commit()
         db.refresh(product)
+    annotate_unit_lock(db, tenant, [product])
     return product
 
 

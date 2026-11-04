@@ -32,6 +32,7 @@ export type Product = {
   created_at: string;
   updated_at: string;
   unit_allows_fractions?: boolean; // decided by the Inventory Service: may this unit be counted in fractions?
+  unit_locked?: boolean; // true once the product has stock movements: the unit can no longer be changed
 };
 
 export const SKU_RE = /^[A-Z0-9][A-Z0-9._/-]{0,63}$/;

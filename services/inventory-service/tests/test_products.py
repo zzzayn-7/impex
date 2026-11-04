@@ -45,7 +45,7 @@ def test_create_returns_the_product_and_stores_it_for_the_callers_organization(c
     assert response.status_code == 201
     body = response.json()
     assert set(body) == {"id", "sku", "name", "description", "category", "unit", "hs_code", "cost_price", "selling_price",
-                         "currency_code", "is_active", "created_at", "updated_at", "unit_allows_fractions"}  # organization_id is never exposed
+                         "currency_code", "is_active", "created_at", "updated_at", "unit_allows_fractions", "unit_locked"}  # organization_id is never exposed
     assert (body["sku"], body["currency_code"], body["is_active"]) == ("WID-001", "USD", True)  # normalized
     assert (body["name"], body["category"], body["unit"], body["hs_code"]) == ("Widget", "Hardware", "pcs", "8479.89")
     with session_factory() as db:

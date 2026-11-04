@@ -1,8 +1,9 @@
 # Inventory Service
 
-FastAPI + PostgreSQL (`impex_inventory`), port **8002**. It provides the **Product Catalog**, **Warehouses** and
-**Stock Management** (balances per product and warehouse, plus an append-only movement ledger). Purchasing, sales,
-invoicing and scanning are intentionally not built yet.
+FastAPI + PostgreSQL (`impex_inventory`), port **8002**. It provides the **Product Catalog**, **Warehouses**,
+**Stock Management** (balances per product and warehouse, plus an append-only movement ledger) and **scannable
+product codes** (QR / Code 128 labels, supplier barcodes, scan lookup; see [`docs/scanning.md`](../../docs/scanning.md)).
+Purchasing, sales and invoicing are intentionally not built yet.
 
 Every endpoint is **tenant-scoped**: only an active `organization-admin` whose organization is active may use it,
 and every product belongs to the organization of the authenticated administrator (never taken from the request).
@@ -26,6 +27,12 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `GET /stock/movements?product_id=&warehouse_id=&type=` | the ledger, newest first (read-only) |
 | `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product in one warehouse |
 | `POST /stock/transfer` | move stock between two warehouses (one outgoing + one incoming movement, one transaction) |
+| `POST /products/{id}/identifiers/generate` | give the product its Impex label code (QR + Code 128); repeating returns the same code |
+| `GET /products/{id}/identifiers` | the product's codes (label code first) |
+| `POST /products/{id}/identifiers` | register a manufacturer / supplier barcode (`kind`, `value`, optional `label`) |
+| `POST /products/{id}/identifiers/{identifier_id}/retire` | retire a barcode (kept and reserved, never deleted) |
+| `GET /products/{id}/label?identifier_id=` | name, SKU, code, QR SVG and Code 128 SVG for printing |
+| `GET /scan/resolve?code=` | which product of **your** organization a scanned code means, with its stock. Read-only |
 | `GET /health` | public |
 
 Every `POST /stock/*` needs an **`Idempotency-Key`** header (8-100 characters of `A-Z a-z 0-9 . _ : -`). The first
@@ -36,6 +43,14 @@ A product has: SKU (unique per organization, stored upper-case), name, descripti
 measurement, optional HS code, cost price and selling price (both `NUMERIC(14,4)`, exchanged as decimal strings,
 never floats), ISO currency code, active flag and created/updated timestamps.
 Interactive docs: http://localhost:8002/docs
+
+### Scan lookup
+
+`GET /scan/resolve?code=` finds a product by a registered code (Impex label or manufacturer/supplier barcode) and then by SKU, case-insensitively, inside the caller's organization only. Answers: `200` product + stock (archived products are returned with `is_active: false`), `404` unknown (identical for another organization's code), `410` retired barcode, `409` ambiguous (a barcode of one product is the SKU of another), `422` malformed or a web link (never fetched). It changes nothing.
+
+### The unit of measurement is locked by stock history
+
+`PATCH /products/{id}` refuses a different `unit` with `409` once the product has any stock movement, and a trigger on `products` refuses it even if the API is bypassed. While a stock change runs it holds a shared lock on the product, so a unit change cannot slip in between the unit check and the movement being written. Re-sending the current unit is fine. `ProductResponse.unit_locked` tells the portal.
 
 ### How stock stays correct
 
@@ -64,7 +79,8 @@ before any other movement of that product in that warehouse; later corrections a
 ```powershell
 # 1. create the database ONCE on an existing Postgres volume (safe to repeat; fresh installs get it automatically)
 Get-Content database/add-inventory-database.sql | docker exec -i impex-postgres sh -c 'psql -U $POSTGRES_USER -d postgres'
-# 2. create / upgrade the tables (additive; 0002 adds warehouses and stock, existing products are untouched)
+# 2. create / upgrade the tables (additive; 0002 adds warehouses and stock, 0003 adds product codes and the unit lock;
+#    existing products, warehouses, balances and movements are untouched)
 docker compose run --rm --no-deps inventory-service alembic upgrade head
 # 3. start the service
 docker compose up -d inventory-service
@@ -76,6 +92,7 @@ docker compose up -d inventory-service
 docker compose run --rm --no-deps inventory-service sh -c "pip install -q -r requirements-dev.txt && python -m pytest -v"
 python scripts/verify_product_isolation.py        # live end-to-end check of the catalog through the Organization Portal
 python scripts/verify_stock_management.py         # live end-to-end check of warehouses, stock, movements and isolation
+python scripts/verify_scanning.py                 # live end-to-end check of codes, labels, scan lookup and the unit lock
 ```
 
 The tests include simultaneous removals against a stock that fits only three (never overdrawn), duplicate requests with

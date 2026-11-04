@@ -166,3 +166,40 @@ class StockMovement(TenantOwnedMixin, Base):
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)  # snapshot: survives account changes
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ProductIdentifier(TenantOwnedMixin, Base):
+    """A scannable code that resolves to one product of one organization.
+
+    kind 'generated'    the Impex code printed on labels (QR and Code 128). Random, so it is independent of the SKU.
+    kind 'manufacturer' / 'supplier'   a barcode that already exists on the goods (EAN, UPC, Code 128, ...).
+
+    `value` is stored normalized (upper case, no spaces) and is UNIQUE per organization, so one code can never mean two
+    products. A code is retired (is_active = false), never deleted or re-pointed; a trigger enforces both, so a code
+    cannot silently move to another product.
+    """
+
+    __tablename__ = "product_identifiers"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "value", name="uq_product_identifiers_organization_id_value"),
+        ForeignKeyConstraint(["organization_id", "product_id"], ["products.organization_id", "products.id"],
+                             name="fk_product_identifiers_product_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("kind IN ('generated', 'manufacturer', 'supplier')", name="kind_valid"),
+        CheckConstraint("value ~ '^[A-Z0-9][A-Z0-9._:/+-]{0,63}$'", name="value_format"),
+        Index("ix_product_identifiers_organization_id_product_id", "organization_id", "product_id"),
+        # at most one generated code per product (so "generate" is repeatable and stable)
+        Index("uq_product_identifiers_one_generated_per_product", "organization_id", "product_id", unique=True,
+              postgresql_where=text("kind = 'generated'")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    value: Mapped[str] = mapped_column(String(64), nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. the supplier's name
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    retired_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,0 +1,20 @@
+# OPTIONAL local HTTPS in front of the Organization Portal, so a phone on the same Wi-Fi can use the camera
+# (browsers only allow camera access on https:// pages and on localhost). See docs/scanning.md.
+#
+#   docker compose --profile https up -d https-proxy
+#   then open  https://<this computer's LAN IP>:3443  on the phone, after installing the local root certificate.
+#
+# `tls internal` makes Caddy sign certificates with its own local certificate authority; `on_demand` lets it issue one for
+# whatever address the phone typed (a LAN IP changes from network to network). This is for LOCAL TESTING ONLY: in production
+# use a real certificate (your load balancer, Caddy with a public domain, ...).
+{
+	skip_install_trust
+	default_sni localhost
+}
+
+https://:3443 {
+	tls internal {
+		on_demand
+	}
+	reverse_proxy dashboard:3001
+}

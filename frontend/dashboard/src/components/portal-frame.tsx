@@ -11,7 +11,7 @@ export default async function PortalFrame({ current, children }: { current: Curr
   return (
     <div className="flex min-h-screen flex-col">
       <PortalHeader admin={admin} current={current} />
-      <main className="flex-1 p-8 max-w-7xl mx-auto w-full">{children}</main>
+      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full">{children}</main>
     </div>
   );
 }

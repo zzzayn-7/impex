@@ -9,6 +9,8 @@ their invitation. Separate from the Super Admin portal (port 3000).
 - `/warehouses` – add, edit, archive and restore warehouses (never deleted; archived ones keep their stock and history)
 - `/stock` – products with the total and the quantity in each warehouse; **Add stock / Remove stock / Transfer /
   Opening balance** forms (the browser sends an `Idempotency-Key` per action, so a double click or a retry applies once)
+- `/scan` – **Scan Product**: scan a QR code / barcode with a USB or Bluetooth scanner (keyboard mode), the phone or desktop camera, or type a SKU. Shows the product, unit, stock per warehouse, total and available stock, and Stock In / Stock Out / Transfer, each with a confirmation step. Scanning never changes stock. The camera needs HTTPS (see [`docs/scanning.md`](../../docs/scanning.md)).
+- `/products/<id>/codes` – generate and print a product's QR code + Code 128 label, register manufacturer/supplier barcodes
 - `/movements` – the stock history, filterable by product, warehouse and type (read-only: movements are permanent)
 - Only an **active** `organization-admin` that belongs to an organization can sign in. Super Admins cannot.
 - The session lives in an HttpOnly cookie named `impex_tenant_session` (never localStorage).

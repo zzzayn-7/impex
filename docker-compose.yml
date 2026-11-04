@@ -175,8 +175,27 @@ services:
     networks:
       - impex-network
 
+  # OPTIONAL local HTTPS for phone camera scanning (not started by default). Browsers only allow camera access on
+  # https:// pages, so a phone on the same Wi-Fi cannot scan from http://192.168.x.x:3001. See docs/scanning.md.
+  #   docker compose --profile https up -d https-proxy      (portal at https://<LAN IP>:3443)
+  https-proxy:
+    image: caddy:2-alpine
+    container_name: impex-https-proxy
+    profiles: ["https"]
+    restart: unless-stopped
+    ports:
+      - "3443:3443"
+    volumes:
+      - ./gateway/Caddyfile.https:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - dashboard
+    networks:
+      - impex-network
+
 volumes:
   postgres_data:
+  caddy_data:
 
 networks:
   impex-network:
