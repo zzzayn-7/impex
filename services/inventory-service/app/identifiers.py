@@ -193,29 +193,30 @@ class Resolution:
 
 
 def resolve_code(db: Session, tenant: TenantContext, raw: str) -> Resolution:
-    """Which product (of this organization) does the code mean?
+    """Which product (of this organization) does the code mean? It FAILS CLOSED: if there is any doubt, nothing is returned.
 
-    Looked up in this order of meaning: a registered code (the Impex label or a manufacturer/supplier barcode), then a
-    SKU. If the two readings name DIFFERENT products the code is ambiguous and nothing is returned.
-    Unknown -> 404. Retired code -> 410. Ambiguous -> 409. Archived products are returned (flagged inactive).
+    A code is read as a registered code (the Impex label or a manufacturer/supplier barcode, active OR retired) and as a SKU.
+    If those two readings name DIFFERENT products the code is ambiguous (409) and no product is returned - a retired barcode
+    still counts, because it is still reserved for its product and a printed label may still carry it. Otherwise:
+    an active registered code -> its product; a SKU -> that product; a retired code nobody else claims -> 410; unknown -> 404.
+    Archived products are returned (flagged inactive).
     """
     code = normalize_code(raw)
     identifier = db.scalar(scoped_select(ProductIdentifier, tenant).where(ProductIdentifier.value == code))
     sku_product = db.scalar(scoped_select(Product, tenant).where(Product.sku == code))
 
-    by_identifier: Optional[Product] = None
-    if identifier is not None and identifier.is_active:
-        by_identifier = db.scalar(scoped_select(Product, tenant).where(Product.id == identifier.product_id))
-
-    if by_identifier is not None and sku_product is not None and by_identifier.id != sku_product.id:
+    if identifier is not None and sku_product is not None and identifier.product_id != sku_product.id:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "This code matches more than one product (a barcode of one product is the SKU of another). "
             "Fix it in the catalog, or look the product up another way.",
         )
-    if by_identifier is not None:
+    if identifier is not None and identifier.is_active:
+        by_identifier = db.scalar(scoped_select(Product, tenant).where(Product.id == identifier.product_id))
+        if by_identifier is None:  # cannot happen (composite foreign key), but never guess
+            raise HTTPException(status.HTTP_409_CONFLICT, "This code is registered but its product cannot be found.")
         return Resolution(by_identifier, "identifier", identifier)
-    if sku_product is not None:
+    if sku_product is not None:  # either no registered code at all, or a retired code of this very product
         return Resolution(sku_product, "sku", None)
     if identifier is not None:  # known but retired, and no SKU claims it
         raise HTTPException(status.HTTP_410_GONE, "This barcode was retired and no longer identifies a product.")

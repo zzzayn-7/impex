@@ -124,11 +124,23 @@ def test_a_retired_barcode_is_410(api, shop):
                            headers=api.headers).status_code == 409  # the retired text stays reserved: it cannot become someone's SKU
 
 
-def test_legacy_data_where_a_sku_claims_a_retired_barcode_resolves_to_the_sku(api, shop, engine, two_orgs):
+def test_legacy_data_where_a_sku_claims_a_retired_barcode_fails_closed(api, shop, engine, two_orgs):
+    """Older data may hold a SKU equal to ANOTHER product's retired barcode. Scanning must never guess: 409, no product."""
     created = register(api, shop["bolt"], "OLD-EAN")
     api.client.post(f"{PRODUCTS_URL}/{shop['bolt']['id']}/identifiers/{created['id']}/retire", headers=api.headers)
     legacy_product(engine, two_orgs["alpha_id"], "OLD-EAN", "Now a SKU")
-    assert resolve(api, "OLD-EAN").json()["product"]["name"] == "Now a SKU"
+    for spelling in ("OLD-EAN", "old-ean", " old-ean\r\n"):
+        response = resolve(api, spelling)
+        assert response.status_code == 409 and "more than one product" in response.json()["detail"]
+        assert "product" not in response.json()  # not the SKU's product and not the barcode's product
+
+
+def test_a_retired_barcode_of_the_same_product_as_its_sku_still_resolves(api, shop):
+    flour = shop["flour"]
+    created = register(api, flour, "FLOUR")  # barcode text equal to its own SKU
+    api.client.post(f"{PRODUCTS_URL}/{flour['id']}/identifiers/{created['id']}/retire", headers=api.headers)
+    body = resolve(api, "FLOUR").json()
+    assert body["product"]["id"] == flour["id"] and body["matched_by"] == "sku"  # no other product is involved: no doubt
 
 
 def test_an_archived_product_is_returned_flagged_not_hidden(api, shop):

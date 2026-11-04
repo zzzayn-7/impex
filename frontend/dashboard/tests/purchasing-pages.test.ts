@@ -170,7 +170,7 @@ describe("Purchase Orders page", () => {
     const call = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/purchase-orders")!;
     expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ q: "po", supplier_id: ALPHA_SUPPLIER, status: "ordered", limit: "25", offset: "25" });
     calls = [];
-    await PurchaseOrdersPage({ searchParams: { supplier: "' OR 1=1", status: "received", page: "banana" } });
+    await PurchaseOrdersPage({ searchParams: { supplier: "' OR 1=1", status: "shipped", page: "banana" } });
     const clean = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/purchase-orders")!;
     expect([...new URL(clean.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
   });

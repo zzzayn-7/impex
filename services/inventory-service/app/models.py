@@ -89,7 +89,7 @@ class StockOperation(TenantOwnedMixin, Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "idempotency_key", name="uq_stock_operations_organization_id_idempotency_key"),
         UniqueConstraint("organization_id", "id", name="uq_stock_operations_organization_id_id"),
-        CheckConstraint("kind IN ('opening', 'in', 'out', 'transfer')", name="kind_valid"),
+        CheckConstraint("kind IN ('opening', 'in', 'out', 'transfer', 'receipt')", name="kind_valid"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -147,6 +147,15 @@ class StockMovement(TenantOwnedMixin, Base):
         CheckConstraint("balance_after >= 0", name="balance_after_non_negative"),
         CheckConstraint("movement_type IN ('opening', 'in', 'out', 'transfer_out', 'transfer_in')", name="movement_type_valid"),
         CheckConstraint("(movement_type IN ('transfer_out', 'transfer_in')) = (transfer_id IS NOT NULL)", name="transfer_link_matches_type"),
+        # where a movement came from, when another service caused it (a goods receipt line); all three or none
+        CheckConstraint(
+            "(source_type IS NULL AND source_reference IS NULL AND source_line_id IS NULL) OR "
+            "(source_type = 'goods_receipt' AND source_reference IS NOT NULL AND source_line_id IS NOT NULL)",
+            name="source_consistent",
+        ),
+        # one source line can produce at most one movement: received goods can never be added twice
+        Index("uq_stock_movements_source_line", "organization_id", "source_type", "source_line_id", unique=True,
+              postgresql_where=text("source_line_id IS NOT NULL")),
         Index("ix_stock_movements_organization_id_created_at", "organization_id", "created_at"),
         Index("ix_stock_movements_organization_id_product_id_created_at", "organization_id", "product_id", "created_at"),
         Index("ix_stock_movements_organization_id_warehouse_id_created_at", "organization_id", "warehouse_id", "created_at"),
@@ -165,6 +174,9 @@ class StockMovement(TenantOwnedMixin, Base):
     transfer_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)  # snapshot: survives account changes
+    source_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # 'goods_receipt' or None
+    source_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. the receipt number GR-000001
+    source_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)  # the receipt line in the other service
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

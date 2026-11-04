@@ -250,6 +250,8 @@ class MovementResponse(BaseModel):
     reason: str
     transfer_id: Optional[uuid.UUID]
     created_by_email: str
+    source_type: Optional[str] = None
+    source_reference: Optional[str] = None
     created_at: datetime
 
 
@@ -361,3 +363,50 @@ class ScanResult(BaseModel):
     identifier_kind: Optional[Literal["generated", "manufacturer", "supplier"]]
     product: ProductResponse
     stock: StockProduct
+
+
+# =====================================================================================================
+# Goods-receipt posting (Step 16B): stock-in for goods received against a purchase order of another service
+# =====================================================================================================
+class ReceiptLine(BaseModel):
+    """One accepted quantity of one product into one warehouse. `unit` is the unit the buyer ordered in: the posting is refused
+    if the product's current unit differs, so a quantity is never silently reinterpreted."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    line_id: uuid.UUID  # the receipt line in the calling service: a line can be posted only once, ever
+    product_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    quantity: Quantity
+    unit: str = Field(min_length=1, max_length=20)
+
+
+class ReceiptPost(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    receipt_number: str = Field(min_length=1, max_length=32)
+    purchase_order_number: Optional[str] = Field(default=None, max_length=32)
+    lines: List[ReceiptLine] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _no_repeated_lines(self):
+        ids = [l.line_id for l in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("A receipt line can appear only once.")
+        return self
+
+
+class ReceiptMovement(BaseModel):
+    id: uuid.UUID
+    line_id: uuid.UUID
+    product_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    quantity: Decimal
+    balance_after: Decimal
+
+
+class ReceiptPosting(BaseModel):
+    operation_id: uuid.UUID
+    receipt_number: str
+    replayed: bool  # true when this was a retry of an earlier posting with the same Idempotency-Key
+    movements: List[ReceiptMovement]

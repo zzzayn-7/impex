@@ -22,7 +22,7 @@ function parseFilters(searchParams: SearchParams): OrderFilters {
   return {
     q: (first(searchParams.q) ?? "").trim().slice(0, 100),
     supplierId: UUID_RE.test(supplier) ? supplier : "",
-    status: status === "draft" || status === "ordered" || status === "cancelled" ? status : "",
+    status: status === "draft" || status === "ordered" || status === "partially_received" || status === "received" || status === "cancelled" ? status : "",
     page: Math.max(1, Math.min(10000, parseInt(first(searchParams.page) ?? "1", 10) || 1)),
   };
 }

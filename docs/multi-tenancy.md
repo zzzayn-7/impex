@@ -147,6 +147,12 @@ The Sales Service never keeps product data. When it needs to know about a produc
 
 Like Sales, the Purchasing Service keeps no product data: it asks the Inventory Service with the **caller's own bearer token**, so a product id of another organization is absent from the answer and reported as `404 Product not found.`, identical to an id that does not exist.
 
+## Goods receiving (Step 16B)
+
+`goods_receipts`, `goods_receipt_lines`, `goods_receipt_counters` and `goods_receipt_requests` all carry `organization_id NOT NULL`. A receipt points at its purchase order, and a receipt line at its receipt and its purchase-order line, through **composite** foreign keys `(organization_id, id)`, so a receipt can never reference another organization's order, nor a line another organization's order line. Receipt numbers (`GR-000001`), posting keys and idempotency keys are unique **per organization**. A line of a purchase order can never be re-pointed at another order or organization (database trigger), so the freeze of a placed order cannot be bypassed that way.
+
+Confirming a receipt makes the Purchasing Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

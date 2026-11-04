@@ -16,6 +16,8 @@ from app.models import Product, Warehouse
 from app.schemas import (
     MovementList,
     MovementType,
+    ReceiptPost,
+    ReceiptPosting,
     StockChange,
     StockOperationResult,
     StockOverview,
@@ -231,3 +233,22 @@ def stock_out(payload: StockChange, response: Response, tenant: TenantContext = 
 def stock_transfer(payload: StockTransfer, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
     """Move stock between two warehouses: one outgoing and one incoming movement, committed together."""
     return _respond(stock.execute_transfer(db, tenant, payload, key), response)
+
+
+# =====================================================================================================
+# Goods receipts (Step 16B): called by the Purchasing Service with the administrator's own token
+# =====================================================================================================
+@router.post("/goods-receipts", response_model=ReceiptPosting, status_code=status.HTTP_201_CREATED, tags=["Stock"])
+def post_goods_receipt(payload: ReceiptPost, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
+    """Add the accepted quantities of a goods receipt to stock, all lines atomically. 201 the first time, 200 on a replay."""
+    result = stock.execute_receipt(db, tenant, payload, key)
+    response.status_code = status.HTTP_200_OK if result.replayed else status.HTTP_201_CREATED
+    return result
+
+
+@router.get("/goods-receipts/by-key/{key}", response_model=ReceiptPosting, tags=["Stock"])
+def goods_receipt_by_key(key: str, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """Read-only check whether the posting made with this Idempotency-Key happened (404 = it did not)."""
+    if not IDEMPOTENCY_KEY_RE.match(key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No goods receipt was posted with this key.")
+    return stock.receipt_by_key(db, tenant, key)

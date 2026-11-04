@@ -13,7 +13,9 @@ their invitation. Separate from the Super Admin portal (port 3000).
 - `/products/<id>/codes` – generate and print a product's QR code + Code 128 label, register manufacturer/supplier barcodes
 - `/delivery-lists` – **Delivery Lists**: lists of products promised to a client (create, search/filter by client, reference or status). `/delivery-lists/<id>`: view products and quantities with live availability, add products by scanning (`/scan?list=<id>`) or by typing a SKU/barcode, edit quantities, remove lines, save the draft, mark it Ready or Cancelled. **A list never deducts or reserves stock.**
 - `/suppliers` – the supplier directory (register, search, filter by status, details, edit, deactivate/reactivate)
-- `/purchase-orders` – **Purchase Orders**: create a draft for a supplier, add existing products (typed or scanned SKU/barcode) with a quantity and a purchase price, see the line totals and the order total, edit the draft, **place** it (freezes it) or **cancel** it. `/purchase-orders/<id>` shows one order. **An order never adds stock.**
+- `/purchase-orders` – **Purchase Orders**: create a draft for a supplier, add existing products (typed or scanned SKU/barcode) with a quantity and a purchase price, see the line totals and the order total, edit the draft, **place** it (freezes it) or **cancel** it. `/purchase-orders/<id>` shows one order. **An order never adds stock.** An Ordered order offers **Receive goods**, and shows per product what is ordered, received, in progress and remaining.
+- `/purchase-orders/<id>/receive` – **Receive Goods**: enter what arrived per product (accepted quantity, optional rejected quantity, and the warehouse for each product), optionally locate a product by typing or scanning its SKU/barcode (a product that is not on the order is refused), **review** the receipt, then explicitly **confirm**. Saving and reviewing only keep a draft; stock is added only on *Confirm and add to stock*, and only for the accepted quantities. If the inventory service cannot confirm the posting right away, the receipt stays *Posting to stock* and **Retry posting** finishes it without ever adding the goods twice.
+- `/goods-receipts` – **Goods Receipts**: every receipt, filterable by status, supplier, warehouse and date, searchable by receipt, order or supplier reference. `/goods-receipts/<id>` shows one receipt with its lines and the stock movements it made.
 - `/clients` – the client directory (register, search, edit, deactivate)
 - `/movements` – the stock history, filterable by product, warehouse and type (read-only: movements are permanent)
 - Only an **active** `organization-admin` that belongs to an organization can sign in. Super Admins cannot.
@@ -28,4 +30,4 @@ server-side with the HttpOnly cookie as the Bearer token; the browser never name
 The browser talks only to this portal's own `/api/sales/*` routes (HttpOnly session cookie to Bearer token); it never names an
 organization, never supplies product names, SKUs, units or stock, and sends quantities as exact strings.
 
-Planned: receiving goods against purchase orders (Step 16B), dispatch of delivery lists, invoicing and transaction history.
+Planned: dispatch of delivery lists, invoicing and transaction history.

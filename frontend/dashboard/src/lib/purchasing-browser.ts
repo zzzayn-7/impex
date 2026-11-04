@@ -3,24 +3,47 @@
 // The totals shown while typing are a convenience preview computed here; the Purchasing Service recalculates every line total
 // and the order total itself (half-up to 4 decimals, re-checked by the database) and its numbers are the ones that are saved
 // and displayed afterwards.
-import type { OrderStatus } from "@/lib/purchasing";
+import type { OrderStatus, ReceiptStatus } from "@/lib/purchasing";
 
-export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = { draft: "Draft", ordered: "Ordered", cancelled: "Cancelled" };
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  draft: "Draft", ordered: "Ordered", partially_received: "Partially Received", received: "Received", cancelled: "Cancelled",
+};
 
 export const ORDER_STATUS_STYLE: Record<OrderStatus, string> = {
   draft: "border-amber-500/20 bg-amber-500/10 text-amber-300",
   ordered: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  partially_received: "border-sky-500/20 bg-sky-500/10 text-sky-300",
+  received: "border-teal-500/20 bg-teal-500/10 text-teal-300",
+  cancelled: "border-slate-600/40 bg-slate-700/30 text-slate-400",
+};
+
+export const RECEIPT_STATUS_LABELS: Record<ReceiptStatus, string> = { draft: "Draft", posting: "Posting to stock", confirmed: "Confirmed", cancelled: "Cancelled" };
+
+export const RECEIPT_STATUS_STYLE: Record<ReceiptStatus, string> = {
+  draft: "border-amber-500/20 bg-amber-500/10 text-amber-300",
+  posting: "border-sky-500/20 bg-sky-500/10 text-sky-300",
+  confirmed: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
   cancelled: "border-slate-600/40 bg-slate-700/30 text-slate-400",
 };
 
 export const NO_STOCK_NOTICE =
-  "A purchase order does not change your stock. Placing an order does not add the goods to inventory; they are added only when they are received (a later step).";
+  "A purchase order does not change your stock. Placing an order does not add the goods to inventory; they are added only when the goods are received and the goods receipt is confirmed.";
+
+export const RECEIPT_NOTICE =
+  "Saving or reviewing a goods receipt does not change your stock. Stock is added only when you confirm the receipt, and only for the accepted quantities.";
 
 export const PRICE_RE = /^[0-9]{1,14}(?:\.[0-9]{1,4})?$/; // at most 14 digits before and 4 after the point; zero is allowed
 
 export function validatePrice(value: string): string | undefined {
   if (!value) return "Enter the unit price.";
   if (!PRICE_RE.test(value)) return "Use a number with at most 4 decimals, e.g. 12.50.";
+  return undefined;
+}
+
+/** A quantity that arrived: blank means none; otherwise exact decimal text (zero is fine here). The Purchasing Service has the last word. */
+export function validateReceivedQuantity(value: string, label: string): string | undefined {
+  if (value === "") return undefined;
+  if (!PRICE_RE.test(value)) return `Use a number with at most 4 decimals for the ${label} quantity, e.g. 12 or 2.5.`;
   return undefined;
 }
 

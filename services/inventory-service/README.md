@@ -32,8 +32,12 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `POST /products/{id}/identifiers` | register a manufacturer / supplier barcode (`kind`, `value`, optional `label`) |
 | `POST /products/{id}/identifiers/{identifier_id}/retire` | retire a barcode (kept and reserved, never deleted) |
 | `GET /products/{id}/label?identifier_id=` | name, SKU, code, QR SVG and Code 128 SVG for printing |
-| `GET /scan/resolve?code=` | which product of **your** organization a scanned code means, with its stock. Read-only |
+| `GET /scan/resolve?code=` | which product of **your** organization a scanned code means, with its stock. Read-only. Fails closed: a code that is one product's barcode (even a retired one) and another product's SKU answers `409`, never a guess |
+| `POST /goods-receipts` | **(called by the Purchasing Service)** add the accepted quantities of one goods receipt to stock: all lines atomically, once per `Idempotency-Key`, one `in` movement per line with its source (`goods_receipt`, the receipt number, the receipt line). Refuses a unit that differs from the product's, archived products / warehouses and other organizations' ids |
+| `GET /goods-receipts/by-key/{key}` | read-only: did the posting made with this key happen? (`404` = it did not.) Lets the caller finish a posting whose answer was lost |
 | `GET /health` | public |
+
+`POST /goods-receipts` follows the same rules (and `GET /stock/movements` shows `source_type` / `source_reference` for stock that came from a receipt). Beyond the key, a database unique index allows **one movement per receipt line, ever**, so even a caller that used a different key could never add the same received goods twice (`409`).
 
 Every `POST /stock/*` needs an **`Idempotency-Key`** header (8-100 characters of `A-Z a-z 0-9 . _ : -`). The first
 request answers `201`; a retry with the same key and the same body answers `200` with `"replayed": true` and changes

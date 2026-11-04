@@ -66,7 +66,14 @@ def test_product_prices_are_never_overwritten_by_purchase_prices(api, shop, inve
 def test_the_service_has_no_stock_or_price_endpoints_at_all(client):
     spec = client.get("/openapi.json").json()
     for path in spec["paths"]:
-        assert not any(word in path for word in ("receive", "receipt", "/stock", "movement", "invoice", "payment", "price-list")), path
+        assert not any(word in path for word in ("receive", "/stock", "movement", "invoice", "payment", "price-list")), path
+        if "receipt" in path:  # Step 16B: goods receipts, and only these routes (stock itself is never exposed here)
+            assert path.startswith("/api/v1/purchasing/goods-receipts"), path
+    receipt_paths = {p for p in spec["paths"] if "receipt" in p}
+    assert receipt_paths == {
+        "/api/v1/purchasing/goods-receipts", "/api/v1/purchasing/goods-receipts/{receipt_id}", "/api/v1/purchasing/goods-receipts/{receipt_id}/lines",
+        "/api/v1/purchasing/goods-receipts/{receipt_id}/confirm", "/api/v1/purchasing/goods-receipts/{receipt_id}/cancel",
+    }
 
 
 def test_the_callers_own_token_is_what_the_inventory_service_receives(api, shop, inventory):
@@ -91,7 +98,9 @@ def test_the_purchasing_database_has_no_stock_tables(api, shop, session_factory)
     run_a_whole_life(api, shop)
     with session_factory() as db:
         tables = set(inspect(db.get_bind()).get_table_names())
-    assert tables == {"alembic_version", "suppliers", "purchase_orders", "purchase_order_lines", "purchase_order_counters", "purchase_order_requests"}
+    # purchase orders and goods receipts only: still no stock balance, movement or product table. Stock lives in the Inventory Service.
+    assert tables == {"alembic_version", "suppliers", "purchase_orders", "purchase_order_lines", "purchase_order_counters", "purchase_order_requests",
+                      "goods_receipts", "goods_receipt_lines", "goods_receipt_counters", "goods_receipt_requests"}
 
 
 def test_the_notice_is_part_of_every_detail(api, shop):

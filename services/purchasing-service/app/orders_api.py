@@ -60,7 +60,7 @@ def create_purchase_order(
 @router.get("/purchase-orders", response_model=PurchaseOrderPage, tags=["Purchase orders"])
 def list_purchase_orders(
     supplier_id: Optional[uuid.UUID] = None,
-    status_filter: Optional[Literal["draft", "ordered", "cancelled"]] = Query(default=None, alias="status"),
+    status_filter: Optional[Literal["draft", "ordered", "partially_received", "received", "cancelled"]] = Query(default=None, alias="status"),
     q: Optional[str] = Query(default=None, max_length=100, description="Search number, supplier reference or supplier name"),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,

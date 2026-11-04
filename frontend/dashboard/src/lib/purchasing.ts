@@ -11,7 +11,7 @@ export function purchasingServiceUrl(): string {
 export type PurchasingResult = { status: number; data: any } | null; // null = the service could not be reached
 
 export async function purchasingRequest(
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   token: string,
   body?: unknown,
@@ -47,7 +47,7 @@ export type Supplier = {
   updated_at: string;
 };
 
-export type OrderStatus = "draft" | "ordered" | "cancelled";
+export type OrderStatus = "draft" | "ordered" | "partially_received" | "received" | "cancelled";
 
 export type PurchaseOrderSummary = {
   id: string;
@@ -84,9 +84,67 @@ export type OrderLine = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  // How much has arrived: only CONFIRMED goods receipts count as received; a receipt being posted is pending (reserved).
+  received_quantity?: string;
+  pending_quantity?: string;
+  remaining_quantity?: string;
 };
 
-export type PurchaseOrderDetail = PurchaseOrderSummary & { lines: OrderLine[]; frozen: boolean; stock_notice: string };
+export type ReceiptStatus = "draft" | "posting" | "confirmed" | "cancelled";
+
+export type ReceiptSummary = {
+  id: string;
+  number: string;
+  status: ReceiptStatus;
+  purchase_order: { id: string; number: string; status: OrderStatus };
+  supplier: { id: string; name: string; code: string | null; is_active: boolean };
+  supplier_reference: string | null;
+  received_date: string;
+  notes: string | null;
+  line_count: number;
+  created_by_email: string;
+  created_at: string;
+  confirmed_at: string | null;
+  confirmed_by_email: string | null;
+  cancelled_at: string | null;
+  cancelled_by_email: string | null;
+  updated_at: string;
+};
+
+export type ReceiptLine = {
+  id: string;
+  purchase_order_line_id: string;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  unit: string;
+  ordered_quantity: string;
+  received_elsewhere_quantity: string;
+  pending_elsewhere_quantity: string;
+  receivable_quantity: string;
+  warehouse_id: string | null;
+  warehouse_code: string | null;
+  accepted_quantity: string;
+  rejected_quantity: string;
+  notes: string | null;
+  inventory_movement_id: string | null;
+};
+
+export type ReceiptDetail = ReceiptSummary & {
+  lines: ReceiptLine[];
+  posting: { attempts: number; started_at: string | null; last_attempt_at: string | null; last_error: string | null };
+  inventory_operation_id: string | null;
+  editable: boolean;
+  stock_notice: string;
+};
+
+export type PurchaseOrderDetail = PurchaseOrderSummary & {
+  lines: OrderLine[];
+  frozen: boolean;
+  stock_notice: string;
+  receipts?: ReceiptSummary[];
+  can_receive?: boolean;
+};
 
 // ---- reading (used by the server-rendered pages) --------------------------------------------------------------------------
 export const PAGE_SIZE = 25;
@@ -131,6 +189,24 @@ export async function getPurchaseOrder(token: string, id: string): Promise<{ ok:
   return { ok: true, order: result.data };
 }
 
+export type ReceiptFilters = { q: string; status: ReceiptStatus | ""; supplierId: string; warehouseId: string; dateFrom: string; dateTo: string; page: number };
+export function listGoodsReceipts(token: string, filters: ReceiptFilters) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.supplierId) params.set("supplier_id", filters.supplierId);
+  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  return getPaged<ReceiptSummary>("/api/v1/purchasing/goods-receipts", params, token);
+}
+
+export async function getGoodsReceipt(token: string, id: string): Promise<{ ok: true; receipt: ReceiptDetail } | Failure> {
+  const result = await purchasingRequest("GET", `/api/v1/purchasing/goods-receipts/${id}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, receipt: result.data };
+}
+
 // ---- failures from write calls, turned into safe responses for the browser ------------------------------------------------
 export type PurchasingFailure = {
   status: number;
@@ -143,6 +219,8 @@ export type PurchasingFailure = {
 const FIELD_NAMES: Record<string, string> = {
   supplier_id: "supplierId", supplier_reference: "supplierReference", currency_code: "currencyCode", order_date: "orderDate",
   expected_delivery_date: "expectedDeliveryDate", unit_price: "unitPrice", product_id: "productId", contact_person: "contactPerson",
+  received_date: "receivedDate", accepted_quantity: "acceptedQuantity", rejected_quantity: "rejectedQuantity", warehouse_id: "warehouseId",
+  purchase_order_line_id: "purchaseOrderLineId", purchase_order_id: "purchaseOrderId",
   country_code: "countryCode", tax_identifier: "taxIdentifier",
 };
 

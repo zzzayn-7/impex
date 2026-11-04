@@ -52,6 +52,8 @@ export type Movement = {
   transfer_id: string | null;
   created_by_email: string;
   created_at: string;
+  source_type?: string | null; // 'goods_receipt' for stock added by a confirmed goods receipt
+  source_reference?: string | null; // e.g. GR-000001
 };
 
 export const MOVEMENT_LABELS: Record<MovementType, string> = {

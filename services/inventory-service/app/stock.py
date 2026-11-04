@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Sequence
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,9 @@ from app.models import Product, StockBalance, StockMovement, StockOperation, War
 from app.schemas import (
     MovementList,
     MovementResponse,
+    ReceiptMovement,
+    ReceiptPost,
+    ReceiptPosting,
     StockChange,
     StockLine,
     StockOperationResult,
@@ -40,7 +44,7 @@ from app.units import allows_fractions
 
 QUANT = Decimal("0.0001")
 ZERO = Decimal("0")
-DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "transfer": "Stock transfer"}
+DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "transfer": "Stock transfer", "receipt": "Goods receipt"}
 
 
 # --- small helpers -----------------------------------------------------------------------------------
@@ -132,6 +136,8 @@ def _to_response(movement: StockMovement, product: Product, warehouse: Warehouse
         reason=movement.reason,
         transfer_id=movement.transfer_id,
         created_by_email=movement.created_by_email,
+        source_type=movement.source_type,
+        source_reference=movement.source_reference,
         created_at=movement.created_at,
     )
 
@@ -202,6 +208,8 @@ def _add_movement(
     balance_after: Decimal,
     reason: str,
     transfer_id: Optional[uuid.UUID] = None,
+    source_reference: Optional[str] = None,
+    source_line_id: Optional[uuid.UUID] = None,
 ) -> StockMovement:
     movement = create_for_tenant(
         StockMovement,
@@ -214,6 +222,9 @@ def _add_movement(
         balance_after=balance_after,
         reason=reason,
         transfer_id=transfer_id,
+        source_type="goods_receipt" if source_line_id is not None else None,
+        source_reference=source_reference,
+        source_line_id=source_line_id,
         created_by=_user_id(tenant),
         created_by_email=tenant.email,
     )
@@ -295,6 +306,117 @@ def execute_transfer(db: Session, tenant: TenantContext, payload: StockTransfer,
         db.rollback()
         raise
     return _result(db, tenant, operation, "transfer", replayed=False)
+
+
+# --- goods receipt: several accepted quantities of purchased goods, atomically ---------------------------------
+def _receipt_fingerprint(payload: ReceiptPost) -> str:
+    lines = sorted(
+        ({"line": str(l.line_id), "product": str(l.product_id), "warehouse": str(l.warehouse_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
+        key=lambda item: item["line"],
+    )
+    body = json.dumps({"kind": "receipt", "receipt": payload.receipt_number, "order": payload.purchase_order_number or "", "lines": lines}, sort_keys=True)
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _receipt_result(db: Session, tenant: TenantContext, operation: uuid.UUID, receipt_number: str, replayed: bool) -> ReceiptPosting:
+    rows = db.scalars(
+        scoped_select(StockMovement, tenant).where(StockMovement.operation_id == operation).order_by(StockMovement.source_line_id)
+    ).all()
+    return ReceiptPosting(
+        operation_id=operation,
+        receipt_number=receipt_number,
+        replayed=replayed,
+        movements=[
+            ReceiptMovement(
+                id=m.id, line_id=m.source_line_id, product_id=m.product_id, warehouse_id=m.warehouse_id,
+                quantity=m.quantity, balance_after=m.balance_after,
+            )
+            for m in rows
+        ],
+    )
+
+
+def _receipt_number_of(db: Session, tenant: TenantContext, operation: uuid.UUID) -> str:
+    return db.scalar(
+        select(StockMovement.source_reference)
+        .where(StockMovement.organization_id == tenant.organization_id, StockMovement.operation_id == operation)
+        .limit(1)
+    ) or ""
+
+
+def execute_receipt(db: Session, tenant: TenantContext, payload: ReceiptPost, key: str) -> ReceiptPosting:
+    """Add the accepted quantities of one goods receipt to stock: ALL lines or none, once per Idempotency-Key.
+
+    A receipt line can produce at most one movement ever (unique index), whatever key the caller uses. The product's unit
+    must equal the unit on the line - a quantity is never reinterpreted - and archived products or warehouses are refused.
+    """
+    request_hash = _receipt_fingerprint(payload)
+    try:
+        operation = _start_operation(db, tenant, "receipt", key, request_hash)
+        if operation is None:
+            db.rollback()
+            return _replay_receipt(db, tenant, key, request_hash)
+
+        reason = f"{DEFAULT_REASONS['receipt']} {payload.receipt_number}" + (f" ({payload.purchase_order_number})" if payload.purchase_order_number else "")
+        # Fixed lock order (product, then warehouse) so two receipts touching the same goods can never deadlock.
+        # The sort is stable: lines for the same product and warehouse keep the order they were sent in.
+        lines = sorted(payload.lines, key=lambda l: (str(l.product_id), str(l.warehouse_id)))
+        products: Dict[uuid.UUID, Product] = {}
+        warehouses: Dict[uuid.UUID, Warehouse] = {}
+        for line in lines:
+            if line.product_id not in products:
+                products[line.product_id] = _load_product_locked(db, tenant, line.product_id)
+            if line.warehouse_id not in warehouses:
+                warehouses[line.warehouse_id] = get_scoped_or_404(db, Warehouse, tenant, line.warehouse_id, "Warehouse")
+        for line in lines:
+            product, warehouse = products[line.product_id], warehouses[line.warehouse_id]
+            _require_active(product, warehouse)
+            if product.unit != line.unit:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{product.name} is now counted in '{product.unit}' but the receipt line is in '{line.unit}'. "
+                    "A quantity is never converted; correct the unit before receiving.",
+                )
+            _check_quantity_for_unit(product, line.quantity)
+
+        balances: Dict[uuid.UUID, Dict[uuid.UUID, StockBalance]] = {}
+        for product_id in products:
+            wanted = sorted({l.warehouse_id for l in lines if l.product_id == product_id}, key=str)
+            balances[product_id] = _lock_balances(db, tenant, product_id, wanted)
+        for line in lines:
+            balance = balances[line.product_id][line.warehouse_id]
+            balance.quantity = balance.quantity + line.quantity
+            _add_movement(
+                db, tenant, operation, products[line.product_id], warehouses[line.warehouse_id], "in", line.quantity,
+                balance.quantity, reason, source_reference=payload.receipt_number, source_line_id=line.line_id,
+            )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if "uq_stock_movements_source_line" in str(exc.orig):
+            raise HTTPException(status.HTTP_409_CONFLICT, "One of these receipt lines was already added to stock by an earlier posting.")
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    return _receipt_result(db, tenant, operation, payload.receipt_number, replayed=False)
+
+
+def _replay_receipt(db: Session, tenant: TenantContext, key: str, request_hash: str) -> ReceiptPosting:
+    operation = db.scalar(scoped_select(StockOperation, tenant).where(StockOperation.idempotency_key == key))
+    if operation is None:  # the first attempt rolled back at just the wrong moment: it did NOT post. Ask to retry.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The request was being processed. Please retry.", headers={"Retry-After": "1"})
+    if operation.request_hash != request_hash or operation.kind != "receipt":
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Idempotency-Key was already used for a different request. Use a new key for a new request.")
+    return _receipt_result(db, tenant, operation.id, _receipt_number_of(db, tenant, operation.id), replayed=True)
+
+
+def receipt_by_key(db: Session, tenant: TenantContext, key: str) -> ReceiptPosting:
+    """Did the posting with this Idempotency-Key happen? Read-only; 404 means it did not (for this organization)."""
+    operation = db.scalar(scoped_select(StockOperation, tenant).where(StockOperation.idempotency_key == key, StockOperation.kind == "receipt"))
+    if operation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No goods receipt was posted with this key.")
+    return _receipt_result(db, tenant, operation.id, _receipt_number_of(db, tenant, operation.id), replayed=True)
 
 
 # --- reading --------------------------------------------------------------------------------------------------

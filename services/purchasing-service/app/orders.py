@@ -39,6 +39,7 @@ ZERO = Decimal("0")
 CENT = Decimal("0.0001")
 MAX_LINES = 500
 LIMIT = Decimal(10) ** 14  # what fits a NUMERIC(18,4) column
+# Placing and cancelling are the only moves a user asks for. Partially Received / Received are reached only by confirming goods receipts.
 TRANSITIONS = {("draft", "ordered"): "ordered", ("draft", "cancelled"): "cancelled", ("ordered", "cancelled"): "cancelled"}
 
 
@@ -160,9 +161,24 @@ def summaries(db: Session, tenant: TenantContext, orders: List[PurchaseOrder]) -
 
 
 def detail(db: Session, tenant: TenantContext, order: PurchaseOrder) -> PurchaseOrderDetail:
+    from app import receipts  # imported here: receipts builds on this module
+
     (summary,) = summaries(db, tenant, [order])
-    lines = [LineResponse.model_validate(l) for l in list_lines(db, tenant, order.id)]
-    return PurchaseOrderDetail(**summary.model_dump(), lines=lines, frozen=order.status != "draft")
+    stored = list_lines(db, tenant, order.id)
+    sums = receipts.order_quantities(db, tenant, stored)
+    lines = []
+    for l in stored:
+        received, pending = sums[l.id]
+        lines.append(
+            LineResponse.model_validate(l).model_copy(
+                update={"received_quantity": received, "pending_quantity": pending, "remaining_quantity": max(l.quantity - received - pending, Decimal("0.0000"))}
+            )
+        )
+    can_receive = order.status in receipts.RECEIVABLE_ORDER_STATUSES and any(l.remaining_quantity > 0 for l in lines)
+    return PurchaseOrderDetail(
+        **summary.model_dump(), lines=lines, frozen=order.status != "draft",
+        receipts=receipts.receipts_of_order(db, tenant, order.id), can_receive=can_receive,
+    )
 
 
 # --- creating (idempotent) ------------------------------------------------------------------------------------------------------------
@@ -370,7 +386,24 @@ def change_status(db: Session, tenant: TenantContext, gateway: InventoryGateway,
         db.rollback()
         return order  # already there: harmless to repeat
     if (order.status, target) not in TRANSITIONS:
+        if target == "cancelled" and order.status in ("partially_received", "received"):
+            raise conflict(
+                f"{order.number} already has goods received against it, so it cannot be cancelled: a cancellation would hide that "
+                "the goods arrived. The receipts stay as the record."
+            )
         raise conflict(f"{order.number} is {order.status} and cannot become {target}.")
+    if target == "cancelled" and order.status == "ordered":
+        from app.models import GoodsReceipt
+
+        receipts = list(db.scalars(scoped_select(GoodsReceipt, tenant).where(GoodsReceipt.purchase_order_id == order.id)))
+        if any(r.status in ("posting", "confirmed") for r in receipts):
+            raise conflict(
+                f"{order.number} has goods received (or being received) against it, so it cannot be cancelled: "
+                "a cancellation would hide that the goods arrived."
+            )
+        for draft in (r for r in receipts if r.status == "draft"):  # unfinished drafts of a cancelled order are cancelled with it
+            draft.status, draft.cancelled_at, draft.cancelled_by_email = "cancelled", datetime.now(timezone.utc), tenant.email
+        db.flush()
     now = datetime.now(timezone.utc)
     if target == "ordered":
         require_active_supplier(db, tenant, order)

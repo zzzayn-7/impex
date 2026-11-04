@@ -135,7 +135,7 @@ class SupplierRef(BaseModel):
 # =====================================================================================================
 # Purchase orders
 # =====================================================================================================
-Status = Literal["draft", "ordered", "cancelled"]
+Status = Literal["draft", "ordered", "partially_received", "received", "cancelled"]
 
 
 class OrderFields(BaseModel):
@@ -245,11 +245,22 @@ class LineResponse(BaseModel):
     notes: Optional[str]
     created_at: datetime
     updated_at: datetime
+    # How much has arrived. Only goods receipts that were CONFIRMED count as received; a receipt being posted is "pending"
+    # (reserved, so nobody can receive the same goods twice). remaining = ordered - received - pending.
+    received_quantity: Decimal = Decimal("0.0000")
+    pending_quantity: Decimal = Decimal("0.0000")
+    remaining_quantity: Optional[Decimal] = None
+
+    @model_validator(mode="after")
+    def _remaining(self):
+        if self.remaining_quantity is None:
+            self.remaining_quantity = self.quantity - self.received_quantity - self.pending_quantity
+        return self
 
 
 NO_STOCK_NOTICE = (
     "A purchase order does not change your stock. Placing an order does not add the goods to inventory; they are added only when "
-    "they are received (a later step)."
+    "the goods are received and the goods receipt is confirmed."
 )
 
 
@@ -284,6 +295,8 @@ class PurchaseOrderPage(BaseModel):
 class PurchaseOrderDetail(PurchaseOrderSummary):
     lines: List[LineResponse]
     frozen: bool  # True once the order is Ordered or Cancelled: nothing commercial can change any more
+    receipts: List["ReceiptSummary"] = []  # the goods receipts of this order, newest first (drafts and cancelled ones included)
+    can_receive: bool = False  # Ordered or Partially Received, with something still receivable
     stock_notice: str = NO_STOCK_NOTICE
 
 
@@ -302,3 +315,140 @@ class LineResult(BaseModel):
     line_count: int
     total_amount: Decimal
     currency_code: str
+
+
+# =====================================================================================================
+# Goods receipts (Step 16B)
+# =====================================================================================================
+ReceiptStatus = Literal["draft", "posting", "confirmed", "cancelled"]
+ReceivedQuantity = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4)]
+
+RECEIPT_NOTICE = (
+    "Saving or reviewing a goods receipt does not change your stock. Stock is added only when you confirm the receipt, "
+    "and only for the accepted quantities."
+)
+
+
+class ReceiptLineInput(BaseModel):
+    """What arrived of one purchase-order line. Product, SKU, name and unit come from the order line, never from the caller."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    purchase_order_line_id: uuid.UUID
+    accepted_quantity: ReceivedQuantity = Decimal("0")  # added to stock when the receipt is confirmed
+    rejected_quantity: ReceivedQuantity = Decimal("0")  # informational only: never added to stock
+    warehouse_id: Optional[uuid.UUID] = None  # required when something is accepted
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("notes")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class ReceiptFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("supplier_reference", "notes", check_fields=False)
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class ReceiptCreate(ReceiptFields):
+    purchase_order_id: uuid.UUID
+    received_date: Optional[date] = None  # default: today
+    supplier_reference: Optional[str] = Field(default=None, max_length=100)  # e.g. the supplier's delivery note number
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    lines: List[ReceiptLineInput] = Field(default_factory=list, max_length=500)
+
+
+class ReceiptUpdate(ReceiptFields):
+    received_date: Optional[date] = None
+    supplier_reference: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _valid(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to change.")
+        if "received_date" in self.model_fields_set and self.received_date is None:
+            raise ValueError("received_date cannot be empty")
+        return self
+
+
+class ReceiptLines(BaseModel):
+    """The complete set of lines of a draft receipt. Lines that are not listed (or have nothing accepted or rejected) are not on it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: List[ReceiptLineInput] = Field(max_length=500)
+
+
+class OrderRef(BaseModel):
+    id: uuid.UUID
+    number: str
+    status: Status
+
+
+class ReceiptLineResponse(BaseModel):
+    id: uuid.UUID
+    purchase_order_line_id: uuid.UUID
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    ordered_quantity: Decimal
+    received_elsewhere_quantity: Decimal  # confirmed on OTHER receipts of the order
+    pending_elsewhere_quantity: Decimal  # being posted on other receipts (reserved)
+    receivable_quantity: Decimal  # the most this receipt may accept: ordered - received elsewhere - pending elsewhere
+    warehouse_id: Optional[uuid.UUID]
+    warehouse_code: Optional[str]
+    accepted_quantity: Decimal
+    rejected_quantity: Decimal
+    notes: Optional[str]
+    inventory_movement_id: Optional[uuid.UUID]  # the Inventory Service's stock movement, once confirmed
+
+
+class PostingInfo(BaseModel):
+    attempts: int
+    started_at: Optional[datetime]
+    last_attempt_at: Optional[datetime]
+    last_error: Optional[str]
+
+
+class ReceiptSummary(BaseModel):
+    id: uuid.UUID
+    number: str
+    status: ReceiptStatus
+    purchase_order: OrderRef
+    supplier: SupplierRef
+    supplier_reference: Optional[str]
+    received_date: date
+    notes: Optional[str]
+    line_count: int
+    created_by_email: str
+    created_at: datetime
+    confirmed_at: Optional[datetime]
+    confirmed_by_email: Optional[str]
+    cancelled_at: Optional[datetime]
+    cancelled_by_email: Optional[str]
+    updated_at: datetime
+
+
+class ReceiptDetail(ReceiptSummary):
+    lines: List[ReceiptLineResponse]
+    posting: PostingInfo
+    inventory_operation_id: Optional[uuid.UUID]
+    editable: bool  # only a draft can be edited
+    stock_notice: str = RECEIPT_NOTICE
+
+
+class ReceiptPage(BaseModel):
+    items: List[ReceiptSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+PurchaseOrderDetail.model_rebuild()

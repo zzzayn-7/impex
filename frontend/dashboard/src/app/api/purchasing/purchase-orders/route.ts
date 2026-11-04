@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
   const params = new URLSearchParams();
   const status = p.get("status");
-  if (status === "draft" || status === "ordered" || status === "cancelled") params.set("status", status);
+  if (status === "draft" || status === "ordered" || status === "partially_received" || status === "received" || status === "cancelled") params.set("status", status);
   const supplierId = p.get("supplierId");
   if (supplierId) {
     if (!checkUuid(supplierId)) return fail("Supplier not found.", 404);

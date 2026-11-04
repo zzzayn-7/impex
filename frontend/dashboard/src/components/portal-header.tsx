@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { key: "clients", href: "/clients", label: "Clients" },
   { key: "suppliers", href: "/suppliers", label: "Suppliers" },
   { key: "purchasing", href: "/purchase-orders", label: "Purchase Orders" },
+  { key: "receipts", href: "/goods-receipts", label: "Goods Receipts" },
 ] as const;
 
 export default function PortalHeader({

@@ -1,26 +1,28 @@
 # Purchasing Service
 
-FastAPI + PostgreSQL (`impex_purchasing`), port **8004**. It owns two things:
+FastAPI + PostgreSQL (`impex_purchasing`), port **8004**. It owns three things:
 
 * the **Supplier Directory**: the companies an organization buys from;
-* **Purchase Orders**: what has been ordered from a supplier, with product lines, quantities, purchase prices and exact totals.
+* **Purchase Orders**: what has been ordered from a supplier, with product lines, quantities, purchase prices and exact totals;
+* **Goods Receipts** (Step 16B): what actually arrived against an order, in full or in parts, and the hand-over of the accepted goods to the Inventory Service.
 
-**Goods receiving** (Step 16B), invoices, payments and accounting are intentionally not built yet.
+Supplier payments, invoices, customer dispatch and accounting are intentionally not built yet.
 
 Every endpoint is **tenant-scoped** (see [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md)): only an active
 `organization-admin` whose organization is active may use it, and every record belongs to the organization of the
 authenticated administrator (never taken from the request).
 
-## The one rule that matters: a purchase order never touches inventory
+## The one rule that matters: only a CONFIRMED goods receipt touches inventory
 
-Creating, editing, placing (**Ordered**) or cancelling an order never adds stock, never writes a stock movement and never changes a
-product's selling or cost price. An order for 50 units leaves the stock at what it was. There is no code path that could:
+Creating, editing, placing (**Ordered**) or cancelling a purchase order never adds stock, never writes a stock movement and never changes
+a product's selling or cost price. An order for 50 units leaves the stock at what it was. Neither does preparing, scanning, reviewing or saving
+a goods receipt. Stock is added in exactly one situation: a goods receipt is **confirmed**, and then only the **accepted** quantities are added,
+through the Inventory Service's own audited, idempotent operation:
 
-* the service has no stock tables (its database holds `suppliers`, `purchase_orders`, `purchase_order_lines`, a numbering counter and idempotency records);
-* its only client of the Inventory Service issues `GET` requests (a test asserts that every request it makes is a `GET`);
-* a purchase price lives only on the order line. It is not written to the product.
-
-Stock is added only when goods are **received** (Step 16B), through the Inventory Service's own audited, idempotent stock-in.
+* the service has no stock tables (its database holds suppliers, purchase orders and lines, goods receipts and lines, numbering counters and idempotency records);
+* its only write to the Inventory Service is `POST /api/v1/inventory/goods-receipts`, made when a receipt is confirmed (tests assert that nothing else ever writes);
+* a purchase price lives only on the order line; the posting carries no price at all, so a catalog price can never be overwritten;
+* a rejected quantity is recorded on the receipt and is never sent to stock.
 
 ## API (all under `/api/v1/purchasing`, Bearer token required)
 
@@ -35,19 +37,22 @@ Stock is added only when goods are **received** (Step 16B), through the Inventor
 | `GET /purchase-orders/{id}` | the order, its lines and the **calculated** total |
 | `PATCH /purchase-orders/{id}` | edit the header (draft only) |
 | `POST /purchase-orders/{id}/order` | place the order: Draft to **Ordered** (freezes it) |
-| `POST /purchase-orders/{id}/cancel` | Draft or Ordered to **Cancelled** (kept for history) |
+| `POST /purchase-orders/{id}/cancel` | Draft or Ordered (with nothing received) to **Cancelled** (kept for history; its draft receipts are cancelled with it) |
 | `POST /purchase-orders/{id}/lines` | add an existing product: only `product_id`, `quantity`, `unit_price`, optional `planned_warehouse_id` and `notes` |
 | `PATCH /purchase-orders/{id}/lines/{line_id}` | change quantity / price / planned warehouse / note (the total is recalculated here) |
 | `DELETE /purchase-orders/{id}/lines/{line_id}` | remove a line from a draft |
 
 ### Life cycle
 
-`Draft` to `Ordered` to (nothing); `Draft` or `Ordered` to `Cancelled`; `Cancelled` is final. A Draft can be edited freely.
+`Draft` to `Ordered` to `Partially Received` to `Received`; `Draft` or `Ordered` to `Cancelled`; `Received` and `Cancelled` are final. A Draft can be edited freely.
+**Partially Received** and **Received** are reached only by confirming goods receipts: an order is Received when every line is fully received, Partially Received when some goods have arrived. The
+database checks that claim against the confirmed receipts. An order that has goods received (or being received) can **never be cancelled**: the cancellation would hide that the goods arrived.
 When an order is **placed** its commercial details are frozen **by the database itself**, not just by the API: a trigger refuses any
 later change to the supplier, order number, dates, currency, supplier reference, notes, and refuses to insert, change or delete a
 line. Orders are never deleted. Placing an order needs at least one line, an **active** supplier, and every product still active; the
 product names, SKUs and units on the lines are refreshed from the Inventory Service at that moment and frozen with the order.
-Cancelling needs no product facts (it works even while the Inventory Service is down).
+Cancelling needs no product facts (it works even while the Inventory Service is down). A line belongs to one order of one organization for its whole life: a database trigger refuses any
+change of a line's `id`, `organization_id` or `purchase_order_id`, so a line of a placed order cannot be re-pointed at a draft (or the reverse) to slip past the freeze.
 
 ### Money is exact and calculated on the server
 
@@ -57,6 +62,40 @@ Cancelling needs no product facts (it works even while the Inventory Service is 
   `CHECK (line_total = round(quantity * unit_price, 4))`.
 * A line total that would not fit the column is refused cleanly (`422`).
 * The order currency is chosen when it is created and cannot change once it has lines.
+
+## Goods receiving
+
+| Method & path | Purpose |
+| :--- | :--- |
+| `POST /goods-receipts` | start a **draft** receipt against an Ordered / Partially Received order, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
+| `GET /goods-receipts?purchase_order_id=&supplier_id=&status=&warehouse_id=&product_id=&q=&date_from=&date_to=` | list / filter / search |
+| `GET /goods-receipts/{id}` | the receipt, its lines (ordered / received elsewhere / receivable), posting bookkeeping and stock movements |
+| `PATCH /goods-receipts/{id}` | edit the date, the supplier's reference or the notes (draft only) |
+| `PUT /goods-receipts/{id}/lines` | replace the draft's lines: per order line the **accepted** quantity, an optional **rejected** quantity, the **warehouse**, a note |
+| `POST /goods-receipts/{id}/confirm` | add the accepted quantities to stock. `200` confirmed (also if it already was); `202` the posting could not be verified yet - call it again |
+| `POST /goods-receipts/{id}/cancel` | discard a draft (kept for history) |
+
+**Quantities per order line:** *ordered*, *received* (confirmed receipts only), *pending* (receipts being posted, which are reserved) and *remaining* = ordered - received - pending. More than the remaining quantity
+cannot be received, even by two people at the same moment: the check runs under a lock on the order, and a database trigger repeats it when a receipt starts posting. A draft reserves nothing.
+
+**Status of a receipt:** `draft` (editable, changes no stock) - `posting` (the intent is saved, the quantities are reserved, the receipt is frozen) - `confirmed` (the Inventory Service's answer was verified; immutable and never deleted),
+or `cancelled`. A `posting` receipt returns to `draft` only after the Inventory Service definitively refused it (nothing was added).
+
+### How confirming survives crashes, timeouts and outages
+
+1. **The intent is saved first** (short transaction): `draft -> posting`, with an attempt counter. From that moment the receipt is frozen and its quantities are reserved.
+2. **No database transaction is open while the Inventory Service is called.** The call carries the **stable `Idempotency-Key` `goods-receipt-<receipt id>`** (a check constraint ties the key to the id), the caller's own token and all accepted lines at once.
+   The Inventory Service posts them in one transaction, once per key, and also refuses a receipt line it has already posted under any other key.
+3. **Only a verified answer confirms.** The answer must name this receipt, one movement per accepted line, each for the right product, warehouse and quantity. Then, in one short transaction, the movement ids are stored on the lines,
+   the receipt becomes `confirmed` and the order `Partially Received` / `Received`. The database refuses to confirm a receipt whose accepted lines lack their movement.
+4. **When the outcome is unknown** (timeout, connection lost, 5xx, an answer that does not match) the receipt stays `posting` and `confirm` answers `202`. Before giving up, the service asks the Inventory Service whether the posting happened
+   (`GET /goods-receipts/by-key/{key}`) and finishes the job if it did. Calling `confirm` again - from any process, after any restart - repeats the posting with the same key; the Inventory Service replays the first result, so the goods are never added twice.
+5. **A definitive refusal** (archived product, a unit that changed, an unknown warehouse...) is confirmed with the same status lookup, then the receipt returns to `draft` with the reason, and nothing was added.
+
+There is no background worker: recovery is the retry of `confirm`, which needs an administrator's token (the Inventory Service is always asked as the person who uses the portal). A receipt left in `posting` is listed with a *Retry posting* button.
+
+Also enforced here: the unit of a receipt line is the order line's unit and is never converted (the Inventory Service refuses a product whose unit changed since the order was placed); whole units take whole numbers; archived products and warehouses are refused
+(when saving, and again by the Inventory Service); goods are received only against Ordered / Partially Received orders. A rejected quantity is informational.
 
 ### Products come from the Inventory Service, never from the browser
 
@@ -84,11 +123,13 @@ Cancelling needs no product facts (it works even while the Inventory Service is 
 ```powershell
 # 1. create the database ONCE on an existing Postgres volume (safe to repeat; fresh installs get it automatically)
 Get-Content database/add-purchasing-database.sql | docker exec -i impex-postgres sh -c 'psql -U $POSTGRES_USER -d postgres'
-# 2. create the tables
+# 2. create / upgrade the tables (additive: migration 0002 adds goods receipts and keeps every existing order exactly as it is)
 docker compose run --rm --no-deps purchasing-service alembic upgrade head
 # 3. start the service
 docker compose up -d purchasing-service
 ```
+
+The Inventory Service needs its own additive migration (`0005`: a `receipt` operation kind and a source reference on stock movements) - `docker compose run --rm --no-deps inventory-service alembic upgrade head` - before goods can be confirmed.
 
 ## Tests
 
@@ -96,7 +137,10 @@ docker compose up -d purchasing-service
 docker compose run --rm --no-deps purchasing-service sh -c "pip install -q -r requirements-dev.txt && python -m pytest -v"
 python scripts/verify_purchasing.py                 # live end-to-end check through the Organization Portal
 python scripts/verify_purchasing.py --with-outage   # also stops the Inventory and Purchasing services briefly
+python scripts/verify_goods_receiving.py            # live check of receiving: partial receipts, stock accuracy, idempotency, isolation
+python scripts/verify_goods_receiving.py --with-outage   # also interrupts confirmation between the two services
 ```
 
 The tests run the Auth, Organization and Inventory services as in-process fakes that scope data by the caller's token exactly like the
-real ones, and the fake Inventory Service records every request it receives.
+real ones. The fake Inventory Service records every request, posts goods atomically and idempotently like the real one, and can be told to fail in specific ways
+(lose the answer after committing, time out before receiving, answer 500, refuse, answer wrongly) so every interruption between the two services is tested.

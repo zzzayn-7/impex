@@ -191,7 +191,8 @@ def test_the_database_refuses_changes_to_an_ordered_orders_details(api, ready, s
     for column, value in (("notes", "'x'"), ("supplier_reference", "'x'"), ("currency_code", "'EUR'"), ("order_date", "'2000-01-01'"), ("expected_delivery_date", "'2099-01-01'"),
                           ("number", "'PO-999999'"), ("created_by_email", "'x@x'"), ("ordered_at", "now()")):
         with session_factory() as db:
-            assert "frozen" in only_error(db, f"UPDATE purchase_orders SET {column} = {value} WHERE id = :id", {"id": ready["id"]}), column
+            message = only_error(db, f"UPDATE purchase_orders SET {column} = {value} WHERE id = :id", {"id": ready["id"]})
+            assert ("frozen" in message) or (column == "number" and "can never change" in message), column  # the number is part of the identity
 
 
 def test_the_database_refuses_supplier_changes_to_an_ordered_order(api, ready, session_factory):

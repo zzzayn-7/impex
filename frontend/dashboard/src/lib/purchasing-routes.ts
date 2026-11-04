@@ -1,4 +1,5 @@
 import { validatePrice } from "@/lib/purchasing-browser";
+import { QUANTITY_RE, checkUuid, text } from "@/lib/sales-routes";
 
 export * from "@/lib/sales-routes"; // fail, readObject, sessionToken, text, collapse, checkUuid, checkQuantity, ...
 
@@ -18,3 +19,43 @@ export function checkDate(value: unknown): string | null {
 
 export const CURRENCY_RE = /^[A-Z]{3}$/;
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** A quantity that may be zero: exact decimal text, at most 14 digits before and 4 after the point. */
+export function checkReceivedQuantity(value: unknown, label: string): { ok: true; value: string } | { ok: false; message: string } {
+  if (value === undefined || value === null || value === "") return { ok: true, value: "0" };
+  if (typeof value !== "string") return { ok: false, message: `Enter the ${label} quantity as a number.` };
+  const trimmed = value.trim();
+  return QUANTITY_RE.test(trimmed) ? { ok: true, value: trimmed } : { ok: false, message: `Use a number with at most 4 decimals for the ${label} quantity.` };
+}
+
+export type ReceiptLineBody = { purchase_order_line_id: string; accepted_quantity: string; rejected_quantity: string; warehouse_id?: string; notes?: string };
+
+/** The lines of a goods receipt as sent by the browser: only ids, quantities (exact strings), a warehouse and a note are read. */
+export function parseReceiptLines(value: unknown): { ok: true; lines: ReceiptLineBody[] } | { ok: false; message: string; fieldErrors?: Record<string, string> } {
+  if (!Array.isArray(value)) return { ok: false, message: "Send the receipt lines as a list." };
+  if (value.length > 500) return { ok: false, message: "A receipt can have at most 500 lines." };
+  const lines: ReceiptLineBody[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return { ok: false, message: "Invalid receipt line." };
+    const item = entry as Record<string, unknown>;
+    const lineId = checkUuid(item.purchaseOrderLineId);
+    if (!lineId) return { ok: false, message: "Product not found on this purchase order." };
+    const accepted = checkReceivedQuantity(item.acceptedQuantity, "accepted");
+    if (!accepted.ok) return { ok: false, message: accepted.message, fieldErrors: { acceptedQuantity: accepted.message } };
+    const rejected = checkReceivedQuantity(item.rejectedQuantity, "rejected");
+    if (!rejected.ok) return { ok: false, message: rejected.message, fieldErrors: { rejectedQuantity: rejected.message } };
+    let warehouseId: string | undefined;
+    if (item.warehouseId !== undefined && item.warehouseId !== null && item.warehouseId !== "") {
+      const valid = checkUuid(item.warehouseId);
+      if (!valid) return { ok: false, message: "Choose a valid warehouse.", fieldErrors: { warehouseId: "Choose a valid warehouse." } };
+      warehouseId = valid;
+    }
+    const notes = text(item.notes) ?? "";
+    if (notes.length > 500) return { ok: false, message: "Use 500 characters or fewer for a line note." };
+    lines.push({
+      purchase_order_line_id: lineId, accepted_quantity: accepted.value, rejected_quantity: rejected.value,
+      ...(warehouseId ? { warehouse_id: warehouseId } : {}), ...(notes ? { notes } : {}),
+    });
+  }
+  return { ok: true, lines };
+}

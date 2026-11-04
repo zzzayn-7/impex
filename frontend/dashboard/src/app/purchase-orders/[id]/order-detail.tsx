@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AddLineForm from "@/components/add-line-form";
-import { NO_STOCK_NOTICE, ORDER_STATUS_LABELS, ORDER_STATUS_STYLE, lineTotal, validatePrice } from "@/lib/purchasing-browser";
+import { NO_STOCK_NOTICE, ORDER_STATUS_LABELS, ORDER_STATUS_STYLE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE, lineTotal, validatePrice } from "@/lib/purchasing-browser";
 import { api, jsonBody, qty } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
@@ -95,7 +95,8 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Order actions">
           {draft && <button type="button" disabled={busy || order.lines.length === 0} onClick={() => setConfirming("order")} className="min-h-11 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Mark as Ordered</button>}
-          {order.status !== "cancelled" && <button type="button" disabled={busy} onClick={() => setConfirming("cancel")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-red-300 hover:bg-slate-800 disabled:opacity-50">Cancel order</button>}
+          {order.can_receive && <Link href={`/purchase-orders/${order.id}/receive`} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Receive goods</Link>}
+          {(order.status === "draft" || order.status === "ordered") && <button type="button" disabled={busy} onClick={() => setConfirming("cancel")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-red-300 hover:bg-slate-800 disabled:opacity-50">Cancel order</button>}
         </div>
       </div>
 
@@ -121,7 +122,9 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
       )}
 
       <p role="note" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">{order.stock_notice || NO_STOCK_NOTICE}</p>
-      {order.status === "ordered" && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-300">This order has been placed. Its details, products, quantities and prices are frozen.</p>}
+      {order.status === "ordered" && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-300">This order has been placed. Its details, products, quantities and prices are frozen. Stock is added when you receive the goods and confirm a goods receipt.</p>}
+      {order.status === "partially_received" && <p role="status" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">Some of the goods have been received and confirmed. The order stays open until everything has arrived. Its details are frozen, and it can no longer be cancelled.</p>}
+      {order.status === "received" && <p role="status" className="rounded-lg border border-teal-500/20 bg-teal-500/10 px-4 py-3 text-xs text-teal-200">Everything on this order has been received. The order is complete and frozen.</p>}
       {order.status === "cancelled" && <p role="status" className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-400">This order was cancelled and is kept for history.</p>}
 
       {message && (
@@ -142,7 +145,8 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
                   <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Quantity</th><th className="px-3 py-3 font-semibold text-right">Unit price</th>
-                  <th className="px-3 py-3 font-semibold text-right">Line total</th><th className="px-3 py-3 font-semibold">Planned for</th>{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
+                  <th className="px-3 py-3 font-semibold text-right">Line total</th><th className="px-3 py-3 font-semibold">Planned for</th>
+                  {!draft && <><th className="px-3 py-3 font-semibold text-right">Received</th><th className="px-3 py-3 font-semibold text-right">Remaining</th></>}{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -179,6 +183,15 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
                       </>
                     )}
                     <td className="px-3 py-3 text-xs">{line.planned_warehouse_code ?? <span className="text-slate-600">—</span>}</td>
+                    {!draft && (
+                      <>
+                        <td className="px-3 py-3 text-right font-mono text-xs">
+                          {qty(line.received_quantity ?? "0")} <span className="text-slate-500">{line.unit}</span>
+                          {line.pending_quantity && /[1-9]/.test(line.pending_quantity) && <div className="text-sky-300" title="Being added to stock; reserved until confirmed">+{qty(line.pending_quantity)} in progress</div>}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-white">{qty(line.remaining_quantity ?? line.quantity)}</td>
+                      </>
+                    )}
                     {draft && (
                       <td className="px-3 py-3">
                         {removing === line.id ? (
@@ -202,13 +215,43 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
                 <tr className="border-t border-slate-700">
                   <th scope="row" colSpan={3} className="px-3 py-3 text-right text-xs font-semibold uppercase text-slate-400">Order total</th>
                   <td className="px-3 py-3 text-right font-mono text-base font-bold whitespace-nowrap text-white" data-testid="order-total">{money(order.total_amount)}</td>
-                  <td colSpan={draft ? 2 : 1} />
+                  <td colSpan={draft ? 2 : 3} />
                 </tr>
               </tfoot>
             </table>
           </div>
         )}
       </section>
+
+      {!draft && order.status !== "cancelled" && (
+        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5" aria-label="Goods receipts">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-white">Goods receipts ({(order.receipts ?? []).length})</h3>
+            {order.can_receive && <Link href={`/purchase-orders/${order.id}/receive`} className="text-sm font-medium text-indigo-300 hover:text-indigo-200">Receive goods →</Link>}
+          </div>
+          {(order.receipts ?? []).length === 0 ? (
+            <p className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-center text-sm text-slate-500">Nothing has been received against this order yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="border-b border-slate-800 text-xs uppercase text-slate-400">
+                  <tr><th className="px-3 py-2 font-semibold">Receipt</th><th className="px-3 py-2 font-semibold">Received on</th><th className="px-3 py-2 font-semibold text-right">Lines</th><th className="px-3 py-2 font-semibold">Status</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {(order.receipts ?? []).map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-800/30">
+                      <td className="px-3 py-2"><Link href={`/goods-receipts/${r.id}`} className="font-mono font-semibold text-indigo-300 hover:text-indigo-200">{r.number}</Link>{r.supplier_reference && <span className="ml-2 text-xs text-slate-500">{r.supplier_reference}</span>}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">{r.received_date}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{r.line_count}</td>
+                      <td className="px-3 py-2"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${RECEIPT_STATUS_STYLE[r.status]}`}>{RECEIPT_STATUS_LABELS[r.status]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {draft && (
         <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5" aria-label="Add a product">

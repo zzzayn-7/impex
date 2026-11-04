@@ -43,7 +43,7 @@ def seed(db, org):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0001"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 
@@ -87,7 +87,7 @@ def test_the_database_refuses_bad_quantities_prices_and_totals(session_factory, 
 
 def test_the_database_refuses_an_unknown_status_and_bad_currency_and_dates(session_factory):
     org = uuid.uuid4()
-    for extra in (dict(status="received"), dict(currency_code="usd"), dict(currency_code="US"), dict(expected_delivery_date=date(2026, 11, 1))):
+    for extra in (dict(status="shipped"), dict(currency_code="usd"), dict(currency_code="US"), dict(expected_delivery_date=date(2026, 11, 1))):
         with session_factory() as db:
             supplier = make_supplier(org, f"S-{extra}")
             db.add(supplier)

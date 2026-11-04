@@ -415,8 +415,8 @@ def main() -> int:
         check("the bolt still has 40 on hand although 50 were ordered", psql("impex_inventory", f"SELECT quantity::text FROM stock_balances WHERE product_id = '{a_bolt['id']}'") == "40.0000")
         check("product prices (selling 9.99, cost 5) and units are exactly as before - purchase prices never touched them", after["a"][3] == inventory_before["a"][3] and after["b"][3] == inventory_before["b"][3], (inventory_before["a"][3], after["a"][3]))
         check("no stock movement mentions a purchase order", psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE organization_id = '{org_ids['a']}' AND (reason ILIKE '%purchas%' OR reason ILIKE '%PO-0%')") == "0")
-        check("the Purchasing database has no stock tables at all", psql("impex_purchasing", "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'")
-              == "alembic_version,purchase_order_counters,purchase_order_lines,purchase_order_requests,purchase_orders,suppliers")
+        check("the Purchasing database has orders and receipts but no stock tables at all", psql("impex_purchasing", "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'")
+              == "alembic_version,goods_receipt_counters,goods_receipt_lines,goods_receipt_requests,goods_receipts,purchase_order_counters,purchase_order_lines,purchase_order_requests,purchase_orders,suppliers")
 
         print("\n== 7. inactive suppliers")
         s, body = supplier("a", "Dormant Parts")

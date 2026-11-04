@@ -234,7 +234,7 @@ describe("orders: reading, editing, placing, cancelling", () => {
     await listOrders(request("GET", undefined, { query: `?status=ordered&supplierId=${ID}&q=po&organization_id=evil&sort=x` }));
     expect(Object.fromEntries(new URL(upstream().url).searchParams)).toEqual({ status: "ordered", supplier_id: ID, q: "po", limit: "50", offset: "0" });
     fetchMock.mockClear();
-    await listOrders(request("GET", undefined, { query: "?status=received" }));
+    await listOrders(request("GET", undefined, { query: "?status=shipped" }));
     expect(new URL(upstream().url).searchParams.has("status")).toBe(false);
     expect((await listOrders(request("GET", undefined, { query: "?supplierId=nope" }))).status).toBe(404);
   });
