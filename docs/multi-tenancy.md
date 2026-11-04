@@ -2,7 +2,7 @@
 
 Every organization (tenant) must be completely invisible to every other organization. This document is the
 contract for **every service that stores organization-owned data** (Inventory, Sales, Finance, ...). The
-Organization Service already follows it; its code is the reference implementation:
+Organization Service and the Inventory Service follow it; their code is the reference implementation:
 
 | File | What it shows |
 | :--- | :--- |
@@ -10,6 +10,8 @@ Organization Service already follows it; its code is the reference implementatio
 | `services/organization-service/app/tenancy.py` | `TenantOwnedMixin` and the query helpers every service should copy |
 | `services/organization-service/tests/test_tenant_isolation.py` | two organizations, two administrators, every manipulation attempt |
 | `services/organization-service/tests/test_tenancy_pattern.py` | the helpers proven on a throwaway table (copy this test shape) |
+| `services/inventory-service/app/auth.py`, `app/tenancy.py` | the pattern copied into a data-owning service, including the active-organization check |
+| `services/inventory-service/tests/test_tenant_isolation.py` | two organizations' product catalogs, with the manipulation attempts |
 
 Microservices do not share code at runtime, so a new service **copies** `require_tenant_admin` (and the
 `authenticated_user` it builds on) and `tenancy.py`, then keeps them in sync deliberately.
@@ -97,9 +99,13 @@ dependency rejects Super Admins on purpose and the tests assert it.
 ## Inactive organizations
 
 The Organization Service refuses a tenant whose organization is missing or inactive
-(`require_tenant_organization`). A service that cannot reach that data should either call the Organization
-Service's internal status check or rely on the Auth Service disabling that organization's administrators; decide
-and document this when the first such service is built. Do not silently skip the check.
+(`require_tenant_organization`). **Every other service must do the same before it serves tenant data.** The
+Inventory Service shows how (`require_active_tenant` in `services/inventory-service/app/auth.py`): it calls the
+Organization Service's `GET /api/v1/tenant/organization` with the caller's *own* Bearer token. That endpoint
+already answers `403` for a missing or inactive organization, so no extra secret or endpoint is needed, and the
+answer is also compared with the organization the Auth Service returned. Every product endpoint depends on it.
+It costs one extra service call per request; a short cache is a possible later optimization, but an inactive
+organization must still be cut off within seconds.
 
 ## Defense in depth (recommended once data exists)
 
