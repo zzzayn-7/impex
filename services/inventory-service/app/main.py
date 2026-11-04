@@ -12,6 +12,8 @@ from app.auth import TenantContext, create_auth_client, create_org_client, requi
 from app.database import get_db
 from app.models import Product
 from app.schemas import ProductCreate, ProductList, ProductResponse, ProductUpdate
+from app.search import like_pattern
+from app.stock_api import router as stock_router
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
 
 
@@ -31,6 +33,8 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+
+app.include_router(stock_router)  # warehouses and stock
 
 # Every product endpoint depends on this: an ACTIVE organization administrator whose organization is active.
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.
@@ -58,12 +62,6 @@ def sku_taken(db: Session, tenant: TenantContext, sku: str, exclude: Optional[uu
 
 def sku_conflict(sku: str) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, f"A product with SKU '{sku}' already exists in your catalog.")
-
-
-def like_pattern(term: str) -> str:
-    """A contains-pattern for ILIKE where the user's % and _ are matched literally."""
-    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
 
 
 @app.get(f"{PREFIX}/products", response_model=ProductList, tags=["Products"])

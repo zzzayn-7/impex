@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { fieldFromApiName, type Product, type ProductFieldErrors } from "@/lib/product-validation";
+import {
+  API_FIELD_NAMES,
+  type Movement,
+  type MovementType,
+  type StockFieldErrors,
+  type StockProduct,
+  type Warehouse,
+} from "@/lib/stock-validation";
 
 // Server-side only. Talks to the Inventory Service with the signed-in administrator's own session token
 // (the HttpOnly tenant cookie). Nothing here ever names an organization: the Inventory Service derives
@@ -16,12 +24,13 @@ export async function inventoryRequest(
   method: "GET" | "POST" | "PATCH",
   path: string,
   token: string,
-  body?: unknown
+  body?: unknown,
+  extraHeaders: Record<string, string> = {}
 ): Promise<InventoryResult> {
   try {
     const res = await fetch(`${inventoryServiceUrl()}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...extraHeaders },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
@@ -95,3 +104,106 @@ export function failureResponse(result: InventoryResult) {
   const { status, message, fieldErrors } = describeFailure(result);
   return NextResponse.json({ error: message, fieldErrors }, { status, headers: { "Cache-Control": "no-store" } });
 }
+
+
+// ======================================================================================================
+// Warehouses and stock (Step 14). Same rules as above: server-side only, the administrator's own token,
+// and not one place where an organization is named.
+// ======================================================================================================
+type Failure = { ok: false; reason: "unauthorized" | "forbidden" | "unavailable" };
+export type PagedResult<T> = ({ ok: true } & { items: T[]; total: number; limit: number; offset: number }) | Failure;
+
+async function getPaged<T>(path: string, params: URLSearchParams, token: string): Promise<PagedResult<T>> {
+  const result = await inventoryRequest("GET", `${path}?${params}`, token);
+  if (!result || result.status !== 200) return { ok: false, reason: reason(result) };
+  return { ok: true, items: result.data.items, total: result.data.total, limit: result.data.limit, offset: result.data.offset };
+}
+
+const pageParams = (page: number, status?: string) => {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
+  if (status) params.set("status", status);
+  return params;
+};
+
+export type WarehouseFilters = { q: string; status: "active" | "archived" | "all"; page: number };
+export function listWarehouses(token: string, filters: WarehouseFilters) {
+  const params = pageParams(filters.page, filters.status);
+  if (filters.q) params.set("q", filters.q);
+  return getPaged<Warehouse>("/api/v1/inventory/warehouses", params, token);
+}
+
+// Every active warehouse, for the pickers in the stock forms and the filters (the service allows up to 200 per call).
+export async function listWarehouseChoices(token: string, status: "active" | "all" = "active"): Promise<Warehouse[]> {
+  const result = await getPaged<Warehouse>("/api/v1/inventory/warehouses", new URLSearchParams({ status, limit: "200" }), token);
+  return result.ok ? result.items : [];
+}
+
+// Products for the pickers: the product list already says whether a unit may be counted in fractions.
+export async function listProductChoices(token: string, status: "active" | "all" = "active"): Promise<Product[]> {
+  const result = await getPaged<Product>("/api/v1/inventory/products", new URLSearchParams({ status, limit: "200" }), token);
+  return result.ok ? result.items : [];
+}
+
+export type StockFilters = { q: string; category: string; warehouseId: string; inStockOnly: boolean; status: "active" | "archived" | "all"; page: number };
+export function listStock(token: string, filters: StockFilters) {
+  const params = pageParams(filters.page, filters.status);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
+  if (filters.inStockOnly) params.set("in_stock_only", "true");
+  return getPaged<StockProduct>("/api/v1/inventory/stock", params, token);
+}
+
+export type MovementFilters = { productId: string; warehouseId: string; type: MovementType | ""; page: number };
+export function listMovements(token: string, filters: MovementFilters) {
+  const params = pageParams(filters.page);
+  if (filters.productId) params.set("product_id", filters.productId);
+  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
+  if (filters.type) params.set("type", filters.type);
+  return getPaged<Movement>("/api/v1/inventory/stock/movements", params, token);
+}
+
+// ---- failures from warehouse / stock write calls ---------------------------------------------------------
+// The service's messages here are written for people ("Insufficient stock: 5 pcs of Bolt available in MAIN, 6
+// requested."), so they are passed on; anything unexpected becomes a generic message.
+export type StockFailure = { status: number; message: string; fieldErrors?: Record<string, string> };
+
+export function describeStockFailure(result: InventoryResult, notFound = "Not found."): StockFailure {
+  if (!result) return { status: 503, message: "The inventory service is unavailable. Please try again shortly." };
+  const detail = result.data?.detail;
+  const text = typeof detail === "string" ? detail : null;
+  switch (result.status) {
+    case 400:
+      return { status: 400, message: text ?? "The request was not accepted." };
+    case 401:
+      return { status: 401, message: "Your session has expired. Please sign in again." };
+    case 403:
+      return { status: 403, message: text ?? "You do not have access to stock management." };
+    case 404:
+      return { status: 404, message: text ?? notFound };
+    case 409:
+      return { status: 409, message: text ?? "That change conflicts with existing data." };
+    case 422: {
+      const fieldErrors: Record<string, string> = {};
+      if (Array.isArray(detail)) {
+        for (const item of detail as { loc?: unknown[]; msg?: string }[]) {
+          const name = String(item.loc?.[item.loc.length - 1]);
+          const field = API_FIELD_NAMES[name] ?? name;
+          if (!fieldErrors[field]) fieldErrors[field] = item.msg?.replace(/^Value error, /, "") ?? "Invalid value.";
+        }
+      }
+      return { status: 400, message: text ?? "Some values were rejected. Please check the form.", fieldErrors };
+    }
+    case 503:
+      return { status: 503, message: text ?? "The service is temporarily unavailable. Please try again." };
+    default:
+      return { status: 502, message: "The request could not be completed. Please try again." };
+  }
+}
+
+export function stockFailureResponse(result: InventoryResult, notFound?: string) {
+  const { status, message, fieldErrors } = describeStockFailure(result, notFound);
+  return NextResponse.json({ error: message, fieldErrors }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+export type { StockFieldErrors };

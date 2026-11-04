@@ -120,6 +120,17 @@ CREATE POLICY tenant_isolation ON products
 ```
 This needs the application to connect as a non-owner database role. Add it when a service holds real tenant data.
 
+## Stock tables: the database enforces it too (Step 14)
+
+`warehouses`, `stock_balances`, `stock_movements` and `stock_operations` all carry `organization_id NOT NULL`. In
+addition, `products` and `warehouses` have a unique `(organization_id, id)`, and every row that points at them uses a
+**composite** foreign key `(organization_id, product_id)` / `(organization_id, warehouse_id)`. So even code that forgot
+a filter cannot store Alpha's product in Beta's warehouse or write a movement that mixes the two: PostgreSQL refuses it.
+The tests insert such rows directly to prove it. Warehouse codes are unique per organization too.
+
+Idempotency keys are per organization (`UNIQUE (organization_id, idempotency_key)`), so one tenant can never replay
+another's result, and the same key in two organizations is two independent operations.
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

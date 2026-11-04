@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cleanup import CreatedIds, delete_exact  # noqa: E402
 AUTH, ORG, INVENTORY, SUPER_PORTAL, TENANT_PORTAL = 8000, 8001, 8002, 3000, 3001
 results = []
 
@@ -106,6 +108,7 @@ def main() -> int:
     emails = {"a": "isoprod-admin-a@example.org", "b": "isoprod-admin-b@example.org"}
     org_names = {"a": "Isolation Products Alpha", "b": "Isolation Products Beta"}
     org_ids, tokens, cookies = {}, {}, {}
+    created = CreatedIds()  # exact ids of everything this run creates; cleanup deletes only these
 
     def portal(key, method, path, body=None):
         """A call from the signed-in administrator's browser to the Organization Portal."""
@@ -119,14 +122,16 @@ def main() -> int:
         body = {"sku": "ISO-1", "name": "Item", "category": "General", "unit": "pcs", "costPrice": "1.00", "sellingPrice": "2.00",
                 "currencyCode": "USD", **overrides}
         status, text, _, _ = portal(key, "POST", "/api/products", body)
+        created.add("products", jbody(text).get("product", {}).get("id"))
         return status, jbody(text)
 
     try:
         print("== setup: two organizations, one administrator each (no emails involved)")
         internal_key = docker("compose", "exec", "-T", "auth-service", "printenv", "INTERNAL_API_KEY")
-        docker("compose", "exec", "-T", "-e", f"TPW={password}", "-e", f"TEM={sa_email}", "auth-service", "python", "-c",
-               "import os\nfrom app.database import SessionLocal\nfrom app.models import User\nfrom app.security import hash_password\n"
-               "with SessionLocal() as db:\n db.add(User(full_name='Isoprod SA', email=os.environ['TEM'], password_hash=hash_password(os.environ['TPW']), role='super-admin')); db.commit()")
+        sa_id = docker("compose", "exec", "-T", "-e", f"TPW={password}", "-e", f"TEM={sa_email}", "auth-service", "python", "-c",
+                       "import os\nfrom app.database import SessionLocal\nfrom app.models import User\nfrom app.security import hash_password\n"
+                       "with SessionLocal() as db:\n u = User(full_name='Isoprod SA', email=os.environ['TEM'], password_hash=hash_password(os.environ['TPW']), role='super-admin')\n db.add(u); db.commit(); print(u.id)")
+        created.add("users", sa_id)
         status, text, _, _ = call(AUTH, "POST", "/api/v1/auth/login", {"email": sa_email, "password": password})
         sa_token = jbody(text).get("access_token")
         check("throwaway Super Admin can sign in", status == 200 and sa_token, (status, text))
@@ -134,10 +139,12 @@ def main() -> int:
             status, text, _, _ = call(ORG, "POST", "/api/v1/organizations", {
                 "name": org_names[key], "slug": f"isoprod-{key}", "country_code": "DE", "contact_email": f"ops-{key}@example.org"}, bearer(sa_token))
             org_ids[key] = jbody(text).get("id")
+            created.add("organizations", org_ids[key])
             check(f"organization {key.upper()} created", status == 201 and org_ids[key], (status, text))
             status, text, _, _ = call(AUTH, "POST", "/internal/organization-admins", {
                 "organization_id": org_ids[key], "full_name": f"Admin {key.upper()}", "email": emails[key], "password": password},
                 {"X-Internal-Key": internal_key})
+            created.add("users", jbody(text).get("id"))
             check(f"administrator {key.upper()} created", status == 201, (status, text))
             status, text, _, _ = call(AUTH, "POST", "/api/v1/auth/login", {"email": emails[key], "password": password})
             tokens[key] = jbody(text).get("access_token")
@@ -185,7 +192,8 @@ def main() -> int:
         print("\n== 4. the organization cannot be chosen by the browser")
         status, text, _, _ = portal("a", "POST", "/api/products", {"sku": "ISO-SNEAKY", "name": "IsoAlpha sneaky", "category": "General", "unit": "pcs",
                                     "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD", "organization_id": org_ids["b"], "organizationId": org_ids["b"]})
-        owner = psql("impex_inventory", "SELECT organization_id FROM products WHERE sku = 'ISO-SNEAKY'")
+        created.add("products", jbody(text).get("product", {}).get("id"))
+        owner = psql("impex_inventory", f"SELECT organization_id FROM products WHERE id = '{jbody(text).get('product', {}).get('id')}'")
         check("a product 'sent for' organization B is stored under A (the signed-in administrator's organization)", status == 201 and owner == org_ids["a"], (status, owner))
         status, text, _, _ = call(INVENTORY, "POST", "/api/v1/inventory/products", {"sku": "ISO-DIRECT", "name": "x", "category": "c", "unit": "pcs",
                                   "cost_price": "1", "selling_price": "2", "currency_code": "USD", "organization_id": org_ids["b"]}, bearer(tokens["a"]))
@@ -271,16 +279,12 @@ def main() -> int:
         else:
             print("\n(skipped: Inventory Service outage check - run with --with-outage)")
     finally:
-        print("\n== cleanup (only what this script created)")
-        ids = ", ".join(f"'{v}'" for v in org_ids.values() if v)
-        if ids:
-            psql("impex_inventory", f"DELETE FROM products WHERE organization_id IN ({ids})")
-        psql("impex_organizations", "DELETE FROM organizations WHERE slug LIKE 'isoprod-%'")
-        psql("impex_auth", "DELETE FROM users WHERE email LIKE 'isoprod-%@example.org'")
-        if ids:
-            print("leftover products of the test organizations:", psql("impex_inventory", f"SELECT count(*) FROM products WHERE organization_id IN ({ids})"))
-        print("leftover test organizations/users          :", psql("impex_organizations", "SELECT count(*) FROM organizations WHERE slug LIKE 'isoprod-%'"),
-              "/", psql("impex_auth", "SELECT count(*) FROM users WHERE email LIKE 'isoprod-%'"))
+        print("\n== cleanup (exactly the rows this run created, by id)")
+        left_products = delete_exact(psql, "impex_inventory", "products", created.get("products"))
+        left_orgs = delete_exact(psql, "impex_organizations", "organizations", created.get("organizations"))
+        left_users = delete_exact(psql, "impex_auth", "users", created.get("users"))
+        print(f"deleted {len(created.get('products'))} products, {len(created.get('organizations'))} organizations, {len(created.get('users'))} users")
+        print(f"of those ids, rows still present -> products: {left_products}, organizations: {left_orgs}, users: {left_users}")
 
     print(f"\n{sum(results)}/{len(results)} checks passed")
     return 0 if results and all(results) else 1

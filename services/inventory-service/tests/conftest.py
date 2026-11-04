@@ -88,9 +88,10 @@ def session_factory(engine):
 
 @pytest.fixture(autouse=True)
 def database(engine, session_factory):
-    """Every test starts with an empty products table and uses the test database."""
+    """Every test starts with empty inventory tables and uses the test database. (TRUNCATE does not fire the
+    append-only row trigger, which is why it can reset the ledger here without the maintenance flag.)"""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE products"))
+        conn.execute(text("TRUNCATE TABLE stock_movements, stock_balances, stock_operations, warehouses, products"))
 
     def override_get_db():
         db = session_factory()
@@ -178,3 +179,68 @@ def client(directory):
 
 def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+# --- helpers for the warehouse / stock tests -----------------------------------------------------------
+PRODUCTS_URL = "/api/v1/inventory/products"
+WAREHOUSES_URL = "/api/v1/inventory/warehouses"
+STOCK_URL = "/api/v1/inventory/stock"
+
+
+def product_payload(**overrides) -> dict:
+    return {"sku": "SKU-1", "name": "Thing", "category": "General", "unit": "pcs", "cost_price": "1.00",
+            "selling_price": "2.00", "currency_code": "USD", **overrides}
+
+
+class Api:
+    """A tiny wrapper so stock tests read like the story they tell."""
+
+    def __init__(self, client, token: str):
+        self.client, self.headers = client, bearer(token)
+
+    def product(self, **overrides) -> dict:
+        response = self.client.post(PRODUCTS_URL, json=product_payload(**overrides), headers=self.headers)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def warehouse(self, code="MAIN", name=None, **extra) -> dict:
+        response = self.client.post(WAREHOUSES_URL, json={"code": code, "name": name or f"{code} warehouse", **extra}, headers=self.headers)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def change(self, action, key=None, **body):
+        """POST /stock/<action> with a fresh Idempotency-Key unless one is given."""
+        headers = {**self.headers, "Idempotency-Key": key or f"key-{uuid.uuid4()}"}
+        return self.client.post(f"{STOCK_URL}/{action}", json=body, headers=headers)
+
+    def add(self, product, warehouse, quantity, action="in", **extra):
+        response = self.change(action, product_id=product["id"], warehouse_id=warehouse["id"], quantity=str(quantity), **extra)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def transfer(self, product, source, destination, quantity, key=None, **extra):
+        return self.change("transfer", key=key, product_id=product["id"], from_warehouse_id=source["id"],
+                           to_warehouse_id=destination["id"], quantity=str(quantity), **extra)
+
+    def quantity(self, product, warehouse) -> str:
+        """The balance of one product in one warehouse as the overview shows it ("0" when there is none)."""
+        body = self.client.get(STOCK_URL, params={"q": product["sku"], "status": "all"}, headers=self.headers).json()
+        (item,) = [i for i in body["items"] if i["product_id"] == product["id"]]
+        return next((line["quantity"] for line in item["lines"] if line["warehouse_id"] == warehouse["id"]), "0")
+
+    def movements(self, **params) -> dict:
+        return self.client.get(f"{STOCK_URL}/movements", params=params, headers=self.headers).json()
+
+
+@pytest.fixture
+def two_orgs(directory, client):
+    """Alpha and Beta, each with an administrator and an Api wrapper."""
+    alpha, beta = directory.add_organization("Alpha Trading"), directory.add_organization("Beta Logistics")
+    directory.add_user("admin-alpha", "organization-admin", alpha)
+    directory.add_user("admin-beta", "organization-admin", beta)
+    return {"alpha_id": alpha, "beta_id": beta, "alpha": Api(client, "admin-alpha"), "beta": Api(client, "admin-beta")}
+
+
+@pytest.fixture
+def api(two_orgs):
+    return two_orgs["alpha"]

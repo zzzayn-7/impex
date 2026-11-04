@@ -6,6 +6,9 @@ import type { TenantAdmin } from "@/lib/tenant-auth";
 const NAV_LINKS = [
   { key: "dashboard", href: "/", label: "Dashboard" },
   { key: "products", href: "/products", label: "Products" },
+  { key: "warehouses", href: "/warehouses", label: "Warehouses" },
+  { key: "stock", href: "/stock", label: "Stock" },
+  { key: "movements", href: "/movements", label: "Movements" },
 ] as const;
 
 export default function PortalHeader({

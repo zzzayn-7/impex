@@ -2,9 +2,11 @@ import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+
+from app.units import allows_fractions
 
 SKU_RE = re.compile(r"^[A-Z0-9][A-Z0-9._/\-]{0,63}$")
 # Harmonized System code: 4 digits, optionally refined by 2-digit groups (8517.12.00), or 4-10 plain digits.
@@ -107,9 +109,185 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @computed_field  # the portal asks the service instead of keeping its own list of units
+    @property
+    def unit_allows_fractions(self) -> bool:
+        return allows_fractions(self.unit)
+
 
 class ProductList(BaseModel):
     items: List[ProductResponse]
     total: int  # all matches for the filters, ignoring limit/offset
+    limit: int
+    offset: int
+
+
+# =====================================================================================================
+# Warehouses
+# =====================================================================================================
+CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
+
+
+class WarehouseFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("code", check_fields=False)
+    @classmethod
+    def _normalize_code(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.upper()  # "main" and "MAIN" are the same warehouse code
+        if not CODE_RE.match(value):
+            raise ValueError("Code may contain only letters, digits and . _ - (max 32 characters)")
+        return value
+
+    @field_validator("address", check_fields=False)
+    @classmethod
+    def _blank_address_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None or value == "" else value
+
+
+class WarehouseCreate(WarehouseFields):
+    code: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=255)
+    address: Optional[str] = Field(default=None, max_length=500)
+
+
+class WarehouseUpdate(WarehouseFields):
+    """Partial update: only the fields that are sent change."""
+
+    code: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    address: Optional[str] = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _at_least_one_and_no_nulls(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to change.")
+        for field in ("code", "name"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be empty")
+        return self
+
+
+class WarehouseResponse(BaseModel):
+    """A warehouse as the tenant sees it. No organization_id is exposed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    name: str
+    address: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    products_in_stock: int = 0  # how many products currently have stock here (archive/restore hint)
+
+
+class WarehouseList(BaseModel):
+    items: List[WarehouseResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+# =====================================================================================================
+# Stock
+# =====================================================================================================
+# Exact decimals again: at most 14 digits before and 4 after the point, strictly positive.
+Quantity = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=4)]
+MovementType = Literal["opening", "in", "out", "transfer_out", "transfer_in"]
+
+
+class StockChange(BaseModel):
+    """Opening balance, stock-in or stock-out of one product in one warehouse. No organization field exists."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    product_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    quantity: Quantity
+    reason: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _blank_reason_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return None if value == "" else value
+
+
+class StockTransfer(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    product_id: uuid.UUID
+    from_warehouse_id: uuid.UUID
+    to_warehouse_id: uuid.UUID
+    quantity: Quantity
+    reason: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _blank_reason_to_none(cls, value: Optional[str]) -> Optional[str]:
+        return None if value == "" else value
+
+
+class MovementResponse(BaseModel):
+    id: uuid.UUID
+    operation_id: uuid.UUID
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    product_unit: str
+    unit_allows_fractions: bool
+    warehouse_id: uuid.UUID
+    warehouse_code: str
+    warehouse_name: str
+    movement_type: MovementType
+    quantity: Decimal
+    balance_after: Decimal
+    reason: str
+    transfer_id: Optional[uuid.UUID]
+    created_by_email: str
+    created_at: datetime
+
+
+class MovementList(BaseModel):
+    items: List[MovementResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class StockOperationResult(BaseModel):
+    operation_id: uuid.UUID
+    kind: Literal["opening", "in", "out", "transfer"]
+    replayed: bool  # true when this was a retry of an earlier request with the same Idempotency-Key
+    movements: List[MovementResponse]
+
+
+class StockLine(BaseModel):
+    warehouse_id: uuid.UUID
+    warehouse_code: str
+    warehouse_name: str
+    warehouse_active: bool
+    quantity: Decimal
+
+
+class StockProduct(BaseModel):
+    product_id: uuid.UUID
+    sku: str
+    name: str
+    category: str
+    unit: str
+    unit_allows_fractions: bool
+    is_active: bool
+    total_quantity: Decimal  # across every warehouse that holds it
+    available_quantity: Decimal  # only warehouses that are active
+    lines: List[StockLine]
+
+
+class StockOverview(BaseModel):
+    items: List[StockProduct]
+    total: int
     limit: int
     offset: int

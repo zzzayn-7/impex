@@ -31,6 +31,7 @@ export type Product = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  unit_allows_fractions?: boolean; // decided by the Inventory Service: may this unit be counted in fractions?
 };
 
 export const SKU_RE = /^[A-Z0-9][A-Z0-9._/-]{0,63}$/;

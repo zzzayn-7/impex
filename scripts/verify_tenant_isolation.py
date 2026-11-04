@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cleanup import CreatedIds, delete_exact  # noqa: E402
 AUTH, ORG, SUPER_PORTAL, TENANT_PORTAL = 8000, 8001, 3000, 3001
 results = []
 
@@ -115,13 +117,15 @@ def main() -> int:
     slugs = {"a": "isolation-alpha-co", "b": "isolation-beta-co"}
     names = {"a": "Isolation Alpha Co", "b": "Isolation Beta Co"}
     org_ids = {}
+    created = CreatedIds()  # exact ids of everything this run creates; cleanup deletes only these
 
     try:
         print("== setup: two organizations, one administrator each (no emails involved)")
         internal_key = docker("compose", "exec", "-T", "auth-service", "printenv", "INTERNAL_API_KEY")
-        docker("compose", "exec", "-T", "-e", f"TPW={password}", "-e", f"TEM={sa_email}", "auth-service", "python", "-c",
-               "import os\nfrom app.database import SessionLocal\nfrom app.models import User\nfrom app.security import hash_password\n"
-               "with SessionLocal() as db:\n db.add(User(full_name='Isolation SA', email=os.environ['TEM'], password_hash=hash_password(os.environ['TPW']), role='super-admin')); db.commit()")
+        sa_id = docker("compose", "exec", "-T", "-e", f"TPW={password}", "-e", f"TEM={sa_email}", "auth-service", "python", "-c",
+                       "import os\nfrom app.database import SessionLocal\nfrom app.models import User\nfrom app.security import hash_password\n"
+                       "with SessionLocal() as db:\n u = User(full_name='Isolation SA', email=os.environ['TEM'], password_hash=hash_password(os.environ['TPW']), role='super-admin')\n db.add(u); db.commit(); print(u.id)")
+        created.add("users", sa_id)
         status, text, _, _ = call(AUTH, "POST", "/api/v1/auth/login", {"email": sa_email, "password": password})
         sa_token = jbody(text).get("access_token")
         check("throwaway Super Admin can sign in", status == 200 and sa_token, (status, text))
@@ -131,10 +135,12 @@ def main() -> int:
                 "name": names[key], "slug": slugs[key], "country_code": "DE" if key == "a" else "FR",
                 "tax_identifier": f"TAX-{key.upper()}-123", "contact_email": f"ops-{key}@example.org"}, bearer(sa_token))
             org_ids[key] = jbody(text).get("id")
+            created.add("organizations", org_ids[key])
             check(f"organization {key.upper()} created", status == 201 and org_ids[key], (status, text))
             status, text, _, _ = call(AUTH, "POST", "/internal/organization-admins", {
                 "organization_id": org_ids[key], "full_name": f"Admin {key.upper()}", "email": emails[key], "password": password},
                 {"X-Internal-Key": internal_key})
+            created.add("users", jbody(text).get("id"))
             check(f"administrator {key.upper()} created for organization {key.upper()}", status == 201, (status, text))
             status, text, _, _ = call(AUTH, "POST", "/api/v1/auth/login", {"email": emails[key], "password": password})
             tokens[key] = jbody(text).get("access_token")
@@ -246,11 +252,11 @@ def main() -> int:
         else:
             print("\n(skipped: Auth Service outage check - run with --with-outage)")
     finally:
-        print("\n== cleanup (only what this script created)")
-        psql("impex_organizations", "DELETE FROM organizations WHERE slug LIKE 'isolation-%'")
-        psql("impex_auth", "DELETE FROM users WHERE email LIKE 'isolation-%@example.org'")
-        print("leftover isolation organizations:", psql("impex_organizations", "SELECT count(*) FROM organizations WHERE slug LIKE 'isolation-%'"))
-        print("leftover isolation users        :", psql("impex_auth", "SELECT count(*) FROM users WHERE email LIKE 'isolation-%'"))
+        print("\n== cleanup (exactly the rows this run created, by id)")
+        left_orgs = delete_exact(psql, "impex_organizations", "organizations", created.get("organizations"))
+        left_users = delete_exact(psql, "impex_auth", "users", created.get("users"))
+        print(f"deleted {len(created.get('organizations'))} organizations and {len(created.get('users'))} users")
+        print(f"of those ids, rows still present -> organizations: {left_orgs}, users: {left_users}")
 
     print(f"\n{sum(results)}/{len(results)} checks passed")
     return 0 if results and all(results) else 1
