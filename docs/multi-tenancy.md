@@ -135,6 +135,12 @@ another's result, and the same key in two organizations is two independent opera
 
 `product_identifiers` is tenant-owned like everything else: `organization_id NOT NULL`, a composite foreign key `(organization_id, product_id)` to `products`, and `UNIQUE (organization_id, value)` so one code means at most one product *inside* an organization while two organizations may reuse the same text. A scan lookup runs only through the scoped helpers; a code or SKU of another organization is a plain 404, byte-for-byte the answer for a code that does not exist, so a scan cannot be used to discover that another tenant has a product. Codes are retired, never deleted or re-pointed (trigger).
 
+## Sales: clients, delivery lists and the Inventory Service (Step 15.2)
+
+`clients`, `delivery_lists`, `delivery_list_items` and `delivery_list_counters` all carry `organization_id NOT NULL`; `delivery_lists` points at `clients` and `delivery_list_items` at `delivery_lists` through **composite** foreign keys `(organization_id, id)`, so a list cannot reference another organization's client, nor an item another organization's list, even by a bug. Client names and list numbers are unique **per organization**.
+
+The Sales Service never keeps product data. When it needs to know about a product it asks the Inventory Service with the **caller's own bearer token** (never a service secret), so the Inventory Service derives the organization itself. A product id of another organization is therefore absent from the answer and is reported as `404 Product not found.`, byte for byte the answer for an id that does not exist. Product facts the browser sends are refused, not trusted.
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

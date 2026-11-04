@@ -295,6 +295,12 @@ class StockOverview(BaseModel):
     offset: int
 
 
+class StockSummary(BaseModel):
+    """Details and stock for specific products. Ids that are not the caller's products are simply absent."""
+
+    items: List[StockProduct]
+
+
 # =====================================================================================================
 # Scannable codes (QR / Code 128 / supplier barcodes) and scan lookup
 # =====================================================================================================

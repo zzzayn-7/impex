@@ -3,3 +3,4 @@
 CREATE DATABASE impex_auth;
 CREATE DATABASE impex_organizations;
 CREATE DATABASE impex_inventory;
+CREATE DATABASE impex_sales;

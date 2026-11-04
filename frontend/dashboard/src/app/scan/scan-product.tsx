@@ -1,23 +1,28 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { LookupResult, ScanResult, ScanSource, createScanSession, lookupOnServer } from "@/lib/scan";
 import { StockAction, Warehouse, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "@/app/stock/stock-form";
 import CameraScanner from "./camera-scanner";
+import DeliverablesPanel, { ActiveList } from "./deliverables-panel";
 
-const SCAN_ACTIONS: StockAction[] = ["in", "out", "transfer"];
-const ACTION_BUTTONS: { action: StockAction; label: string }[] = [
+// Warehouse transfers are not offered here: they stay on the Stock page. The scanner prioritises receiving, issuing and
+// preparing deliveries.
+const SCAN_ACTIONS: StockAction[] = ["in", "out"];
+type Panel = StockAction | "deliver";
+const ACTION_BUTTONS: { action: Panel; label: string }[] = [
   { action: "in", label: "Stock In" },
   { action: "out", label: "Stock Out" },
-  { action: "transfer", label: "Transfer" },
+  { action: "deliver", label: "Add to Deliverables" },
 ];
 
 type Notice = { tone: "info" | "error" | "success"; text: string } | null;
 
-export default function ScanProduct({ warehouses }: { warehouses: Warehouse[] }) {
+export default function ScanProduct({ warehouses, initialListId = null }: { warehouses: Warehouse[]; initialListId?: string | null }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
@@ -26,7 +31,10 @@ export default function ScanProduct({ warehouses }: { warehouses: Warehouse[] })
   const [result, setResult] = useState<ScanResult | null>(null);
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
-  const [panel, setPanel] = useState<StockAction | null>(null);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  // The delivery list products are being collected on. It survives from one scanned product to the next.
+  const [activeList, setActiveList] = useState<ActiveList | null>(null);
+  const [activeListId, setActiveListId] = useState<string | null>(initialListId);
 
   const activeWarehouses = useMemo(() => warehouses.filter((w) => w.is_active), [warehouses]);
   const session = useRef(createScanSession({ lookup: lookupOnServer })).current;
@@ -174,6 +182,15 @@ export default function ScanProduct({ warehouses }: { warehouses: Warehouse[] })
         )}
       </div>
 
+      {activeList && (
+        <div role="status" aria-label="Active delivery list" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm text-indigo-100">
+          <span>
+            Collecting for <Link href={`/delivery-lists/${activeList.id}`} className="font-mono font-semibold underline-offset-2 hover:underline">{activeList.number}</Link> · {activeList.clientName} · {activeList.itemCount} {activeList.itemCount === 1 ? "item" : "items"}
+          </span>
+          <button type="button" onClick={() => { setActiveList(null); setActiveListId(null); }} className="rounded-md border border-indigo-400/40 px-2.5 py-1 text-xs hover:bg-indigo-500/20">Stop</button>
+        </div>
+      )}
+
       {product && stock && (
         <section aria-label="Scanned product" className="space-y-5 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -229,12 +246,12 @@ export default function ScanProduct({ warehouses }: { warehouses: Warehouse[] })
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Stock actions">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Actions">
                 {ACTION_BUTTONS.map(({ action, label }) => (
                   <button
                     key={action}
                     type="button"
-                    disabled={noWarehouse}
+                    disabled={noWarehouse && action !== "deliver"}
                     aria-pressed={panel === action}
                     onClick={() => { setNotice(null); setPanel(panel === action ? null : action); }}
                     className={`min-h-12 rounded-lg px-2 py-2 text-sm font-semibold transition disabled:opacity-40 ${
@@ -245,8 +262,22 @@ export default function ScanProduct({ warehouses }: { warehouses: Warehouse[] })
                   </button>
                 ))}
               </div>
-              {noWarehouse && <p className="text-xs text-amber-300">Create a warehouse first (Warehouses) to record stock.</p>}
-              {panel && !noWarehouse && (
+              {noWarehouse && <p className="text-xs text-amber-300">Create a warehouse first (Warehouses) to record stock. Delivery lists do not need one.</p>}
+              <p className="text-xs text-slate-500">
+                Moving stock between warehouses is on the <Link href="/stock" className="text-indigo-300 hover:text-indigo-200">Stock page</Link>.
+              </p>
+              {panel === "deliver" && (
+                <DeliverablesPanel
+                  key={product.id}
+                  product={product}
+                  stock={stock}
+                  activeListId={activeList?.id ?? activeListId}
+                  onActiveList={(list) => { setActiveList(list); setActiveListId(list.id); }}
+                  onAdded={(message) => { setNotice({ tone: "success", text: message }); refocus(); }}
+                  onClose={() => { setPanel(null); refocus(); }}
+                />
+              )}
+              {panel && panel !== "deliver" && !noWarehouse && (
                 <StockForm
                   key={`${product.id}-${panel}`}
                   initialAction={panel}

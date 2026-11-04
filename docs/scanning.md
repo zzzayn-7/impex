@@ -28,6 +28,8 @@ Rules (also enforced by the database):
 3. Pressing an action opens the normal Step 14 form for that product. **Review** shows a plain summary (*"Remove 5 pcs of Steel bolt from MAIN?"*); only **Confirm** sends the request, with an `Idempotency-Key`. A double click or a retry applies once. Negative stock and fractions of indivisible units (pcs, box, …) are refused exactly as before.
 4. Nothing changes inventory merely because a code was scanned.
 
+**Add to Deliverables** (also on the Scan page): choose one of your draft delivery lists (or create one for a client), type the quantity the client needs, add. The product's current *available* stock is shown as information, with a warning if you ask for more; **the stock is not deducted or reserved**. The chosen list stays selected while you scan more products. Scanning a product that is already on the list never adds to it: you are asked whether to set or increase its quantity. Warehouse transfers are done on the Stock page, not from the scanner. See [`services/sales-service/README.md`](../services/sales-service/README.md).
+
 Duplicate protection: the same code arriving twice within 1.5 s (a double Enter, a sticky trigger) is ignored; a camera, which sees the same label on every frame, is ignored for 4 s and stops itself after the first code.
 
 ## Labels

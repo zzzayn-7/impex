@@ -2,7 +2,7 @@
 authenticated administrator's, an inactive organization is refused, and no route accepts an organization id."""
 import re
 import uuid
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import or_
@@ -12,13 +12,14 @@ from sqlalchemy.orm import Session
 from app import stock
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
-from app.models import Warehouse
+from app.models import Product, Warehouse
 from app.schemas import (
     MovementList,
     MovementType,
     StockChange,
     StockOperationResult,
     StockOverview,
+    StockSummary,
     StockTransfer,
     WarehouseCreate,
     WarehouseList,
@@ -166,6 +167,24 @@ def stock_overview(
         db, tenant, q=q, category=category, warehouse_id=warehouse_id, product_status=status_filter,
         in_stock_only=in_stock_only, limit=limit, offset=offset,
     )
+
+
+@router.get("/stock/summary", response_model=StockSummary, tags=["Stock"])
+def stock_summary(
+    product_id: List[uuid.UUID] = Query(default=[], max_length=100, description="Up to 100 product ids"),
+    tenant: TenantContext = Tenant,
+    db: Session = Depends(get_db),
+):
+    """Name, SKU, unit, status and stock (total / available, by warehouse) for specific products.
+
+    This is how other services (e.g. the Sales Service, with the administrator's own token) check that a product exists
+    and how much of it is on hand, without trusting what a browser says. A product that does not exist, or belongs to
+    another organization, is simply missing from the answer. Read-only.
+    """
+    if not product_id:
+        return StockSummary(items=[])
+    products = db.scalars(scoped_select(Product, tenant).where(Product.id.in_(product_id)).order_by(Product.name, Product.sku, Product.id)).all()
+    return StockSummary(items=stock.stock_items(db, tenant, products))
 
 
 @router.get("/stock/movements", response_model=MovementList, tags=["Stock"])

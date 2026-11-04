@@ -16,6 +16,7 @@ vi.mock("@/lib/camera", async (importOriginal) => ({
 import CameraScanner from "@/app/scan/camera-scanner";
 import ScanProduct from "@/app/scan/scan-product";
 import CodesManager from "@/app/products/[id]/codes/codes-manager";
+import StockForm from "@/app/stock/stock-form";
 import type { Warehouse } from "@/lib/stock-validation";
 
 const BOLT_ID = "6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
@@ -162,7 +163,9 @@ describe("Scan Product: what is shown after a scan", () => {
     expect(text).toContain("50 pcs"); // total: 40 + 10
     expect(within(card).getByText("Available stock").parentElement!.textContent).toContain("40 pcs"); // the archived warehouse's 10 is excluded
     expect(text).toContain("in active warehouses only");
-    for (const name of ["Stock In", "Stock Out", "Transfer"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Stock In", "Stock Out", "Add to Deliverables"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Transfer" })).toBeNull(); // transfers stay on the Stock page
+    expect(within(card).getByRole("link", { name: "Stock page" }).getAttribute("href")).toBe("/stock");
   });
 
   it("explains decimals for a measurable unit and a SKU match", async () => {
@@ -256,22 +259,22 @@ describe("Scan Product: what is shown after a scan", () => {
 
 // =============================================================================================================
 describe("Scan Product: changing stock reuses the Step 14 flow, with confirmation", () => {
-  async function openForm(user: ReturnType<typeof setup>, action: "Stock In" | "Stock Out" | "Transfer", code = "BOLT-1") {
+  async function openForm(user: ReturnType<typeof setup>, action: "Stock In" | "Stock Out", code = "BOLT-1") {
     render(<ScanProduct warehouses={warehouses} />);
     await user.type(scanBox(), `${code}{Enter}`);
     await screen.findByRole("region", { name: "Scanned product" });
     await user.click(screen.getByRole("button", { name: action }));
-    return screen.getByRole("form", { name: action === "Transfer" ? "Transfer" : action === "Stock In" ? "Add stock" : "Remove stock" });
+    return screen.getByRole("form", { name: action === "Stock In" ? "Add stock" : "Remove stock" });
   }
   const fill = async (user: ReturnType<typeof setup>, form: HTMLElement, quantity: string, warehouse = W_MAIN) => {
     await user.selectOptions(within(form).getByLabelText("Warehouse"), warehouse);
     await user.type(within(form).getByLabelText(/^Quantity/), quantity);
   };
 
-  it("offers only in / out / transfer, with the scanned product fixed", async () => {
+  it("offers only in / out, with the scanned product fixed", async () => {
     const user = setup();
     const form = await openForm(user, "Stock In");
-    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Add stock", "Remove stock", "Transfer"]);
+    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Add stock", "Remove stock"]);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).disabled).toBe(true);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).value).toBe(BOLT_ID);
     expect(within(form).getByLabelText("Warehouse").textContent).toContain("MAIN");
@@ -432,28 +435,6 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     expect((await screen.findByRole("alert")).textContent).toContain(message);
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(within(form).getByLabelText(/^Quantity/)).toHaveProperty("value", "100"); // nothing lost, the user can correct it
-  });
-
-  it("transfers between two warehouses with a summary naming both", async () => {
-    const user = setup();
-    const form = await openForm(user, "Transfer");
-    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
-    await user.selectOptions(within(form).getByLabelText("To warehouse"), W_ANNEX);
-    await user.type(within(form).getByLabelText(/^Quantity/), "5");
-    await user.click(within(form).getByRole("button", { name: "Review" }));
-    expect((await screen.findByRole("alertdialog")).textContent).toContain("Transfer 5 pcs of Steel bolt from MAIN to ANNEX?");
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
-    await screen.findByText(/Stock transferred\./);
-    expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/transfer"]);
-    expect(JSON.parse(stockCalls()[0].init.body)).toEqual({ product_id: BOLT_ID, from_warehouse_id: W_MAIN, to_warehouse_id: W_ANNEX, quantity: "5" });
-  });
-
-  it("will not transfer to the same warehouse", async () => {
-    const user = setup();
-    const form = await openForm(user, "Transfer");
-    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
-    // the destination list already leaves the source out
-    expect(Array.from((within(form).getByLabelText("To warehouse") as HTMLSelectElement).options).map((o) => o.value)).not.toContain(W_MAIN);
   });
 
   it("closes the open form when a different product is scanned (it belonged to the previous one)", async () => {
@@ -684,4 +665,38 @@ describe("Codes & labels page", () => {
     calls = [];
     vi.stubGlobal("fetch", vi.fn(async (input: any, init: any = {}) => { calls.push({ url: String(input), init }); return handler(); }));
   }
+});
+
+
+// Transfers are not offered by the scanner any more, but the shared form (used by the Stock page) still does them.
+describe("StockForm: transfers (kept on the Stock page)", () => {
+  const renderForm = () =>
+    render(<StockForm initialAction="transfer" initialProductId={BOLT_ID} products={[bolt as any]} warehouses={warehouses} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
+
+  it("offers all four operations by default", () => {
+    renderForm();
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening balance", "Add stock", "Remove stock", "Transfer"]);
+  });
+
+  it("transfers between two warehouses with a summary naming both", async () => {
+    const user = setup();
+    renderForm();
+    const form = screen.getByRole("form", { name: "Transfer" });
+    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
+    await user.selectOptions(within(form).getByLabelText("To warehouse"), W_ANNEX);
+    await user.type(within(form).getByLabelText(/^Quantity/), "5");
+    await user.click(within(form).getByRole("button", { name: "Review" }));
+    expect((await screen.findByRole("alertdialog")).textContent).toContain("Transfer 5 pcs of Steel bolt from MAIN to ANNEX?");
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/transfer"]));
+    expect(JSON.parse(stockCalls()[0].init.body)).toEqual({ product_id: BOLT_ID, from_warehouse_id: W_MAIN, to_warehouse_id: W_ANNEX, quantity: "5" });
+  });
+
+  it("will not transfer to the same warehouse", async () => {
+    const user = setup();
+    renderForm();
+    const form = screen.getByRole("form", { name: "Transfer" });
+    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
+    expect(Array.from((within(form).getByLabelText("To warehouse") as HTMLSelectElement).options).map((o) => o.value)).not.toContain(W_MAIN);
+  });
 });

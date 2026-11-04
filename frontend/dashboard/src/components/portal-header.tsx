@@ -10,6 +10,8 @@ const NAV_LINKS = [
   { key: "stock", href: "/stock", label: "Stock" },
   { key: "scan", href: "/scan", label: "Scan Product" },
   { key: "movements", href: "/movements", label: "Movements" },
+  { key: "deliveries", href: "/delivery-lists", label: "Delivery Lists" },
+  { key: "clients", href: "/clients", label: "Clients" },
 ] as const;
 
 export default function PortalHeader({

@@ -107,7 +107,7 @@ describe("Scan Product page", () => {
   it("renders the scan box, the camera button and the scanner hint", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = renderToStaticMarkup(await ScanPage());
+    const html = renderToStaticMarkup(await ScanPage({ searchParams: {} }));
     for (const expected of ['id="scan-input"', "autofocus", "Scan Product", "Use camera", "Look up", "USB and Bluetooth scanners", "Scanning only looks the product up"]) {
       expect(html.toLowerCase(), expected).toContain(expected.toLowerCase());
     }
@@ -116,7 +116,7 @@ describe("Scan Product page", () => {
   it("does not start the camera or load anything but the organization's own warehouses", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = renderToStaticMarkup(await ScanPage());
+    const html = renderToStaticMarkup(await ScanPage({ searchParams: {} }));
     expect(html).not.toContain("Start camera"); // the camera panel does not even exist until the user asks for it
     expect(inventoryCalls().map((c) => new URL(c.url).pathname)).toEqual(["/api/v1/inventory/warehouses"]);
     expect(inventoryCalls()[0].headers.Authorization).toBe("Bearer token-alpha");
@@ -125,12 +125,12 @@ describe("Scan Product page", () => {
 
   it("redirects without a session, for a Super Admin and for the wrong cookie, calling no inventory endpoint", async () => {
     stubWorld();
-    await expect(ScanPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(ScanPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-super";
-    await expect(ScanPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(ScanPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     delete jar[TENANT_SESSION_COOKIE];
     jar["impex_session"] = "token-alpha";
-    await expect(ScanPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(ScanPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     expect(inventoryCalls()).toHaveLength(0);
   });
 
