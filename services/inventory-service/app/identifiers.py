@@ -157,6 +157,22 @@ def register_external(db: Session, tenant: TenantContext, product: Product, kind
     return identifier
 
 
+def barcode_owner_of(db: Session, tenant: TenantContext, sku: str, exclude_product_id: Optional[uuid.UUID] = None) -> Optional[Product]:
+    """The OTHER product (if any) that already has `sku` as a registered barcode, active or retired.
+
+    A scan resolves a registered barcode first and then a SKU, so a SKU equal to another product's barcode would make that
+    code ambiguous. (Retired barcodes stay reserved for their product, so they count too.)
+    """
+    query = (
+        scoped_select(Product, tenant)
+        .join(ProductIdentifier, (ProductIdentifier.product_id == Product.id) & (ProductIdentifier.organization_id == Product.organization_id))
+        .where(ProductIdentifier.value == sku)
+    )
+    if exclude_product_id is not None:
+        query = query.where(Product.id != exclude_product_id)
+    return db.scalars(query).first()
+
+
 def retire(db: Session, tenant: TenantContext, identifier: ProductIdentifier) -> ProductIdentifier:
     from sqlalchemy import func
 

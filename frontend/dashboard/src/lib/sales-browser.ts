@@ -13,7 +13,7 @@ export const STATUS_STYLE: Record<ListStatus, string> = {
   cancelled: "border-slate-600/40 bg-slate-700/30 text-slate-400",
 };
 
-export type ApiResult<T = any> = { ok: boolean; status: number; data: T | null; error: string; code?: string; item?: DuplicateItem; fieldErrors?: Record<string, string> };
+export type ApiResult<T = any> = { ok: boolean; status: number; data: T | null; error: string; code?: string; item?: DuplicateItem; line?: any; fieldErrors?: Record<string, string> };
 export type DuplicateItem = { id: string; quantity: string; unit: string; product_name: string };
 
 export async function api<T = any>(url: string, init: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<ApiResult<T>> {
@@ -31,6 +31,7 @@ export async function api<T = any>(url: string, init: RequestInit = {}, fetchFn:
       error: res.ok ? "" : typeof data?.error === "string" ? data.error : "That did not work. Please try again.",
       code: data?.code,
       item: data?.item,
+      line: data?.line,
       fieldErrors: data?.fieldErrors,
     };
   } catch {

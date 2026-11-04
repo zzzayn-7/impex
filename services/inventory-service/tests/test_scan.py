@@ -2,13 +2,24 @@
 import uuid
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.models import Product, StockBalance, StockMovement, StockOperation
 
 from conftest import PRODUCTS_URL, STOCK_URL, bearer
 
 RESOLVE = "/api/v1/inventory/scan/resolve"
+
+
+def legacy_product(engine, org, sku, name):
+    """Insert a product straight into the database with the protecting trigger off, as older data may look."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE products DISABLE TRIGGER trg_products_sku_not_a_barcode"))
+        try:
+            conn.execute(text("INSERT INTO products (organization_id, sku, name, category, unit, cost_price, selling_price, currency_code) "
+                              "VALUES (:o, :s, :n, 'c', 'pcs', 1, 1, 'USD')"), {"o": org, "s": sku, "n": name})
+        finally:
+            conn.execute(text("ALTER TABLE products ENABLE TRIGGER trg_products_sku_not_a_barcode"))
 
 
 def resolve(api, code):
@@ -104,12 +115,19 @@ def test_a_link_in_a_qr_code_is_refused_as_text_and_never_followed(api, director
     assert len(directory.org_calls) == 1  # only the usual tenant check: no request was made towards the payload
 
 
-def test_a_retired_barcode_is_410_unless_a_sku_claims_it(api, shop):
+def test_a_retired_barcode_is_410(api, shop):
     created = register(api, shop["bolt"], "OLD-EAN")
     api.client.post(f"{PRODUCTS_URL}/{shop['bolt']['id']}/identifiers/{created['id']}/retire", headers=api.headers)
     gone = resolve(api, "OLD-EAN")
     assert gone.status_code == 410 and "retired" in gone.json()["detail"]
-    api.product(sku="OLD-EAN", name="Now a SKU")
+    assert api.client.post(PRODUCTS_URL, json={"sku": "OLD-EAN", "name": "x", "category": "c", "unit": "pcs", "cost_price": "1", "selling_price": "1", "currency_code": "USD"},
+                           headers=api.headers).status_code == 409  # the retired text stays reserved: it cannot become someone's SKU
+
+
+def test_legacy_data_where_a_sku_claims_a_retired_barcode_resolves_to_the_sku(api, shop, engine, two_orgs):
+    created = register(api, shop["bolt"], "OLD-EAN")
+    api.client.post(f"{PRODUCTS_URL}/{shop['bolt']['id']}/identifiers/{created['id']}/retire", headers=api.headers)
+    legacy_product(engine, two_orgs["alpha_id"], "OLD-EAN", "Now a SKU")
     assert resolve(api, "OLD-EAN").json()["product"]["name"] == "Now a SKU"
 
 
@@ -124,9 +142,9 @@ def test_an_archived_product_is_returned_flagged_not_hidden(api, shop):
     assert refused.status_code == 409 and "archived" in refused.json()["detail"]
 
 
-def test_a_code_that_would_mean_two_products_is_refused_not_guessed(api, shop):
+def test_a_code_that_would_mean_two_products_is_refused_not_guessed(api, shop, engine, two_orgs):
     register(api, shop["bolt"], "AMBIG-1")
-    api.product(sku="AMBIG-1", name="Created later with that code as its SKU")  # now barcode of A == SKU of B
+    legacy_product(engine, two_orgs["alpha_id"], "AMBIG-1", "Created later with that code as its SKU")  # barcode of A == SKU of B (older data only)
     response = resolve(api, "AMBIG-1")
     assert response.status_code == 409 and "more than one product" in response.json()["detail"]
     assert resolve(api, generate(api, shop["bolt"])).status_code == 200  # the unambiguous routes still work

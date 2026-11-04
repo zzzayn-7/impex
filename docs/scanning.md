@@ -60,13 +60,21 @@ Browsers expose the camera **only to secure contexts**: pages served over **`htt
 
 1. *Bundled optional HTTPS proxy (recommended).*
    ```powershell
-   docker compose --profile https up -d https-proxy
+   python scripts/lan_ip.py                      # prints your Wi-Fi/LAN address, e.g. LAN_HOST=192.168.1.20
+   # put that line in .env, then:
+   docker compose --profile https up -d --force-recreate https-proxy
    # export the certificate authority the proxy created, and install it on the phone
    docker compose cp https-proxy:/data/caddy/pki/authorities/local/root.crt ./impex-local-root.crt
    ```
-   Find your computer's LAN address (`ipconfig`, e.g. `192.168.1.20`), make sure Windows Firewall allows inbound TCP **3443**, and open **`https://192.168.1.20:3443`** on the phone (same Wi-Fi).
+   `LAN_HOST` **must** be the address the phone will type: the proxy makes a certificate for exactly that address (plus `localhost`) and
+   nothing else. Use the Wi-Fi/Ethernet address, not a Docker or WSL one (`172.x`); `scripts/lan_ip.py` picks the right one. If your address
+   changes (another network, DHCP), update `LAN_HOST` and run the `up -d --force-recreate` line again. The local certificate authority lives in the
+   `caddy_data` volume, so the certificate you installed on the phone keeps working across restarts and address changes.
+   Make sure Windows Firewall allows inbound TCP **3443**, and open **`https://192.168.1.20:3443`** on the phone (same Wi-Fi).
    *Android:* Settings → Security → Encryption & credentials → Install a certificate → **CA certificate** → pick `impex-local-root.crt`. *iPhone:* send the file to the phone (AirDrop/e-mail), open it, Settings → *Profile Downloaded* → Install, then Settings → General → About → **Certificate Trust Settings** → enable it. Without installing it you can still tap through the browser's certificate warning on most phones, which is fine for a quick test.
-   This proxy is **for local testing only**. Remove the root certificate from the phone afterwards.
+   (`scripts/lan_ip.py` exists because Docker Desktop's own addresses such as `172.18.0.1` also show up in `ipconfig` and are not reachable from a phone.)
+   On this computer `https://localhost:3443` works the same way. This proxy is **for local testing only**: it publishes port 3443 to your network while it runs
+   (stop it with `docker compose --profile https stop https-proxy`), and you should remove the root certificate from the phone afterwards.
 2. *A tunnel with a real certificate* (for example `cloudflared tunnel --url http://localhost:3001` or `ngrok http 3001`) gives a public `https://` address to the portal. Remember it is reachable from the internet while it runs: stop it when done.
 3. *Chrome on Android, development only:* `chrome://flags/#unsafely-treat-insecure-origin-as-secure` → add `http://192.168.1.20:3001` → relaunch.
 

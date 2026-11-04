@@ -23,7 +23,7 @@ def product(org, **overrides):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, create_auth_client, create_org_client, require_active_tenant
 from app.database import get_db
-from app.identifiers import annotate_unit_lock, has_stock_history
+from app.identifiers import annotate_unit_lock, barcode_owner_of, has_stock_history
 from app.models import Product
 from app.schemas import ProductCreate, ProductList, ProductResponse, ProductUpdate
 from app.search import like_pattern
@@ -71,6 +71,15 @@ def unit_locked_error() -> HTTPException:
     )
 
 
+def barcode_conflict(sku: str, owner: Optional[Product] = None) -> HTTPException:
+    whose = f" of {owner.name} ({owner.sku})" if owner is not None else " of another product"
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        f"'{sku}' is already registered as a barcode{whose} in your catalog. A SKU and a barcode of two different products "
+        "must differ, otherwise scanning it would be ambiguous. Choose another SKU, or retire that barcode first.",
+    )
+
+
 def sku_conflict(sku: str) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, f"A product with SKU '{sku}' already exists in your catalog.")
 
@@ -127,12 +136,17 @@ def list_categories(tenant: TenantContext = Tenant, db: Session = Depends(get_db
 def create_product(payload: ProductCreate, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
     if sku_taken(db, tenant, payload.sku):
         raise sku_conflict(payload.sku)
+    owner = barcode_owner_of(db, tenant, payload.sku)
+    if owner is not None:
+        raise barcode_conflict(payload.sku, owner)
     product = create_for_tenant(Product, tenant, **payload.model_dump())  # organization_id from the context only
     db.add(product)
     try:
         db.commit()
-    except IntegrityError:  # two requests with the same SKU raced past the check above
+    except IntegrityError as exc:  # two requests raced past the checks above; the database is the final judge
         db.rollback()
+        if "already a barcode" in str(exc.orig):
+            raise barcode_conflict(payload.sku)
         raise sku_conflict(payload.sku)
     db.refresh(product)
     product.unit_locked = False  # type: ignore[attr-defined]  # a brand-new product has no stock history
@@ -152,6 +166,10 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate, tenant: Tenant
     changes = payload.model_dump(exclude_unset=True)
     if "sku" in changes and changes["sku"] != product.sku and sku_taken(db, tenant, changes["sku"], exclude=product.id):
         raise sku_conflict(changes["sku"])
+    if "sku" in changes and changes["sku"] != product.sku:
+        owner = barcode_owner_of(db, tenant, changes["sku"], exclude_product_id=product.id)
+        if owner is not None:
+            raise barcode_conflict(changes["sku"], owner)
     if "unit" in changes and changes["unit"] != product.unit and has_stock_history(db, tenant, product.id):
         raise unit_locked_error()
     for field, value in changes.items():
@@ -162,6 +180,8 @@ def update_product(product_id: uuid.UUID, payload: ProductUpdate, tenant: Tenant
         db.rollback()
         if "unit of measurement" in str(exc.orig):  # the database trigger caught a stock movement we could not see yet
             raise unit_locked_error()
+        if "already a barcode" in str(exc.orig):
+            raise barcode_conflict(changes.get("sku", product.sku))
         raise sku_conflict(changes.get("sku", product.sku))
     db.refresh(product)
     annotate_unit_lock(db, tenant, [product])

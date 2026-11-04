@@ -148,6 +148,32 @@ services:
     networks:
       - impex-network
 
+  # Suppliers and purchase orders (tenant-scoped). Own database: impex_purchasing. Reads products from the Inventory Service
+  # with the caller's own token; never changes inventory (receiving goods is a later step).
+  purchasing-service:
+    build:
+      context: ./services/purchasing-service
+      dockerfile: Dockerfile
+    container_name: impex-purchasing-service
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${PURCHASING_DB_NAME:-impex_purchasing}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - ORG_SERVICE_URL=http://organization-service:8001
+      - INVENTORY_SERVICE_URL=http://inventory-service:8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - impex-network
+
   # Organization administrator portal (separate app, separate session cookie from the Super Admin portal)
   dashboard:
     build:
@@ -163,6 +189,7 @@ services:
       - ORG_SERVICE_URL=http://organization-service:8001
       - INVENTORY_SERVICE_URL=http://inventory-service:8002
       - SALES_SERVICE_URL=http://sales-service:8003
+      - PURCHASING_SERVICE_URL=http://purchasing-service:8004
     depends_on:
       - auth-service
     networks:
@@ -212,6 +239,9 @@ services:
     restart: unless-stopped
     ports:
       - "3443:3443"
+    environment:
+      # The address a phone will type (python scripts/lan_ip.py prints it). Set it in .env as LAN_HOST=192.168.x.x
+      - LAN_HOST=${LAN_HOST:-127.0.0.1}
     volumes:
       - ./gateway/Caddyfile.https:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

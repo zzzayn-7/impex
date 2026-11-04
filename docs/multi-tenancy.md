@@ -141,6 +141,12 @@ another's result, and the same key in two organizations is two independent opera
 
 The Sales Service never keeps product data. When it needs to know about a product it asks the Inventory Service with the **caller's own bearer token** (never a service secret), so the Inventory Service derives the organization itself. A product id of another organization is therefore absent from the answer and is reported as `404 Product not found.`, byte for byte the answer for an id that does not exist. Product facts the browser sends are refused, not trusted.
 
+## Purchasing: suppliers, purchase orders and the Inventory Service (Step 16A)
+
+`suppliers`, `purchase_orders`, `purchase_order_lines`, `purchase_order_counters` and `purchase_order_requests` all carry `organization_id NOT NULL`; `purchase_orders` points at `suppliers` and `purchase_order_lines` at `purchase_orders` through **composite** foreign keys `(organization_id, id)`, so an order cannot reference another organization's supplier, nor a line another organization's order, even by a bug. Supplier names, supplier codes and order numbers are unique **per organization**; idempotency keys too, so one tenant can never replay another's request.
+
+Like Sales, the Purchasing Service keeps no product data: it asks the Inventory Service with the **caller's own bearer token**, so a product id of another organization is absent from the answer and reported as `404 Product not found.`, identical to an id that does not exist.
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

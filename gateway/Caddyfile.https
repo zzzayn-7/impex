@@ -1,20 +1,29 @@
 # OPTIONAL local HTTPS in front of the Organization Portal, so a phone on the same Wi-Fi can use the camera
 # (browsers only allow camera access on https:// pages and on localhost). See docs/scanning.md.
 #
-#   docker compose --profile https up -d https-proxy
-#   then open  https://<this computer's LAN IP>:3443  on the phone, after installing the local root certificate.
+#   1. find this computer's Wi-Fi/LAN address:   python scripts/lan_ip.py
+#   2. put it in .env:                           LAN_HOST=192.168.1.20
+#   3. start the proxy:                          docker compose --profile https up -d --force-recreate https-proxy
+#   4. on the phone, install the local root certificate, then open  https://192.168.1.20:3443
 #
-# `tls internal` makes Caddy sign certificates with its own local certificate authority; `on_demand` lets it issue one for
-# whatever address the phone typed (a LAN IP changes from network to network). This is for LOCAL TESTING ONLY: in production
-# use a real certificate (your load balancer, Caddy with a public domain, ...).
+# `tls internal` signs certificates with Caddy's own local certificate authority. Certificates are made ONLY for the names
+# listed below (localhost, 127.0.0.1 and LAN_HOST): there is no on-demand issuing, so nobody who can reach the port can make
+# the proxy create certificates for names of their choosing. Browsers send no server name when you type an IP address, so
+# `default_sni` makes the LAN_HOST certificate the one served to such connections (otherwise Caddy would fall back to the
+# container's internal Docker address, which is never the address the phone typed).
+#
+# This is for LOCAL TESTING ONLY: in production use a real certificate (your load balancer, Caddy with a public domain, ...).
 {
 	skip_install_trust
-	default_sni localhost
+	default_sni {$LAN_HOST:127.0.0.1}
+	auto_https disable_redirects
+	servers {
+		# Only TCP is published (3443/tcp), so do not advertise HTTP/3 (UDP) to clients.
+		protocols h1 h2
+	}
 }
 
-https://:3443 {
-	tls internal {
-		on_demand
-	}
+https://{$LAN_HOST:127.0.0.1}:3443, https://localhost:3443 {
+	tls internal
 	reverse_proxy dashboard:3001
 }
