@@ -14,6 +14,11 @@ export async function getTenantAdmin(): Promise<TenantAdmin | null> {
   return isTenantAdmin(user) ? user : null;
 }
 
+// The tenant session token, used as the Bearer token for server-side calls to tenant APIs.
+export function getTenantToken(): string | undefined {
+  return cookies().get(TENANT_SESSION_COOKIE)?.value;
+}
+
 export async function requireTenantAdmin(): Promise<TenantAdmin> {
   const user = await getTenantAdmin();
   if (!user) redirect("/login");

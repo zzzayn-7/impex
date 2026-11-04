@@ -110,6 +110,7 @@ services:
     environment:
       - PORT=3001
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - ORG_SERVICE_URL=http://organization-service:8001
     depends_on:
       - auth-service
     networks:

@@ -108,6 +108,15 @@ npm run dev
 
 ---
 
+## 🔐 Multi-tenancy
+
+Organizations are isolated from each other. An organization administrator can only ever reach their own
+organization: the tenant is taken from the authenticated user, never from the request. Every future service that
+stores organization data must follow the rules and use the helpers described in
+[`docs/multi-tenancy.md`](docs/multi-tenancy.md).
+
+---
+
 ## 🗺️ Roadmap & Planned Services
 
 - **`frontend/dashboard`**: Tenant-facing analytics, inventory tracking, and order placement.

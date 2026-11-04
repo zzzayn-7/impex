@@ -29,6 +29,7 @@ from app.auth import create_auth_client, require_super_admin
 from app.database import get_db
 from app.invitations import invitation_status, issue_invitation
 from app.models import Organization, OrganizationInvitation
+from app.tenancy import require_tenant_organization
 
 
 @asynccontextmanager
@@ -95,6 +96,31 @@ def to_response(org: Organization) -> OrganizationResponse:
         tax_identifier=org.tax_identifier,
         contact_email=org.contact_email,
         primary_admin_email=org.primary_admin_email,
+        is_active=org.is_active,
+        created_at=org.created_at.isoformat(),
+    )
+
+
+class TenantOrganizationResponse(BaseModel):
+    """What an organization's own administrator may see about their organization. Nothing about any other tenant."""
+    id: str
+    name: str
+    slug: str
+    country_code: str
+    tax_identifier: Optional[str] = None
+    contact_email: str
+    is_active: bool
+    created_at: str
+
+
+def to_tenant_response(org: Organization) -> TenantOrganizationResponse:
+    return TenantOrganizationResponse(
+        id=str(org.id),
+        name=org.name,
+        slug=org.slug,
+        country_code=org.country_code,
+        tax_identifier=org.tax_identifier,
+        contact_email=org.contact_email,
         is_active=org.is_active,
         created_at=org.created_at.isoformat(),
     )
@@ -196,6 +222,16 @@ async def health_check():
         "service": "organization-service",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# ---------------------------------------------------------------------------
+# Tenant API: an organization administrator's view of their OWN organization.
+# Deliberately has no id, query, header or body input: the organization is taken only from the authenticated
+# user's record (see app/auth.py and docs/multi-tenancy.md), so there is nothing to manipulate.
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/tenant/organization", response_model=TenantOrganizationResponse, tags=["Tenant"])
+def get_my_organization(organization: Organization = Depends(require_tenant_organization)):
+    return to_tenant_response(organization)
 
 
 @app.get("/api/v1/organizations", response_model=List[OrganizationResponse], tags=["Organizations"], dependencies=super_admin_only)
