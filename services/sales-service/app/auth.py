@@ -14,7 +14,7 @@ Errors: 401 invalid/missing/expired token, 403 not allowed (including an inactiv
 """
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 import httpx
@@ -86,6 +86,7 @@ class TenantContext:
     user_id: str
     email: str
     full_name: str
+    organization_name: str = ""  # the organization's name, once the Organization Service has confirmed it (used on invoices)
 
 
 async def require_tenant_admin(user: dict = Depends(authenticated_user)) -> TenantContext:
@@ -141,4 +142,4 @@ async def require_active_tenant(
         or organization.get("is_active") is not True
     ):
         raise inactive
-    return tenant
+    return replace(tenant, organization_name=str(organization.get("name") or ""))

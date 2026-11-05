@@ -34,6 +34,7 @@ SERVICE_DIR = Path(__file__).resolve().parent.parent
 CLIENTS = "/api/v1/sales/clients"
 LISTS = "/api/v1/sales/delivery-lists"
 DISPATCHES = "/api/v1/sales/dispatches"
+INVOICES = "/api/v1/sales/invoices"
 
 
 def alembic_config() -> Config:
@@ -95,7 +96,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with empty tables and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
+        conn.execute(text("TRUNCATE TABLE invoice_payments, invoice_allocations, invoice_lines, invoice_requests, invoices, invoice_counters, dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
 
     def override_get_db():
         db = session_factory()
@@ -413,10 +414,59 @@ class Api:
     def cancel_dispatch(self, dispatch_id):
         return self.client.post(f"{DISPATCHES}/{dispatch_id}/cancel", headers=self.headers)
 
+    # -- invoices and payments
+    def confirmed_dispatch(self, shop, delivery_list, lines) -> dict:
+        """A CONFIRMED dispatch of these (product key, quantity, warehouse key) lines of a Ready / Partially Dispatched list."""
+        body = [sent(delivery_list, shop[product], quantity, shop[warehouse]) for product, quantity, warehouse in lines]
+        draft = self.draft(delivery_list["id"], body)
+        confirmed = self.confirm(draft["id"])
+        assert confirmed.status_code == 200, confirmed.text
+        return confirmed.json()
+
+    def invoice_request(self, client_id, lines=(), currency="USD", key=None, **extra):
+        headers = {**self.headers, "Idempotency-Key": key or f"key-{uuid.uuid4()}"}
+        return self.client.post(INVOICES, json={"client_id": client_id, "currency_code": currency, "lines": list(lines), **extra}, headers=headers)
+
+    def draft_invoice(self, client_id, lines=(), currency="USD", **extra) -> dict:
+        response = self.invoice_request(client_id, lines, currency, **extra)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def issued_invoice(self, client_id, lines, currency="USD", **extra) -> dict:
+        made = self.draft_invoice(client_id, lines, currency, **extra)
+        issued = self.issue(made["id"])
+        assert issued.status_code == 200, issued.text
+        return issued.json()
+
+    def issue(self, invoice_id):
+        return self.client.post(f"{INVOICES}/{invoice_id}/issue", headers=self.headers)
+
+    def void(self, invoice_id, reason="entered in error"):
+        return self.client.post(f"{INVOICES}/{invoice_id}/void", json={"reason": reason}, headers=self.headers)
+
+    def pay(self, invoice_id, amount, key=None, method="bank_transfer", **extra):
+        headers = {**self.headers, "Idempotency-Key": key or f"pay-{uuid.uuid4()}"}
+        return self.client.post(f"{INVOICES}/{invoice_id}/payments", json={"amount": str(amount), "method": method, **extra}, headers=headers)
+
+    def reverse(self, invoice_id, payment_id, reason="paid twice", key=None):
+        headers = {**self.headers, "Idempotency-Key": key or f"rev-{uuid.uuid4()}"}
+        return self.client.post(f"{INVOICES}/{invoice_id}/payments/{payment_id}/reverse", json={"reason": reason}, headers=headers)
+
+    def get_invoice(self, invoice_id) -> dict:
+        response = self.client.get(f"{INVOICES}/{invoice_id}", headers=self.headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
     def get_dispatch(self, dispatch_id) -> dict:
         response = self.client.get(f"{DISPATCHES}/{dispatch_id}", headers=self.headers)
         assert response.status_code == 200, response.text
         return response.json()
+
+
+def bill(dispatch, product_id, quantity, price, **extra) -> dict:
+    """An invoice line body for the dispatch line of this product (price, discount and tax exactly as an administrator would type them)."""
+    line = next(l for l in dispatch["lines"] if l["product_id"] == product_id)
+    return {"dispatch_line_id": line["id"], "quantity": str(quantity), "unit_price": str(price), **extra}
 
 
 def item_of(delivery_list, product_id) -> dict:

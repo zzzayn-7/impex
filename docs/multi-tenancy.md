@@ -162,6 +162,15 @@ through **composite** foreign keys `(organization_id, id)`, so a dispatch can ne
 Confirming a dispatch makes the Sales Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another
 organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
 
+## Sales invoicing (Step 17B)
+
+`invoices`, `invoice_lines`, `invoice_allocations`, `invoice_payments`, `invoice_counters` and `invoice_requests` all carry `organization_id NOT NULL`. An invoice points at its client (and optionally its delivery list), a line and an allocation at their invoice, an
+allocation at the **dispatch line** it bills, and a reversal at the payment it undoes, always through **composite** foreign keys `(organization_id, id)`: an invoice can never reference another organization's client, dispatch line, invoice or payment. Triggers add that an
+allocation must belong to a **confirmed** dispatch of the **invoice's own client**. Invoice numbers (`INV-000001`), payment idempotency keys and invoice idempotency keys are unique **per organization**; the same key in two organizations is independent.
+
+Invoicing makes **no call to the Inventory Service at all**, so there is no cross-service token to forward and no way for an invoice to move another tenant's stock. Another organization's invoice, payment, client or dispatch line is `404 ... not found`, identical to an id that does not
+exist, for every route (read, edit, lines, issue, void, pay, reverse, PDF, client account, billable lines).
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

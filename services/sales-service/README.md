@@ -7,7 +7,9 @@ FastAPI + PostgreSQL (`impex_sales`), port **8003**. It owns three things:
 * **Dispatches** (Step 17A): goods that actually leave for a client against a delivery list, in full or in parts, and the hand-over of
   the dispatched quantities to the Inventory Service, which deducts them.
 
-Orders, quotations, price lists, customer invoices, payments, returns and refunds are intentionally not built yet.
+* **Sales Invoices and client payments** (Step 17B): bill the goods that were dispatched, and record the payments received for them.
+
+Orders, quotations, price lists, returns, refunds, a general ledger, bank or card integrations, exchange-rate accounting and statutory tax filing are intentionally not built.
 
 Every endpoint is **tenant-scoped** (see [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md)): only an active
 `organization-admin` whose organization is active may use it, and every record belongs to the organization of the
@@ -109,6 +111,82 @@ times adds nothing.
 * **Numbers:** per organization, from an atomically incremented counter, plus `UNIQUE (organization_id, number)`.
 * **Ready** needs at least one line, an active client and available products. A shortage is only a warning.
 
+## Invoices and payments (Step 17B)
+
+Invoicing **never touches inventory**. The invoicing code does not import the Inventory client, makes no request to the Inventory Service
+(the tests prove it: with the Inventory Service down invoices are still created, issued and paid, and the fake records no request) and
+writes no stock movement. It bills goods that were **already dispatched**: every invoice line points at a line of a **confirmed** dispatch.
+
+| Method & path | Purpose |
+| :--- | :--- |
+| `GET /billable-lines?client_id=&delivery_list_id=` | the confirmed dispatch lines of one client with *dispatched*, *invoiced* (issued invoices), *in drafts* (information only) and *remaining* |
+| `POST /invoices` | start a **draft** for a client and a currency, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
+| `GET /invoices?client_id=&status=&payment_status=unpaid\|partial\|paid\|overdue&q=&date_from=&date_to=` | list / filter / search (number, client, notes) |
+| `GET /invoices/{id}` | the invoice, its lines (with the dispatches they bill), its payments and what may be done to it |
+| `GET /invoices/{id}/pdf` | the invoice as a PDF (built from the saved invoice) |
+| `PATCH /invoices/{id}` / `PUT /invoices/{id}/lines` | edit the dates and note / replace the lines (**drafts only**) |
+| `POST /invoices/{id}/issue` | give the draft its number and freeze it (repeating it changes nothing) |
+| `POST /invoices/{id}/void` | `{reason}`: discard a draft, or void an issued invoice that has **no** payment on record |
+| `POST /invoices/{id}/payments` | record a payment received (**`Idempotency-Key` required**) |
+| `POST /invoices/{id}/payments/{payment_id}/reverse` | correct a payment by recording its **reversal** with a reason (**`Idempotency-Key` required**) |
+| `GET /clients/{id}/account` | a client's invoices, recent payments and the outstanding balance **per currency** |
+
+### Lifecycle
+
+`Draft -> Issued -> Partially Paid -> Paid`, and `Void`. Only the documented moves exist, enforced twice: by the API and by a database trigger
+that works even for a hand-written `UPDATE`.
+
+* **Draft:** editable, has **no number**, reserves nothing (two drafts may bill the same goods; whichever is issued first wins, the other is
+  refused at issue time with `409 over_invoiced`). A draft can be discarded by voiding it.
+* **Issued:** gets the next number (`INV-000001`, ... per organization) **at that moment**, inside the issuing transaction, so numbers of issued
+  invoices have no gaps and a refused issue consumes none. Its commercial details (client, dates, currency, notes, every line, every total, the
+  seller / bill-to snapshots) are **frozen**: the database refuses to change them. An invoice is never deleted.
+* **Payment status** is derived, not typed: the database keeps `paid_total` and the status equal to the sum of the payment records
+  (*Issued* when nothing is paid, *Partially Paid*, *Paid* when the payments reach the total). Nobody can set them by hand.
+* **Void:** an invoice stays on record, marked void, with who / when / why; its number is never reused and the quantity it billed can be billed again.
+
+### The adjustment policy: voiding vs correcting an invoice that has payments
+
+* **Voiding an unpaid invoice** is allowed (an issued one needs a reason).
+* **An invoice with payments on record can never be voided** (`409 has_payments`): that would destroy the payment history. To cancel it,
+  *reverse* its payments first - each reversal is its own permanent record - and then void it and issue a corrected invoice.
+* **Payments are append-only.** A payment is never edited or deleted (the database refuses both). A mistake is corrected by a **reversal**: a new
+  record of the same amount with a mandatory reason, linked to the payment it undoes. A payment is reversed once; a reversal cannot be reversed.
+  Both rows stay on the invoice, the original is flagged *reversed*, and the balance goes back up.
+
+### Not billed twice
+
+An `invoice_allocation` links an invoice line to the confirmed dispatch line it bills. Issuing an invoice locks the dispatch lines (in a fixed
+order) and checks that the quantity covered by **issued** invoices never exceeds what was dispatched - in the application *and* again in a database
+trigger, so two administrators issuing at the same moment cannot both win. Partial invoicing (6 of 10, then the other 4), one invoice over several
+dispatches of a list, and several invoices per client all work. A dispatch of another client, of another organization, or one that is not
+confirmed cannot be billed (the database checks that too).
+
+### Money is exact
+
+`NUMERIC(18,4)` everywhere, strings in JSON, never floats. Per line: `subtotal = round(quantity x price)`, `net = subtotal - discount`,
+`tax = round(net x rate / 100)`, `total = net + tax`; halves round **up**. The same formulas are written as `CHECK` constraints, so even a
+hand-written row cannot hold wrong arithmetic, and the browser previews them with exact integer arithmetic (`BigInt`).
+The invoice total is the sum of its lines; the **backend always calculates it**.
+
+* The **selling price is typed by the administrator** for each line. The catalog price is neither read nor changed.
+* **One currency per invoice**, a real ISO 4217 code (`USD`, `EUR`, `PKR`, ...). Nothing is converted. A payment is in the invoice's currency, and a client's balance is reported **per currency**.
+* **Discounts** are an amount per line (never more than the line). **Taxes** are an explicit percentage and a name the administrator enters per line.
+  No country's tax rules are built in and the invoice does not claim to satisfy any: the invoice and the PDF carry a notice saying so.
+
+### Payments
+
+Recorded by hand (cash, bank transfer, cheque, card, mobile wallet, other); no bank, gateway or card network is contacted. A payment needs an
+`Idempotency-Key` (a double click or a retry answers `200` with the same invoice and records nothing twice; the same key with a different body is `409`).
+It can never exceed the **outstanding amount** (`409 overpayment`): no credit balance is held, because no credit policy exists. Payments are refused for
+drafts and void invoices. A payment for an **inactive client's** issued invoice is still recorded (money that arrived is money that arrived); a new invoice for
+an inactive client is not created or issued. Payments of the same invoice are serialized by a row lock, and the database repeats the limit check.
+
+### Tenancy
+
+Every invoice, line, allocation and payment carries the `organization_id` of the authenticated administrator (never taken from the request), with composite
+foreign keys `(organization_id, id)`; another organization's invoice, payment, client or dispatch line is an indistinguishable `404`.
+
 ## Database setup (never resets existing data)
 
 ```powershell
@@ -128,7 +206,13 @@ python scripts/verify_delivery_lists.py                 # live end-to-end check 
 python scripts/verify_delivery_lists.py --with-outage   # also stops the Inventory and Sales services briefly
 python scripts/verify_dispatch.py                       # live check of dispatching: partial dispatches, stock accuracy, idempotency, isolation
 python scripts/verify_dispatch.py --with-outage         # also interrupts confirmation between the two services
+python scripts/verify_invoicing.py                      # live check of invoicing and payments: exact money, partial invoicing, payments, reversals, isolation, stock untouched
+python scripts/verify_invoicing.py --with-outage        # also proves invoicing keeps working while the Inventory Service is down
 ```
+
+Migration `0003` (additive: six `invoice_*` tables, their triggers and one unique constraint on `dispatch_lines`) creates the invoicing tables:
+`docker compose run --rm --no-deps sales-service alembic upgrade head`. The service now depends on `reportlab` (PDF), so rebuild the image
+(`docker compose build sales-service`) first.
 
 The Inventory Service needs its own additive migration (`0006`: a `dispatch` operation kind and a `client_dispatch` movement source) before goods can be dispatched:
 `docker compose run --rm --no-deps inventory-service alembic upgrade head`, then `docker compose run --rm --no-deps sales-service alembic upgrade head` (additive migration `0002`).

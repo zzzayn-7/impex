@@ -27,7 +27,7 @@ impex/
 │   │   └── requirements.txt
 │   │
 │   ├── inventory-service/         # Warehousing & Stock Tracking (Planned)
-│   ├── sales-service/             # Quotations, Orders & Shipments (Planned)
+│   ├── sales-service/             # Clients, Delivery Lists, Dispatches, Invoices & Payments
 │   └── finance-service/           # Invoicing, Customs & Duties (Planned)
 │
 ├── gateway/
@@ -121,6 +121,11 @@ stores organization data must follow the rules and use the helpers described in
 
 - **`frontend/dashboard`**: Tenant-facing analytics, inventory tracking, and order placement.
 - **`services/inventory-service`**: Multi-warehouse stock tracking, SKU management, barcodes, and customs batch tracking.
-- **`services/sales-service`**: Order processing, quotes, purchase orders, and sales pipeline.
+- **`services/sales-service`**: Clients, delivery lists, dispatches, sales invoices and client payments are built (see [`services/sales-service/README.md`](services/sales-service/README.md)). Quotes, orders, returns and refunds are planned.
 - **`services/finance-service`**: Multi-currency accounting, invoices, VAT/tax compliance, and customs tariff ledger.
 
+---
+
+## ✅ Automated tests
+
+Every push to `main` and every pull request runs the backend suites and the portal tests in GitHub Actions against a throwaway database. See [`docs/continuous-integration.md`](docs/continuous-integration.md).

@@ -146,6 +146,111 @@ export type DeliveryListDetail = DeliveryListSummary & {
   can_dispatch?: boolean;
 };
 
+// ---- invoices and payments (Step 17B). Money is ALWAYS a string with 4 decimals, exactly as stored; nothing is converted. -----------
+export type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "void";
+export type PaymentMethod = "cash" | "bank_transfer" | "cheque" | "card" | "mobile_wallet" | "other";
+export type PaymentStatusFilter = "unpaid" | "partial" | "paid" | "overdue";
+
+export type InvoiceSummary = {
+  id: string;
+  number: string | null;
+  status: InvoiceStatus;
+  client: { id: string; name: string; is_active: boolean };
+  delivery_list: { id: string; number: string; status: ListStatus } | null;
+  invoice_date: string;
+  due_date: string;
+  currency_code: string;
+  subtotal: string;
+  discount_total: string;
+  tax_total: string;
+  total: string;
+  paid_total: string;
+  outstanding: string;
+  overdue: boolean;
+  line_count: number;
+  created_by_email: string;
+  issued_at: string | null;
+  issued_by_email: string | null;
+  voided_at: string | null;
+  updated_at: string;
+};
+
+export type InvoiceLineAllocation = { dispatch_line_id: string; dispatch_id: string; dispatch_number: string; quantity: string };
+
+export type InvoiceLine = {
+  id: string;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  unit: string;
+  quantity: string;
+  unit_price: string;
+  discount_amount: string;
+  tax_rate: string;
+  tax_label: string | null;
+  line_subtotal: string;
+  line_net: string;
+  line_tax: string;
+  line_total: string;
+  allocations: InvoiceLineAllocation[];
+};
+
+export type Payment = {
+  id: string;
+  invoice_id: string;
+  kind: "payment" | "reversal";
+  reverses_payment_id: string | null;
+  payment_date: string;
+  amount: string;
+  currency_code: string;
+  method: PaymentMethod;
+  reference: string | null;
+  notes: string | null;
+  recorded_by_email: string;
+  created_at: string;
+  reversed: boolean;
+};
+
+export type InvoiceDetail = InvoiceSummary & {
+  seller_name: string | null;
+  client_name: string | null;
+  client_address: string | null;
+  notes: string | null;
+  void_reason: string | null;
+  lines: InvoiceLine[];
+  payments: Payment[];
+  editable: boolean;
+  can_issue: boolean;
+  can_void: boolean;
+  can_record_payment: boolean;
+  disclaimer: string;
+};
+
+export type BillableLine = {
+  dispatch_line_id: string;
+  dispatch_id: string;
+  dispatch_number: string;
+  dispatch_date: string;
+  delivery_list: { id: string; number: string; status: ListStatus };
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  unit: string;
+  warehouse_code: string | null;
+  dispatched_quantity: string;
+  invoiced_quantity: string;
+  in_drafts_quantity: string;
+  remaining_quantity: string;
+};
+
+export type AccountBalance = { currency_code: string; invoiced: string; paid: string; outstanding: string; overdue: string };
+export type ClientAccount = {
+  client: { id: string; name: string; is_active: boolean };
+  balances: AccountBalance[];
+  invoices: InvoiceSummary[];
+  payments: (Payment & { invoice_number: string })[];
+};
+
 // Browser-safe constants live in sales-browser.ts (this file imports server-only code).
 export { STOCK_NOTICE, STATUS_LABELS } from "@/lib/sales-browser";
 
@@ -211,6 +316,47 @@ export async function getDispatch(token: string, id: string): Promise<{ ok: true
   return { ok: true, dispatch: result.data };
 }
 
+export type InvoiceFilters = { q: string; status: InvoiceStatus | ""; paymentStatus: PaymentStatusFilter | ""; clientId: string; dateFrom: string; dateTo: string; page: number };
+export function listInvoices(token: string, filters: InvoiceFilters) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.paymentStatus) params.set("payment_status", filters.paymentStatus);
+  if (filters.clientId) params.set("client_id", filters.clientId);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  return getPaged<InvoiceSummary>("/api/v1/sales/invoices", params, token);
+}
+
+export async function getInvoice(token: string, id: string): Promise<{ ok: true; invoice: InvoiceDetail } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/invoices/${id}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, invoice: result.data };
+}
+
+export async function listBillableLines(token: string, clientId: string): Promise<{ ok: true; lines: BillableLine[] } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/billable-lines?${new URLSearchParams({ client_id: clientId })}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, lines: result.data };
+}
+
+export async function getClientAccount(token: string, clientId: string): Promise<{ ok: true; account: ClientAccount } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/clients/${clientId}/account`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, account: result.data };
+}
+
+/** The invoice PDF as raw bytes, for the browser to download. null = the service could not be reached. */
+export async function salesBinary(path: string, token: string): Promise<{ status: number; body: ArrayBuffer | null; contentDisposition: string | null; data: any } | null> {
+  try {
+    const res = await fetch(`${salesServiceUrl()}${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(30000) });
+    if (res.status !== 200) return { status: res.status, body: null, contentDisposition: null, data: await res.json().catch(() => null) };
+    return { status: 200, body: await res.arrayBuffer(), contentDisposition: res.headers.get("content-disposition"), data: null };
+  } catch {
+    return null;
+  }
+}
+
 // ---- failures from write calls, turned into safe responses for the browser ------------------------------------------------
 export type SalesFailure = {
   status: number;
@@ -224,6 +370,8 @@ const FIELD_NAMES: Record<string, string> = {
   client_id: "clientId", external_reference: "externalReference", contact_person: "contactPerson", delivery_list_id: "deliveryListId",
   dispatch_date: "dispatchDate", delivery_address: "deliveryAddress", transport_details: "transportDetails", tracking_reference: "trackingReference",
   warehouse_id: "warehouseId", delivery_list_item_id: "deliveryListItemId",
+  currency_code: "currencyCode", invoice_date: "invoiceDate", due_date: "dueDate", dispatch_line_id: "dispatchLineId", unit_price: "unitPrice",
+  discount_amount: "discountAmount", tax_rate: "taxRate", tax_label: "taxLabel", payment_date: "paymentDate",
 };
 
 export function describeSalesFailure(result: SalesResult, notFound = "Not found."): SalesFailure {

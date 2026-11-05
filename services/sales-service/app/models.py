@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Computed,
     Date,
     DateTime,
     ForeignKeyConstraint,
@@ -237,6 +238,7 @@ class DispatchLine(TenantOwnedMixin, Base):
         ForeignKeyConstraint(["organization_id", "delivery_list_item_id"], ["delivery_list_items.organization_id", "delivery_list_items.id"],
                              name="fk_dispatch_lines_delivery_list_item_same_organization", ondelete="RESTRICT"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
+        UniqueConstraint("organization_id", "id", name="uq_dispatch_lines_organization_id_id"),  # target of the invoice allocations
         Index("ix_dispatch_lines_organization_id_dispatch_id", "organization_id", "dispatch_id"),
         Index("ix_dispatch_lines_organization_id_delivery_list_item_id", "organization_id", "delivery_list_item_id"),
     )
@@ -256,3 +258,200 @@ class DispatchLine(TenantOwnedMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+# =====================================================================================================
+# Invoices and payments (Step 17B). Nothing here touches inventory: there is no stock column or table.
+# =====================================================================================================
+class InvoiceCounter(TenantOwnedMixin, Base):
+    """The last invoice number handed out to an organization (one row per organization). Numbers are given when an invoice is ISSUED."""
+
+    __tablename__ = "invoice_counters"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_invoice_counters_organization_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+
+
+class Invoice(TenantOwnedMixin, Base):
+    """A bill to a client for goods that were actually dispatched.
+
+    draft -> issued -> (partially_paid -> paid, following the payments);  draft -> void;  issued -> void only while no payment is on record.
+
+    A draft is freely editable. Issuing gives it its number and freezes its commercial details (and the seller / bill-to snapshots).
+    The paid total and the payment status are kept by the database in step with the payment rows. Issued invoices are never deleted;
+    a void invoice is kept for history. Every amount is exact (NUMERIC(18,4)) and calculated by the backend.
+    """
+
+    __tablename__ = "invoices"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "number", name="uq_invoices_organization_id_number"),
+        UniqueConstraint("organization_id", "id", name="uq_invoices_organization_id_id"),
+        ForeignKeyConstraint(["organization_id", "client_id"], ["clients.organization_id", "clients.id"], name="fk_invoices_client_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "delivery_list_id"], ["delivery_lists.organization_id", "delivery_lists.id"],
+                             name="fk_invoices_delivery_list_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("status IN ('draft', 'issued', 'partially_paid', 'paid', 'void')", name="status_valid"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_format"),
+        CheckConstraint("due_date >= invoice_date", name="due_not_before_invoice"),
+        CheckConstraint("total = subtotal - discount_total + tax_total", name="total_matches"),
+        CheckConstraint("subtotal >= 0 AND discount_total >= 0 AND tax_total >= 0 AND total >= 0", name="amounts_non_negative"),
+        CheckConstraint("paid_total >= 0 AND paid_total <= total", name="paid_within_total"),
+        CheckConstraint("status IN ('draft', 'void') OR number IS NOT NULL", name="numbered_once_issued"),
+        CheckConstraint("status IN ('draft', 'void') OR (issued_at IS NOT NULL AND issued_by IS NOT NULL AND issued_by_email IS NOT NULL)", name="issuer_recorded"),
+        CheckConstraint("status <> 'void' OR (voided_at IS NOT NULL AND voided_by_email IS NOT NULL)", name="void_recorded"),
+        CheckConstraint("status = 'void' OR (voided_at IS NULL AND void_reason IS NULL)", name="void_only_when_void"),
+        CheckConstraint("status NOT IN ('draft', 'void') OR paid_total = 0", name="unpaid_unless_issued"),
+        Index("ix_invoices_organization_id_client_id", "organization_id", "client_id"),
+        Index("ix_invoices_organization_id_status", "organization_id", "status"),
+        Index("ix_invoices_organization_id_invoice_date", "organization_id", "invoice_date"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    delivery_list_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)  # set when every line comes from one delivery list
+    number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # INV-000001, given when the invoice is issued
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default=text("'draft'"))
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)  # one currency per invoice, never converted
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    seller_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # snapshots: later renames never change an issued invoice
+    client_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    client_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    discount_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    tax_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    paid_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))  # kept by the database from the payments
+    outstanding: Mapped[Decimal] = mapped_column(Numeric(18, 4), Computed("total - paid_total", persisted=True), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    issued_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    issued_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    issued_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    void_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InvoiceRequest(TenantOwnedMixin, Base):
+    """One create-invoice REQUEST (by Idempotency-Key): a double click returns the same draft instead of a second one."""
+
+    __tablename__ = "invoice_requests"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_invoice_requests_organization_id_idempotency_key"),
+        ForeignKeyConstraint(["organization_id", "invoice_id"], ["invoices.organization_id", "invoices.id"], name="fk_invoice_requests_invoice_same_organization", ondelete="RESTRICT"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InvoiceLine(TenantOwnedMixin, Base):
+    """What is billed: a product with a quantity, the SELLING PRICE the administrator chose (independent of the catalog), an explicit
+    discount and an explicit tax rate. Product, SKU, name and unit are snapshots copied from the dispatch line. All amounts are
+    calculated by the backend and re-checked by the database."""
+
+    __tablename__ = "invoice_lines"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_invoice_lines_organization_id_id"),
+        ForeignKeyConstraint(["organization_id", "invoice_id"], ["invoices.organization_id", "invoices.id"], name="fk_invoice_lines_invoice_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_price >= 0", name="unit_price_non_negative"),
+        CheckConstraint("discount_amount >= 0 AND discount_amount <= line_subtotal", name="discount_within_subtotal"),
+        CheckConstraint("tax_rate >= 0 AND tax_rate <= 100", name="tax_rate_range"),
+        CheckConstraint("line_subtotal = round(quantity * unit_price, 4)", name="subtotal_matches"),
+        CheckConstraint("line_net = line_subtotal - discount_amount", name="net_matches"),
+        CheckConstraint("line_tax = round(line_net * tax_rate / 100, 4)", name="tax_matches"),
+        CheckConstraint("line_total = line_net + line_tax", name="total_matches"),
+        Index("ix_invoice_lines_organization_id_invoice_id", "organization_id", "invoice_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False, default=0, server_default=text("0"))  # percent, entered explicitly
+    tax_label: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    line_subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    line_net: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    line_tax: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    line_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InvoiceAllocation(TenantOwnedMixin, Base):
+    """Which DISPATCHED goods an invoice line bills: (invoice line, confirmed dispatch line, quantity). The quantity of a dispatch line
+    that issued invoices already cover cannot be allocated again (database-enforced when the invoice is issued)."""
+
+    __tablename__ = "invoice_allocations"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "invoice_line_id", "dispatch_line_id", name="uq_invoice_allocations_line_dispatch_line"),
+        ForeignKeyConstraint(["organization_id", "invoice_id"], ["invoices.organization_id", "invoices.id"], name="fk_invoice_allocations_invoice_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "invoice_line_id"], ["invoice_lines.organization_id", "invoice_lines.id"],
+                             name="fk_invoice_allocations_invoice_line_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "dispatch_line_id"], ["dispatch_lines.organization_id", "dispatch_lines.id"],
+                             name="fk_invoice_allocations_dispatch_line_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        Index("ix_invoice_allocations_organization_id_invoice_id", "organization_id", "invoice_id"),
+        Index("ix_invoice_allocations_organization_id_dispatch_line_id", "organization_id", "dispatch_line_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    invoice_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    dispatch_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InvoicePayment(TenantOwnedMixin, Base):
+    """A payment (or the REVERSAL of one) recorded against an issued invoice. Append-only: a row is never edited or deleted. A mistake is
+    corrected by a reversal of the same amount with a reason; a payment can be reversed once; both rows stay forever. Manual record
+    keeping only - no bank or payment gateway is involved."""
+
+    __tablename__ = "invoice_payments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_invoice_payments_organization_id_id"),
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_invoice_payments_organization_id_idempotency_key"),
+        UniqueConstraint("organization_id", "reverses_payment_id", name="uq_invoice_payments_organization_id_reverses_payment_id"),
+        ForeignKeyConstraint(["organization_id", "invoice_id"], ["invoices.organization_id", "invoices.id"], name="fk_invoice_payments_invoice_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "reverses_payment_id"], ["invoice_payments.organization_id", "invoice_payments.id"],
+                             name="fk_invoice_payments_reversed_payment_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("kind IN ('payment', 'reversal')", name="kind_valid"),
+        CheckConstraint("(kind = 'reversal') = (reverses_payment_id IS NOT NULL)", name="reversal_links_a_payment"),
+        CheckConstraint("kind = 'payment' OR (notes IS NOT NULL AND notes <> '')", name="reversal_has_reason"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_format"),
+        CheckConstraint("method IN ('cash', 'bank_transfer', 'cheque', 'card', 'mobile_wallet', 'other')", name="method_valid"),
+        Index("ix_invoice_payments_organization_id_invoice_id", "organization_id", "invoice_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False, default="payment", server_default=text("'payment'"))
+    reverses_payment_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    payment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    method: Mapped[str] = mapped_column(String(20), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    recorded_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    recorded_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -78,9 +78,11 @@ def test_saving_does_not_create_movements_anywhere(api, shop, inventory, session
     run_a_whole_life(api, shop)
     with session_factory() as db:
         tables = set(inspect(db.get_bind()).get_table_names())
-    # delivery lists and dispatches only: still no stock balance, movement or product table. Stock lives in the Inventory Service.
+    # delivery lists, dispatches and (Step 17B) invoices and payments: still no stock balance, movement or product table.
+    # Stock lives in the Inventory Service.
     assert tables == {"alembic_version", "clients", "delivery_list_counters", "delivery_lists", "delivery_list_items",
-                      "dispatches", "dispatch_lines", "dispatch_counters", "dispatch_requests"}
+                      "dispatches", "dispatch_lines", "dispatch_counters", "dispatch_requests",
+                      "invoices", "invoice_lines", "invoice_allocations", "invoice_payments", "invoice_counters", "invoice_requests"}
     assert inventory.writes() == []
 
 

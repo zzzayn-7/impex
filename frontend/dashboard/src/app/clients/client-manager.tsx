@@ -127,6 +127,7 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           <Link href={`/delivery-lists?client=${client.id}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Delivery lists</Link>
+                          <Link href={`/clients/${client.id}`} aria-label={`Invoices and balance of ${client.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Invoices</Link>
                           <button type="button" onClick={() => { setMessage(null); setPanel({ mode: "edit", client }); }} aria-label={`Edit ${client.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Edit</button>
                           <button type="button" disabled={busyId === client.id} onClick={() => toggle(client)} aria-label={`${client.is_active ? "Deactivate" : "Reactivate"} ${client.name}`}
                             className={`rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium hover:bg-slate-800 disabled:opacity-60 ${client.is_active ? "text-red-300" : "text-emerald-300"}`}>

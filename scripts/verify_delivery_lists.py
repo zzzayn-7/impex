@@ -369,7 +369,8 @@ def main() -> int:
         check("B's too", after["b"] == inventory_before["b"])
         check("no stock movement mentions a delivery list", psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE organization_id = '{org_ids['a']}' AND (reason ILIKE '%deliver%' OR reason ILIKE '%DL-0%')") == "0")
         check("the Sales database has no stock tables at all", psql("impex_sales", "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'")
-              == "alembic_version,clients,delivery_list_counters,delivery_list_items,delivery_lists,dispatch_counters,dispatch_lines,dispatch_requests,dispatches")
+              == "alembic_version,clients,delivery_list_counters,delivery_list_items,delivery_lists,dispatch_counters,dispatch_lines,dispatch_requests,dispatches,"
+              "invoice_allocations,invoice_counters,invoice_lines,invoice_payments,invoice_requests,invoices")
 
         print("\n== 9. inactive clients")
         s, text, _, _ = portal("a", "POST", f"/api/sales/clients/{acme['id']}/deactivate")

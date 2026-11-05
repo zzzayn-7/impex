@@ -509,9 +509,12 @@ describe("a dispatch page", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("was cancelled"));
   });
 
-  it("a confirmed dispatch has no actions and shows its movement", () => {
+  it("a confirmed dispatch can no longer be changed (its only action is to invoice it) and shows its movement", () => {
     render(<DispatchDetailView dispatch={detail({ status: "confirmed", editable: false, confirmed_at: now, confirmed_by_email: "a@b.c", stock_status: "not-needed", lines: detail().lines.map((l: any) => ({ ...l, inventory_movement_id: "c3c3c3c3-aaaa-4bbb-8ccc-123456789abc" })) })} />);
-    expect(screen.queryByRole("group", { name: "Dispatch actions" })?.children.length ?? 0).toBe(0);
+    const actions = screen.getByRole("group", { name: "Dispatch actions" });
+    expect(within(actions).queryAllByRole("button")).toHaveLength(0);
+    expect(within(actions).queryByRole("link", { name: "Edit dispatch" })).toBeNull();
+    expect(within(actions).getAllByRole("link").map((l) => l.textContent)).toEqual(["Create invoice"]);
     expect(screen.getByText("#c3c3c3c3")).toBeTruthy();
   });
 

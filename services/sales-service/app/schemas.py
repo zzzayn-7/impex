@@ -386,3 +386,254 @@ class DispatchPage(BaseModel):
 
 
 DeliveryListDetail.model_rebuild()
+
+
+# =====================================================================================================
+# Invoices and payments (Step 17B)
+# =====================================================================================================
+InvoiceStatus = Literal["draft", "issued", "partially_paid", "paid", "void"]
+PaymentKind = Literal["payment", "reversal"]
+PaymentMethod = Literal["cash", "bank_transfer", "cheque", "card", "mobile_wallet", "other"]
+
+UnitPrice = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4)]
+Money = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4)]
+TaxRate = Annotated[Decimal, Field(ge=0, le=100, max_digits=7, decimal_places=4)]  # a percentage, entered explicitly
+
+DISCLAIMER = (
+    "This document records goods supplied and amounts due as entered by the seller. Discounts and taxes are exactly as entered; "
+    "Impex does not apply any country's tax rules and does not certify that this invoice meets any tax or legal requirement."
+)
+
+
+class InvoiceLineInput(BaseModel):
+    """One dispatched product to bill. Product, SKU, name and unit come from the dispatch line, never from the caller. The SELLING
+    PRICE, the discount and the tax rate are exactly what the administrator enters: the catalog price is not consulted or changed."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    dispatch_line_id: uuid.UUID
+    quantity: Quantity
+    unit_price: UnitPrice
+    discount_amount: Money = Decimal("0")  # an amount in the invoice currency, taken off this line before tax
+    tax_rate: TaxRate = Decimal("0")  # percent of the discounted line amount
+    tax_label: Optional[str] = Field(default=None, max_length=50)
+
+    @field_validator("tax_label")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class InvoiceFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("notes", check_fields=False)
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class InvoiceCreate(InvoiceFields):
+    client_id: uuid.UUID
+    currency_code: str = Field(min_length=3, max_length=3)
+    invoice_date: Optional[date] = None  # default: today
+    due_date: Optional[date] = None  # default: 30 days after the invoice date
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    lines: List[InvoiceLineInput] = Field(default_factory=list, max_length=500)
+
+    @field_validator("currency_code")
+    @classmethod
+    def _currency(cls, value: str) -> str:
+        value = value.upper()
+        if not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("Use a 3-letter currency code such as USD, EUR or PKR")
+        return value
+
+
+class InvoiceUpdate(InvoiceFields):
+    invoice_date: Optional[date] = None
+    due_date: Optional[date] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _valid(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to change.")
+        for required in ("invoice_date", "due_date"):
+            if required in self.model_fields_set and getattr(self, required) is None:
+                raise ValueError(f"{required} cannot be empty")
+        return self
+
+
+class InvoiceLines(BaseModel):
+    """The complete set of lines of a draft invoice. Lines that are not listed are not on it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: List[InvoiceLineInput] = Field(max_length=500)
+
+
+class VoidRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class PaymentCreate(BaseModel):
+    """A payment received. The currency is always the invoice's; the recorder and the time are decided by the service."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    amount: Quantity
+    method: PaymentMethod
+    payment_date: Optional[date] = None  # default: today
+    reference: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("reference", "notes")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class ReversalCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AllocationResponse(BaseModel):
+    dispatch_line_id: uuid.UUID
+    dispatch_id: uuid.UUID
+    dispatch_number: str
+    quantity: Decimal
+
+
+class InvoiceLineResponse(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    quantity: Decimal
+    unit_price: Decimal
+    discount_amount: Decimal
+    tax_rate: Decimal
+    tax_label: Optional[str]
+    line_subtotal: Decimal
+    line_net: Decimal
+    line_tax: Decimal
+    line_total: Decimal
+    allocations: List[AllocationResponse]
+
+
+class PaymentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    invoice_id: uuid.UUID
+    kind: PaymentKind
+    reverses_payment_id: Optional[uuid.UUID]
+    payment_date: date
+    amount: Decimal
+    currency_code: str
+    method: str
+    reference: Optional[str]
+    notes: Optional[str]
+    recorded_by_email: str
+    created_at: datetime
+    reversed: bool = False  # a payment that has been reversed (both rows stay on the invoice)
+
+
+class PaymentWithInvoice(PaymentResponse):
+    invoice_number: str
+
+
+class InvoiceSummary(BaseModel):
+    id: uuid.UUID
+    number: Optional[str]
+    status: InvoiceStatus
+    client: ClientRef
+    delivery_list: Optional["ListRef"]
+    invoice_date: date
+    due_date: date
+    currency_code: str
+    subtotal: Decimal
+    discount_total: Decimal
+    tax_total: Decimal
+    total: Decimal
+    paid_total: Decimal
+    outstanding: Decimal
+    overdue: bool  # issued / partially paid and past its due date
+    line_count: int
+    created_by_email: str
+    issued_at: Optional[datetime]
+    issued_by_email: Optional[str]
+    voided_at: Optional[datetime]
+    updated_at: datetime
+
+
+class InvoiceDetail(InvoiceSummary):
+    seller_name: Optional[str]
+    client_name: Optional[str]
+    client_address: Optional[str]
+    notes: Optional[str]
+    void_reason: Optional[str]
+    lines: List[InvoiceLineResponse]
+    payments: List[PaymentResponse]
+    editable: bool  # only a draft can be edited
+    can_issue: bool
+    can_void: bool
+    can_record_payment: bool
+    disclaimer: str = DISCLAIMER
+
+
+class InvoicePage(BaseModel):
+    items: List[InvoiceSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class BillableLine(BaseModel):
+    """A line of a CONFIRMED dispatch that can be billed: how much was dispatched, how much issued invoices already cover, how much sits
+    in drafts (informational: drafts reserve nothing) and how much is still free to bill."""
+
+    dispatch_line_id: uuid.UUID
+    dispatch_id: uuid.UUID
+    dispatch_number: str
+    dispatch_date: date
+    delivery_list: "ListRef"
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    warehouse_code: Optional[str]
+    dispatched_quantity: Decimal
+    invoiced_quantity: Decimal
+    in_drafts_quantity: Decimal
+    remaining_quantity: Decimal
+
+
+class AccountBalance(BaseModel):
+    currency_code: str
+    invoiced: Decimal
+    paid: Decimal
+    outstanding: Decimal
+    overdue: Decimal
+
+
+class ClientAccount(BaseModel):
+    client: ClientRef
+    balances: List[AccountBalance]  # per currency: nothing is converted or added across currencies
+    invoices: List[InvoiceSummary]
+    payments: List[PaymentWithInvoice]
+
+
+InvoiceSummary.model_rebuild()
+BillableLine.model_rebuild()

@@ -66,6 +66,9 @@ export default function DispatchDetailView({ dispatch: initial }: { dispatch: Di
               <button type="button" disabled={busy} onClick={() => setConfirmingCancel(true)} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-red-300 hover:bg-slate-800 disabled:opacity-50">Discard draft</button>
             </>
           )}
+          {dispatch.status === "confirmed" && (
+            <Link href={`/invoices/new?client=${dispatch.client.id}`} className="min-h-11 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Create invoice</Link>
+          )}
           {dispatch.status === "posting" && (
             <button type="button" disabled={busy} onClick={() => act("confirm")} className="min-h-11 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50">{busy ? "Checking…" : "Retry posting"}</button>
           )}
