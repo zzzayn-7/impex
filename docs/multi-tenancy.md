@@ -153,6 +153,15 @@ Like Sales, the Purchasing Service keeps no product data: it asks the Inventory 
 
 Confirming a receipt makes the Purchasing Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
 
+## Client dispatch (Step 17A)
+
+`dispatches`, `dispatch_lines`, `dispatch_counters` and `dispatch_requests` all carry `organization_id NOT NULL`. A dispatch points at its delivery list and its client, and a dispatch line at its dispatch and its delivery-list item,
+through **composite** foreign keys `(organization_id, id)`, so a dispatch can never reference another organization's list, client or item. A trigger also requires a dispatch's client to be the client of its list. Dispatch numbers (`DS-000001`), posting keys and idempotency keys are unique
+**per organization**. An item of a delivery list can never be re-pointed at another list or organization (database trigger), so the freeze of a list that is not a draft cannot be bypassed that way.
+
+Confirming a dispatch makes the Sales Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another
+organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

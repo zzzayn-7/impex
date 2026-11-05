@@ -1,17 +1,43 @@
 // Browser-side helper for the portal's own /api/sales/* routes. The browser never talks to the Sales Service directly and
 // never names an organization; the HttpOnly cookie identifies the administrator on the server.
-import type { DeliveryItem, ListStatus } from "@/lib/sales";
+import type { DeliveryItem, DispatchStatus, ListStatus } from "@/lib/sales";
 
 export const STOCK_NOTICE =
   "Stock is not reserved by a delivery list. Saving it, marking it Ready or cancelling it never changes inventory, and the quantities on hand may change before dispatch.";
 
-export const STATUS_LABELS: Record<ListStatus, string> = { draft: "Draft", ready: "Ready", cancelled: "Cancelled" };
+export const STATUS_LABELS: Record<ListStatus, string> = {
+  draft: "Draft", ready: "Ready", partially_dispatched: "Partially Dispatched", dispatched: "Dispatched", cancelled: "Cancelled",
+};
 
 export const STATUS_STYLE: Record<ListStatus, string> = {
   draft: "border-amber-500/20 bg-amber-500/10 text-amber-300",
   ready: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  partially_dispatched: "border-sky-500/20 bg-sky-500/10 text-sky-300",
+  dispatched: "border-teal-500/20 bg-teal-500/10 text-teal-300",
   cancelled: "border-slate-600/40 bg-slate-700/30 text-slate-400",
 };
+
+export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = { draft: "Draft", posting: "Posting to stock", confirmed: "Confirmed", cancelled: "Cancelled" };
+
+export const DISPATCH_STATUS_STYLE: Record<DispatchStatus, string> = {
+  draft: "border-amber-500/20 bg-amber-500/10 text-amber-300",
+  posting: "border-sky-500/20 bg-sky-500/10 text-sky-300",
+  confirmed: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  cancelled: "border-slate-600/40 bg-slate-700/30 text-slate-400",
+};
+
+export const DISPATCH_NOTICE =
+  "Preparing, saving or reviewing a dispatch does not change your stock. Stock is deducted only when you confirm the dispatch, and only the quantities on its lines.";
+
+/** "10 of 15" as a 0-100 percentage of two plain decimal strings (display only; strings in, an integer out, no floats for the data itself). */
+export function percent(part: string, whole: string): number {
+  const scale = Math.max(part.split(".")[1]?.length ?? 0, whole.split(".")[1]?.length ?? 0);
+  const scaled = (v: string) => { const [i, f = ""] = v.split("."); return BigInt(i + f.padEnd(scale, "0")); };
+  const w = scaled(whole);
+  if (w === BigInt(0)) return 0;
+  const result = Number((scaled(part) * BigInt(100)) / w);
+  return Math.max(0, Math.min(100, result));
+}
 
 export type ApiResult<T = any> = { ok: boolean; status: number; data: T | null; error: string; code?: string; item?: DuplicateItem; line?: any; fieldErrors?: Record<string, string> };
 export type DuplicateItem = { id: string; quantity: string; unit: string; product_name: string };

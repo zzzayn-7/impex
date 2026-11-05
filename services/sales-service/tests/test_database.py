@@ -30,7 +30,7 @@ def make_item(org, delivery_list, product=None, quantity="1", **extra):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0001"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 
@@ -88,7 +88,7 @@ def test_the_database_refuses_an_unknown_status(session_factory):
         client = make_client(org)
         db.add(client)
         db.flush()
-        db.add(make_list(org, client, status="dispatched"))
+        db.add(make_list(org, client, status="shipped"))
         with pytest.raises(IntegrityError):
             db.commit()
 

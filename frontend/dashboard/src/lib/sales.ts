@@ -11,15 +11,16 @@ export function salesServiceUrl(): string {
 export type SalesResult = { status: number; data: any } | null; // null = the service could not be reached
 
 export async function salesRequest(
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   token: string,
-  body?: unknown
+  body?: unknown,
+  extraHeaders: Record<string, string> = {}
 ): Promise<SalesResult> {
   try {
     const res = await fetch(`${salesServiceUrl()}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...extraHeaders },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
@@ -43,7 +44,7 @@ export type Client = {
   updated_at: string;
 };
 
-export type ListStatus = "draft" | "ready" | "cancelled";
+export type ListStatus = "draft" | "ready" | "partially_dispatched" | "dispatched" | "cancelled";
 
 export type DeliveryListSummary = {
   id: string;
@@ -79,6 +80,61 @@ export type DeliveryItem = {
   created_at: string;
   updated_at: string;
   stock: ItemStock | null;
+  // Dispatch progress: only CONFIRMED dispatches count as dispatched; a dispatch being posted is pending (reserved).
+  dispatched_quantity?: string;
+  pending_quantity?: string;
+  remaining_quantity?: string;
+};
+
+export type DispatchStatus = "draft" | "posting" | "confirmed" | "cancelled";
+
+export type DispatchSummary = {
+  id: string;
+  number: string;
+  status: DispatchStatus;
+  delivery_list: { id: string; number: string; status: ListStatus };
+  client: { id: string; name: string; is_active: boolean };
+  dispatch_date: string;
+  tracking_reference: string | null;
+  line_count: number;
+  created_by_email: string;
+  created_at: string;
+  confirmed_at: string | null;
+  confirmed_by_email: string | null;
+  cancelled_at: string | null;
+  cancelled_by_email: string | null;
+  updated_at: string;
+};
+
+export type DispatchLine = {
+  id: string;
+  delivery_list_item_id: string;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  unit: string;
+  requested_quantity: string;
+  dispatched_elsewhere_quantity: string;
+  pending_elsewhere_quantity: string;
+  dispatchable_quantity: string;
+  warehouse_id: string;
+  warehouse_code: string | null;
+  quantity: string;
+  inventory_movement_id: string | null;
+  available_in_warehouse: string | null;
+};
+
+export type DispatchDetail = DispatchSummary & {
+  delivery_address: string | null;
+  transport_details: string | null;
+  notes: string | null;
+  lines: DispatchLine[];
+  posting: { attempts: number; started_at: string | null; last_attempt_at: string | null; last_error: string | null };
+  inventory_operation_id: string | null;
+  editable: boolean;
+  stock_status: "ok" | "unavailable" | "not-needed";
+  lines_exceeding_stock: number;
+  stock_notice: string;
 };
 
 export type DeliveryListDetail = DeliveryListSummary & {
@@ -86,6 +142,8 @@ export type DeliveryListDetail = DeliveryListSummary & {
   stock_status: "ok" | "unavailable";
   items_exceeding_stock: number;
   stock_notice: string;
+  dispatches?: DispatchSummary[];
+  can_dispatch?: boolean;
 };
 
 // Browser-safe constants live in sales-browser.ts (this file imports server-only code).
@@ -135,6 +193,24 @@ export async function getDeliveryList(token: string, id: string): Promise<{ ok: 
   return { ok: true, list: result.data };
 }
 
+export type DispatchFilters = { q: string; status: DispatchStatus | ""; clientId: string; listId: string; dateFrom: string; dateTo: string; page: number };
+export function listDispatches(token: string, filters: DispatchFilters) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.clientId) params.set("client_id", filters.clientId);
+  if (filters.listId) params.set("delivery_list_id", filters.listId);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  return getPaged<DispatchSummary>("/api/v1/sales/dispatches", params, token);
+}
+
+export async function getDispatch(token: string, id: string): Promise<{ ok: true; dispatch: DispatchDetail } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/dispatches/${id}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, dispatch: result.data };
+}
+
 // ---- failures from write calls, turned into safe responses for the browser ------------------------------------------------
 export type SalesFailure = {
   status: number;
@@ -144,7 +220,11 @@ export type SalesFailure = {
   fieldErrors?: Record<string, string>;
 };
 
-const FIELD_NAMES: Record<string, string> = { client_id: "clientId", external_reference: "externalReference", contact_person: "contactPerson" };
+const FIELD_NAMES: Record<string, string> = {
+  client_id: "clientId", external_reference: "externalReference", contact_person: "contactPerson", delivery_list_id: "deliveryListId",
+  dispatch_date: "dispatchDate", delivery_address: "deliveryAddress", transport_details: "transportDetails", tracking_reference: "trackingReference",
+  warehouse_id: "warehouseId", delivery_list_item_id: "deliveryListItemId",
+};
 
 export function describeSalesFailure(result: SalesResult, notFound = "Not found."): SalesFailure {
   if (!result) return { status: 503, message: "The sales service is unavailable. Please try again shortly." };

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const ACTIONS = ["ready", "cancel", "reopen"];
 
 // Mark a list Ready, Cancelled, or reopen it as a draft. NONE of these touches inventory: stock is neither deducted nor
-// reserved. (Dispatch, which will, does not exist yet.)
+// reserved. Goods are dispatched through /api/sales/dispatches.
 export async function POST(req: NextRequest, { params }: { params: { id: string; action: string } }) {
   const token = sessionToken(req);
   if (!token) return fail("You are not signed in.", 401);

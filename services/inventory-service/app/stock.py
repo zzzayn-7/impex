@@ -28,6 +28,8 @@ from app.models import Product, StockBalance, StockMovement, StockOperation, War
 from app.schemas import (
     MovementList,
     MovementResponse,
+    DispatchPost,
+    DispatchPosting,
     ReceiptMovement,
     ReceiptPost,
     ReceiptPosting,
@@ -44,7 +46,7 @@ from app.units import allows_fractions
 
 QUANT = Decimal("0.0001")
 ZERO = Decimal("0")
-DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "transfer": "Stock transfer", "receipt": "Goods receipt"}
+DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "transfer": "Stock transfer", "receipt": "Goods receipt", "dispatch": "Client dispatch"}
 
 
 # --- small helpers -----------------------------------------------------------------------------------
@@ -210,6 +212,7 @@ def _add_movement(
     transfer_id: Optional[uuid.UUID] = None,
     source_reference: Optional[str] = None,
     source_line_id: Optional[uuid.UUID] = None,
+    source_type: str = "goods_receipt",
 ) -> StockMovement:
     movement = create_for_tenant(
         StockMovement,
@@ -222,7 +225,7 @@ def _add_movement(
         balance_after=balance_after,
         reason=reason,
         transfer_id=transfer_id,
-        source_type="goods_receipt" if source_line_id is not None else None,
+        source_type=source_type if source_line_id is not None else None,
         source_reference=source_reference,
         source_line_id=source_line_id,
         created_by=_user_id(tenant),
@@ -417,6 +420,98 @@ def receipt_by_key(db: Session, tenant: TenantContext, key: str) -> ReceiptPosti
     if operation is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No goods receipt was posted with this key.")
     return _receipt_result(db, tenant, operation.id, _receipt_number_of(db, tenant, operation.id), replayed=True)
+
+
+# --- client dispatch: several quantities of goods leaving for a client, atomically ---------------------------------
+def _dispatch_fingerprint(payload: DispatchPost) -> str:
+    lines = sorted(
+        ({"line": str(l.line_id), "product": str(l.product_id), "warehouse": str(l.warehouse_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
+        key=lambda item: item["line"],
+    )
+    body = json.dumps({"kind": "dispatch", "dispatch": payload.dispatch_number, "list": payload.delivery_list_number or "", "lines": lines}, sort_keys=True)
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _dispatch_result(db: Session, tenant: TenantContext, operation: uuid.UUID, dispatch_number: str, replayed: bool) -> DispatchPosting:
+    posting = _receipt_result(db, tenant, operation, dispatch_number, replayed)
+    return DispatchPosting(operation_id=posting.operation_id, dispatch_number=dispatch_number, replayed=replayed, movements=posting.movements)
+
+
+def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, key: str) -> DispatchPosting:
+    """Deduct the dispatched quantities of one client dispatch from stock: ALL lines or none, once per Idempotency-Key.
+
+    Stock never goes negative (the balance rows are locked, in a fixed order, while they are read and changed; the database
+    also checks quantity >= 0). A dispatch line can produce at most one movement ever (unique index), whatever key the caller
+    uses. The product's unit must equal the unit on the line - a quantity is never reinterpreted - and archived products or
+    warehouses are refused.
+    """
+    request_hash = _dispatch_fingerprint(payload)
+    try:
+        operation = _start_operation(db, tenant, "dispatch", key, request_hash)
+        if operation is None:
+            db.rollback()
+            return _replay_dispatch(db, tenant, key, request_hash)
+
+        reason = f"{DEFAULT_REASONS['dispatch']} {payload.dispatch_number}" + (f" ({payload.delivery_list_number})" if payload.delivery_list_number else "")
+        lines = sorted(payload.lines, key=lambda l: (str(l.product_id), str(l.warehouse_id)))  # stable: same goods keep the order sent
+        products: Dict[uuid.UUID, Product] = {}
+        warehouses: Dict[uuid.UUID, Warehouse] = {}
+        for line in lines:
+            if line.product_id not in products:
+                products[line.product_id] = _load_product_locked(db, tenant, line.product_id)
+            if line.warehouse_id not in warehouses:
+                warehouses[line.warehouse_id] = get_scoped_or_404(db, Warehouse, tenant, line.warehouse_id, "Warehouse")
+        for line in lines:
+            product, warehouse = products[line.product_id], warehouses[line.warehouse_id]
+            _require_active(product, warehouse)
+            if product.unit != line.unit:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{product.name} is now counted in '{product.unit}' but the dispatch line is in '{line.unit}'. "
+                    "A quantity is never converted; correct the unit before dispatching.",
+                )
+            _check_quantity_for_unit(product, line.quantity)
+
+        balances: Dict[uuid.UUID, Dict[uuid.UUID, StockBalance]] = {}
+        for product_id in products:
+            wanted = sorted({l.warehouse_id for l in lines if l.product_id == product_id}, key=str)
+            balances[product_id] = _lock_balances(db, tenant, product_id, wanted)
+        for line in lines:
+            balance = balances[line.product_id][line.warehouse_id]
+            if balance.quantity < line.quantity:
+                raise _insufficient(products[line.product_id], warehouses[line.warehouse_id], balance.quantity, line.quantity)
+            balance.quantity = balance.quantity - line.quantity
+            _add_movement(
+                db, tenant, operation, products[line.product_id], warehouses[line.warehouse_id], "out", line.quantity,
+                balance.quantity, reason, source_reference=payload.dispatch_number, source_line_id=line.line_id, source_type="client_dispatch",
+            )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if "uq_stock_movements_source_line" in str(exc.orig):
+            raise HTTPException(status.HTTP_409_CONFLICT, "One of these dispatch lines was already deducted from stock by an earlier posting.")
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    return _dispatch_result(db, tenant, operation, payload.dispatch_number, replayed=False)
+
+
+def _replay_dispatch(db: Session, tenant: TenantContext, key: str, request_hash: str) -> DispatchPosting:
+    operation = db.scalar(scoped_select(StockOperation, tenant).where(StockOperation.idempotency_key == key))
+    if operation is None:  # the first attempt rolled back at just the wrong moment: it did NOT post. Ask to retry.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The request was being processed. Please retry.", headers={"Retry-After": "1"})
+    if operation.request_hash != request_hash or operation.kind != "dispatch":
+        raise HTTPException(status.HTTP_409_CONFLICT, "This Idempotency-Key was already used for a different request. Use a new key for a new request.")
+    return _dispatch_result(db, tenant, operation.id, _receipt_number_of(db, tenant, operation.id), replayed=True)
+
+
+def dispatch_by_key(db: Session, tenant: TenantContext, key: str) -> DispatchPosting:
+    """Did the posting with this Idempotency-Key happen? Read-only; 404 means it did not (for this organization)."""
+    operation = db.scalar(scoped_select(StockOperation, tenant).where(StockOperation.idempotency_key == key, StockOperation.kind == "dispatch"))
+    if operation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No dispatch was posted with this key.")
+    return _dispatch_result(db, tenant, operation.id, _receipt_number_of(db, tenant, operation.id), replayed=True)
 
 
 # --- reading --------------------------------------------------------------------------------------------------

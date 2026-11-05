@@ -410,3 +410,33 @@ class ReceiptPosting(BaseModel):
     receipt_number: str
     replayed: bool  # true when this was a retry of an earlier posting with the same Idempotency-Key
     movements: List[ReceiptMovement]
+
+
+# =====================================================================================================
+# Client-dispatch posting (Step 17A): stock-out for goods dispatched against a delivery list of the Sales Service
+# =====================================================================================================
+class DispatchLine(ReceiptLine):
+    """One quantity of one product leaving one warehouse. `line_id` is the dispatch line in the Sales Service: it can be posted
+    only once, ever. `unit` must equal the product's current unit (a quantity is never reinterpreted)."""
+
+
+class DispatchPost(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    dispatch_number: str = Field(min_length=1, max_length=32)
+    delivery_list_number: Optional[str] = Field(default=None, max_length=32)
+    lines: List[DispatchLine] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _no_repeated_lines(self):
+        ids = [l.line_id for l in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("A dispatch line can appear only once.")
+        return self
+
+
+class DispatchPosting(BaseModel):
+    operation_id: uuid.UUID
+    dispatch_number: str
+    replayed: bool  # true when this was a retry of an earlier posting with the same Idempotency-Key
+    movements: List[ReceiptMovement]

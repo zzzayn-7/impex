@@ -1,6 +1,6 @@
 """Delivery lists and their items. Every route depends on `require_active_tenant`; none accepts an organization id.
 
-NOTHING in this module changes inventory: see app/delivery.py.
+NOTHING in this module changes inventory: see app/delivery.py (stock is deducted only by a confirmed dispatch).
 """
 import uuid
 from typing import Optional
@@ -59,7 +59,7 @@ def create_delivery_list(payload: DeliveryListCreate, tenant: TenantContext = Te
 @router.get("/delivery-lists", response_model=DeliveryListPage, tags=["Delivery lists"])
 def list_delivery_lists(
     client_id: Optional[uuid.UUID] = None,
-    status_filter: Optional[Literal["draft", "ready", "cancelled"]] = Query(default=None, alias="status"),
+    status_filter: Optional[Literal["draft", "ready", "partially_dispatched", "dispatched", "cancelled"]] = Query(default=None, alias="status"),
     q: Optional[str] = Query(default=None, max_length=100, description="Search number, external reference or client name"),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),

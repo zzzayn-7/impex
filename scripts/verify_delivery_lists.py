@@ -369,7 +369,7 @@ def main() -> int:
         check("B's too", after["b"] == inventory_before["b"])
         check("no stock movement mentions a delivery list", psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE organization_id = '{org_ids['a']}' AND (reason ILIKE '%deliver%' OR reason ILIKE '%DL-0%')") == "0")
         check("the Sales database has no stock tables at all", psql("impex_sales", "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'")
-              == "alembic_version,clients,delivery_list_counters,delivery_list_items,delivery_lists")
+              == "alembic_version,clients,delivery_list_counters,delivery_list_items,delivery_lists,dispatch_counters,dispatch_lines,dispatch_requests,dispatches")
 
         print("\n== 9. inactive clients")
         s, text, _, _ = portal("a", "POST", f"/api/sales/clients/{acme['id']}/deactivate")
@@ -427,9 +427,9 @@ def main() -> int:
         check("an organization_id in a request body is rejected by the Sales Service (422)", s == 422, (s, text[:100]))
 
         print("\n== 11. the database enforces it too")
-        err = psql_with_errors("impex_sales", f"INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit) VALUES ('{org_ids['a']}', '{l1['id']}', '{a_bolt['id']}', 'X', 'X', 1, 'pcs')")
+        err = psql_with_errors("impex_sales", f"SET session_replication_role = replica; INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit) VALUES ('{org_ids['a']}', '{l1['id']}', '{a_bolt['id']}', 'X', 'X', 1, 'pcs')")
         check("a second line for the same product is refused", "duplicate key" in err, err[:120])
-        err = psql_with_errors("impex_sales", f"INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit) VALUES ('{org_ids['a']}', '{l1['id']}', '{uuid.uuid4()}', 'X', 'X', 0, 'pcs')")
+        err = psql_with_errors("impex_sales", f"SET session_replication_role = replica; INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit) VALUES ('{org_ids['a']}', '{l1['id']}', '{uuid.uuid4()}', 'X', 'X', 0, 'pcs')")
         check("a zero quantity is refused", "violates check constraint" in err, err[:120])
         err = psql_with_errors("impex_sales", f"INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit) VALUES ('{org_ids['b']}', '{l1['id']}', '{uuid.uuid4()}', 'X', 'X', 1, 'pcs')")
         check("an item that mixes two organizations is refused", "violates foreign key" in err, err[:120])
@@ -503,7 +503,7 @@ def main() -> int:
         print("\n== cleanup (exactly the rows this run created, by id)")
         orgs = created.get("organizations")
         left = {
-            "items": delete_exact(psql, "impex_sales", "delivery_list_items", orgs, "organization_id"),
+            "items": delete_exact(psql, "impex_sales", "delivery_list_items", orgs, "organization_id", ledger=True),
             "lists": delete_exact(psql, "impex_sales", "delivery_lists", orgs, "organization_id"),
             "counters": delete_exact(psql, "impex_sales", "delivery_list_counters", orgs, "organization_id"),
             "clients": delete_exact(psql, "impex_sales", "clients", orgs, "organization_id"),

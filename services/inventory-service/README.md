@@ -34,6 +34,8 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `GET /products/{id}/label?identifier_id=` | name, SKU, code, QR SVG and Code 128 SVG for printing |
 | `GET /scan/resolve?code=` | which product of **your** organization a scanned code means, with its stock. Read-only. Fails closed: a code that is one product's barcode (even a retired one) and another product's SKU answers `409`, never a guess |
 | `POST /goods-receipts` | **(called by the Purchasing Service)** add the accepted quantities of one goods receipt to stock: all lines atomically, once per `Idempotency-Key`, one `in` movement per line with its source (`goods_receipt`, the receipt number, the receipt line). Refuses a unit that differs from the product's, archived products / warehouses and other organizations' ids |
+| `POST /dispatches` | **(called by the Sales Service)** deduct the quantities of one client dispatch from stock: all lines atomically, once per `Idempotency-Key`, one `out` movement per line with its source (`client_dispatch`, the dispatch number, the dispatch line). Stock never goes below zero (`409`, nothing deducted). Refuses a unit that differs from the product's, archived products / warehouses and other organizations' ids |
+| `GET /dispatches/by-key/{key}` | read-only: did the posting made with this key happen? (`404` = it did not.) Lets the caller finish a posting whose answer was lost |
 | `GET /goods-receipts/by-key/{key}` | read-only: did the posting made with this key happen? (`404` = it did not.) Lets the caller finish a posting whose answer was lost |
 | `GET /health` | public |
 

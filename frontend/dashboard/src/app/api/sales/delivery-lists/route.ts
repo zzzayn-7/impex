@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
   const params = new URLSearchParams();
   const status = p.get("status");
-  if (status === "draft" || status === "ready" || status === "cancelled") params.set("status", status);
+  if (status === "draft" || status === "ready" || status === "partially_dispatched" || status === "dispatched" || status === "cancelled") params.set("status", status);
   const clientId = p.get("clientId");
   if (clientId) {
     if (!checkUuid(clientId)) return fail("Client not found.", 404);

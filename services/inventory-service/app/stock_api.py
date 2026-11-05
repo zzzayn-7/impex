@@ -15,6 +15,8 @@ from app.database import get_db
 from app.models import Product, Warehouse
 from app.schemas import (
     MovementList,
+    DispatchPost,
+    DispatchPosting,
     MovementType,
     ReceiptPost,
     ReceiptPosting,
@@ -252,3 +254,23 @@ def goods_receipt_by_key(key: str, tenant: TenantContext = Tenant, db: Session =
     if not IDEMPOTENCY_KEY_RE.match(key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No goods receipt was posted with this key.")
     return stock.receipt_by_key(db, tenant, key)
+
+
+# =====================================================================================================
+# Client dispatches (Step 17A): called by the Sales Service with the administrator's own token
+# =====================================================================================================
+@router.post("/dispatches", response_model=DispatchPosting, status_code=status.HTTP_201_CREATED, tags=["Stock"])
+def post_dispatch(payload: DispatchPost, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
+    """Deduct the quantities of a client dispatch from stock, all lines atomically. 201 the first time, 200 on a replay.
+    409 when stock would go negative: nothing at all is deducted."""
+    result = stock.execute_dispatch(db, tenant, payload, key)
+    response.status_code = status.HTTP_200_OK if result.replayed else status.HTTP_201_CREATED
+    return result
+
+
+@router.get("/dispatches/by-key/{key}", response_model=DispatchPosting, tags=["Stock"])
+def dispatch_by_key(key: str, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """Read-only check whether the posting made with this Idempotency-Key happened (404 = it did not)."""
+    if not IDEMPOTENCY_KEY_RE.match(key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No dispatch was posted with this key.")
+    return stock.dispatch_by_key(db, tenant, key)

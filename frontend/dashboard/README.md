@@ -30,4 +30,10 @@ server-side with the HttpOnly cookie as the Bearer token; the browser never name
 The browser talks only to this portal's own `/api/sales/*` routes (HttpOnly session cookie to Bearer token); it never names an
 organization, never supplies product names, SKUs, units or stock, and sends quantities as exact strings.
 
-Planned: dispatch of delivery lists, invoicing and transaction history.
+- `/dispatches` – **Dispatches**: every dispatch, filterable by status, client and date, searchable by dispatch, list, tracking number or client; **New Dispatch** starts from a Ready delivery list. `/dispatches/<id>` shows one dispatch with its lines, the live stock of each warehouse while it is a draft, and the stock movements it made.
+- `/delivery-lists/<id>/dispatch` – **Prepare dispatch**: choose the products and quantities (typed by you; never filled in or incremented automatically), the warehouse each leaves from (one product may leave from several), optionally locate a product of the list by typing, scanning or the phone camera (a product that is not on the list is refused), **review** the available stock, then explicitly **confirm**. Saving and reviewing only keep a draft; stock is deducted only on *Confirm and deduct from stock*. If the inventory service cannot confirm the posting right away, the dispatch stays *Posting to stock* and **Retry posting** finishes it without ever deducting the goods twice.
+- `/delivery-lists/<id>` shows, once goods are dispatched, quantity progress per product (dispatched / in progress / remaining) and the dispatch history; the list can then be neither reopened nor cancelled.
+- `/scan` has a fourth action, **Prepare Dispatch**: pick a Ready list, and the scanned product is put on that list's draft dispatch with a typed quantity and a warehouse (showing requested, already dispatched, remaining and the warehouse stock). Scanning the same code again never raises the quantity.
+- `/purchase-orders/<id>/receive` has **Use camera** beside manual entry, like the Scan page.
+
+Planned: customer invoices, payments, returns and transaction history.

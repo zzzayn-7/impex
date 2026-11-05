@@ -102,12 +102,12 @@ async function openDeliverables(user: ReturnType<typeof userEvent.setup>, code =
 }
 
 describe("Scan Product: actions", () => {
-  it("prioritises Stock In, Stock Out and Add to Deliverables; transfers stay on the Stock page", async () => {
+  it("prioritises Stock In, Stock Out, Add to Deliverables and Prepare Dispatch; transfers stay on the Stock page", async () => {
     const user = userEvent.setup();
     render(<ScanProduct warehouses={warehouses} />);
     await scan(user, "BOLT-1");
     const group = await screen.findByRole("group", { name: "Actions" });
-    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock In", "Stock Out", "Add to Deliverables"]);
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock In", "Stock Out", "Add to Deliverables", "Prepare Dispatch"]);
     expect(screen.queryByRole("button", { name: "Transfer" })).toBeNull();
     expect(screen.getByRole("link", { name: "Stock page" }).getAttribute("href")).toBe("/stock");
   });

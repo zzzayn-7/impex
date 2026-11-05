@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import AddItemForm from "@/components/add-item-form";
 import { validateQuantity } from "@/lib/stock-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
-import { STATUS_LABELS, STATUS_STYLE, STOCK_NOTICE, api, jsonBody, qty } from "@/lib/sales-browser";
+import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, STATUS_LABELS, STATUS_STYLE, STOCK_NOTICE, api, jsonBody, percent, qty } from "@/lib/sales-browser";
 import type { DeliveryItem, DeliveryListDetail as Detail } from "@/lib/sales";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
@@ -24,6 +24,10 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
   const [adding, setAdding] = useState(false);
 
   const draft = list.status === "draft";
+  const dispatches = list.dispatches ?? [];
+  // Once goods are dispatched (or being dispatched) the list can be neither reopened nor cancelled: that would hide the fulfilment history.
+  // An unfinished DRAFT dispatch does not count: reopening or cancelling the list cancels it.
+  const hasFulfilment = dispatches.some((d) => d.status === "posting" || d.status === "confirmed");
   const refresh = () => startTransition(() => router.refresh());
 
   async function call(url: string, init: RequestInit, success: string) {
@@ -74,8 +78,9 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="List actions">
           {draft && <button type="button" disabled={busy || list.items.length === 0} onClick={() => changeStatus("ready")} className="min-h-11 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Mark Ready</button>}
-          {list.status === "ready" && <button type="button" disabled={busy} onClick={() => changeStatus("reopen")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">Reopen as draft</button>}
-          {list.status !== "cancelled" && (confirmCancel ? (
+          {list.can_dispatch && <Link href={`/delivery-lists/${list.id}/dispatch`} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Prepare dispatch</Link>}
+          {list.status === "ready" && !hasFulfilment && <button type="button" disabled={busy} onClick={() => changeStatus("reopen")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">Reopen as draft</button>}
+          {(list.status === "draft" || list.status === "ready") && !hasFulfilment && (confirmCancel ? (
             <span className="flex items-center gap-2">
               <span className="text-xs text-slate-300">Cancel this list?</span>
               <button type="button" disabled={busy} onClick={() => changeStatus("cancel")} className="min-h-11 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">Yes, cancel</button>
@@ -95,6 +100,8 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
           <button type="button" onClick={() => setMessage(null)} aria-label="Dismiss" className="opacity-70 hover:opacity-100">✕</button>
         </div>
       )}
+      {list.status === "partially_dispatched" && <p role="status" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">Some of the goods have been dispatched. The list stays open until everything has left. Its products are frozen, and it can no longer be reopened or cancelled.</p>}
+      {list.status === "dispatched" && <p role="status" className="rounded-lg border border-teal-500/20 bg-teal-500/10 px-4 py-3 text-xs text-teal-200">Everything on this list has been dispatched. The list is complete and frozen.</p>}
       {list.stock_status === "unavailable" && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Current stock could not be loaded right now, so availability is not shown. The list itself is unaffected.</p>}
       {list.items_exceeding_stock > 0 && (
         <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -114,7 +121,8 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
                   <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Quantity</th>
-                  <th className="px-3 py-3 font-semibold text-right">Available now</th><th className="px-3 py-3 font-semibold">Planned from</th>{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
+                  <th className="px-3 py-3 font-semibold text-right">Available now</th><th className="px-3 py-3 font-semibold">Planned from</th>
+                  {!draft && <th className="px-3 py-3 font-semibold">Dispatch progress</th>}{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -150,6 +158,18 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
                       ) : <span className="text-slate-600">—</span>}
                     </td>
                     <td className="px-3 py-3 text-xs">{item.planned_warehouse_code ?? <span className="text-slate-600">—</span>}</td>
+                    {!draft && (
+                      <td className="px-3 py-3 text-xs" data-testid={`progress-${item.product_sku}`}>
+                        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label={`Dispatched ${item.product_name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent(item.dispatched_quantity ?? "0", item.quantity)}>
+                          <div className="h-full bg-emerald-500" style={{ width: `${percent(item.dispatched_quantity ?? "0", item.quantity)}%` }} />
+                        </div>
+                        <div className="mt-1 font-mono text-slate-300">{qty(item.dispatched_quantity ?? "0")} of {qty(item.quantity)} {item.unit} dispatched</div>
+                        <div className="font-mono text-slate-500">
+                          {item.pending_quantity && /[1-9]/.test(item.pending_quantity) ? <span className="text-sky-300">{qty(item.pending_quantity)} in progress · </span> : null}
+                          {qty(item.remaining_quantity ?? item.quantity)} remaining
+                        </div>
+                      </td>
+                    )}
                     {draft && (
                       <td className="px-3 py-3">
                         {removing === item.id ? (
@@ -174,6 +194,36 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
         )}
       </section>
 
+      {!draft && list.status !== "cancelled" && (
+        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5" aria-label="Dispatches">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-white">Dispatches ({dispatches.length})</h3>
+            {list.can_dispatch && <Link href={`/delivery-lists/${list.id}/dispatch`} className="text-sm font-medium text-indigo-300 hover:text-indigo-200">Prepare dispatch →</Link>}
+          </div>
+          {dispatches.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-center text-sm text-slate-500">Nothing has been dispatched against this list yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="border-b border-slate-800 text-xs uppercase text-slate-400">
+                  <tr><th className="px-3 py-2 font-semibold">Dispatch</th><th className="px-3 py-2 font-semibold">Date</th><th className="px-3 py-2 font-semibold text-right">Lines</th><th className="px-3 py-2 font-semibold">Status</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {dispatches.map((d) => (
+                    <tr key={d.id} className="hover:bg-slate-800/30">
+                      <td className="px-3 py-2"><Link href={`/dispatches/${d.id}`} className="font-mono font-semibold text-indigo-300 hover:text-indigo-200">{d.number}</Link>{d.tracking_reference && <span className="ml-2 text-xs text-slate-500">{d.tracking_reference}</span>}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">{d.dispatch_date}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{d.line_count}</td>
+                      <td className="px-3 py-2"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${DISPATCH_STATUS_STYLE[d.status]}`}>{DISPATCH_STATUS_LABELS[d.status]}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       {draft ? (
         <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5" aria-label="Add a product">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -187,7 +237,9 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
           <ListNotes list={list} onSaved={(text) => { setMessage({ ok: true, text }); refresh(); }} />
         </section>
       ) : (
-        list.status === "ready" && <p className="text-xs text-slate-500">This list is Ready. Reopen it as a draft to change its products.</p>
+        list.status === "ready" && (hasFulfilment
+          ? <p className="text-xs text-slate-500">This list has dispatches, so its products are frozen.</p>
+          : <p className="text-xs text-slate-500">This list is Ready. Reopen it as a draft to change its products.</p>)
       )}
     </div>
   );

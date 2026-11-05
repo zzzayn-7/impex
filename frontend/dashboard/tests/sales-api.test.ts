@@ -187,7 +187,7 @@ describe("delivery lists", () => {
     await listLists(request("GET", undefined, { query: `?status=draft&clientId=${ID}&q=po&organization_id=evil&sort=x` }));
     expect(Object.fromEntries(new URL(upstream().url).searchParams)).toEqual({ status: "draft", client_id: ID, q: "po", limit: "50", offset: "0" });
     fetchMock.mockClear();
-    await listLists(request("GET", undefined, { query: "?status=dispatched" }));
+    await listLists(request("GET", undefined, { query: "?status=shipped" }));
     expect(new URL(upstream().url).searchParams.has("status")).toBe(false);
     expect((await listLists(request("GET", undefined, { query: "?clientId=nope" }))).status).toBe(404);
   });

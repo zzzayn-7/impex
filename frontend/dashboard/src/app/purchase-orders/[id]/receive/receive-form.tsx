@@ -4,6 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import CameraScanner from "@/app/scan/camera-scanner";
 import { RECEIPT_NOTICE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE, validateReceivedQuantity } from "@/lib/purchasing-browser";
 import { api, exceeds, jsonBody, qty } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
@@ -54,6 +55,7 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
   const [code, setCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [camera, setCamera] = useState(false);
 
   const set = (lineId: string, patch: Partial<Row>) => {
     setRows((current) => ({ ...current, [lineId]: { ...current[lineId], ...patch } }));
@@ -61,13 +63,19 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
   };
 
   // ---- locate a product by SKU / barcode: it must be ON this order -----------------------------------------------------------------
-  async function locate(e: FormEvent<HTMLFormElement>) {
+  // The typed text, a USB / Bluetooth scanner (which "types" into the box) and the phone camera all end up here. It only LOOKS the
+  // product up and moves to its row: it never fills in or increases a quantity.
+  function onLocate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (looking || !code.trim()) return;
+    void locateCode(code);
+  }
+
+  async function locateCode(raw: string) {
+    if (looking || !raw.trim()) return;
     setError(null);
     setNotice(null);
     setHighlight(null);
-    const normalized = normalizeScanned(code);
+    const normalized = normalizeScanned(raw);
     if (!normalized.ok) return setError(normalized.message);
     setLooking(true);
     const result = await lookupOnServer(normalized.code);
@@ -253,13 +261,17 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
         </label>
       </section>
 
-      <form onSubmit={locate} role="search" aria-label="Find a product on this order" className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <form onSubmit={onLocate} role="search" aria-label="Find a product on this order" className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <label className="flex-1 text-xs font-medium text-slate-400">
           Find a product on this order (SKU or barcode)
           <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={200} placeholder="Type, or scan into this box" className={`${fieldClass} font-mono`} />
         </label>
-        <button type="submit" disabled={looking || !code.trim()} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">{looking ? "Looking…" : "Find product"}</button>
+        <div className="flex gap-2">
+          <button type="submit" disabled={looking || !code.trim()} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50 sm:flex-none">{looking ? "Looking…" : "Find product"}</button>
+          <button type="button" onClick={() => setCamera((on) => !on)} aria-expanded={camera} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 sm:flex-none">{camera ? "Hide camera" : "Use camera"}</button>
+        </div>
       </form>
+      {camera && <CameraScanner onDetected={(text) => { setCamera(false); void locateCode(text); }} onClose={() => setCamera(false)} />}
       {notice && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
 

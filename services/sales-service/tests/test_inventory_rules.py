@@ -46,7 +46,12 @@ def test_the_sales_service_only_ever_reads_from_the_inventory_service(api, shop,
 def test_no_endpoint_of_the_service_can_move_stock(client):
     spec = client.get("/openapi.json").json()
     for path in spec["paths"]:
-        assert "dispatch" not in path and "deduct" not in path and "reserve" not in path and "/stock" not in path, path
+        assert "deduct" not in path and "reserve" not in path and "/stock" not in path, path
+    # Step 17A: dispatches, and only these routes (stock itself is never exposed here)
+    assert {p for p in spec["paths"] if "dispatch" in p} == {
+        "/api/v1/sales/dispatches", "/api/v1/sales/dispatches/{dispatch_id}", "/api/v1/sales/dispatches/{dispatch_id}/lines",
+        "/api/v1/sales/dispatches/{dispatch_id}/confirm", "/api/v1/sales/dispatches/{dispatch_id}/cancel",
+    }
 
 
 def test_the_callers_own_token_is_what_the_inventory_service_receives(api, shop, inventory):
@@ -73,7 +78,9 @@ def test_saving_does_not_create_movements_anywhere(api, shop, inventory, session
     run_a_whole_life(api, shop)
     with session_factory() as db:
         tables = set(inspect(db.get_bind()).get_table_names())
-    assert tables == {"alembic_version", "clients", "delivery_list_counters", "delivery_lists", "delivery_list_items"}
+    # delivery lists and dispatches only: still no stock balance, movement or product table. Stock lives in the Inventory Service.
+    assert tables == {"alembic_version", "clients", "delivery_list_counters", "delivery_lists", "delivery_list_items",
+                      "dispatches", "dispatch_lines", "dispatch_counters", "dispatch_requests"}
     assert inventory.writes() == []
 
 

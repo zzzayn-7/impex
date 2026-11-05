@@ -5,7 +5,7 @@ other value the caller must not decide is refused with 422 instead of being sile
 """
 import re
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, List, Literal, Optional
 
@@ -101,7 +101,7 @@ class ClientRef(BaseModel):
 # =====================================================================================================
 # Delivery lists
 # =====================================================================================================
-Status = Literal["draft", "ready", "cancelled"]
+Status = Literal["draft", "ready", "partially_dispatched", "dispatched", "cancelled"]
 
 
 class DeliveryListCreate(BaseModel):
@@ -196,6 +196,17 @@ class ItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     stock: Optional[ItemStock] = None
+    # Dispatch progress. Only CONFIRMED dispatches count as dispatched; a dispatch being posted is pending (reserved).
+    # remaining = requested - dispatched - pending.
+    dispatched_quantity: Decimal = Decimal("0.0000")
+    pending_quantity: Decimal = Decimal("0.0000")
+    remaining_quantity: Optional[Decimal] = None
+
+    @model_validator(mode="after")
+    def _remaining(self):
+        if self.remaining_quantity is None:
+            self.remaining_quantity = self.quantity - self.dispatched_quantity - self.pending_quantity
+        return self
 
 
 class DeliveryListSummary(BaseModel):
@@ -228,6 +239,8 @@ class DeliveryListDetail(DeliveryListSummary):
     items: List[ItemResponse]
     stock_status: Literal["ok", "unavailable"]  # unavailable: the Inventory Service could not be asked right now
     items_exceeding_stock: int
+    dispatches: List["DispatchSummary"] = []  # the dispatches of this list, newest first (drafts and cancelled ones included)
+    can_dispatch: bool = False  # Ready or Partially Dispatched, with something still dispatchable
     stock_notice: str = STOCK_NOTICE
 
 
@@ -237,3 +250,139 @@ class ItemResult(BaseModel):
     item: ItemResponse
     item_count: int
     stock_notice: str = STOCK_NOTICE
+
+
+# =====================================================================================================
+# Dispatches (Step 17A)
+# =====================================================================================================
+DispatchStatus = Literal["draft", "posting", "confirmed", "cancelled"]
+
+DISPATCH_NOTICE = (
+    "Preparing, saving or reviewing a dispatch does not change your stock. Stock is deducted only when you confirm the dispatch, "
+    "and only the quantities on its lines."
+)
+
+
+class DispatchLineInput(BaseModel):
+    """A quantity of one delivery-list item leaving one warehouse. Product, SKU, name and unit come from the item, never from the caller."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    delivery_list_item_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    quantity: Quantity
+
+
+class DispatchFields(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("delivery_address", "transport_details", "tracking_reference", "notes", check_fields=False)
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class DispatchCreate(DispatchFields):
+    delivery_list_id: uuid.UUID
+    dispatch_date: Optional[date] = None  # default: today
+    delivery_address: Optional[str] = Field(default=None, max_length=1000)
+    transport_details: Optional[str] = Field(default=None, max_length=500)
+    tracking_reference: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    lines: List[DispatchLineInput] = Field(default_factory=list, max_length=500)
+
+
+class DispatchUpdate(DispatchFields):
+    dispatch_date: Optional[date] = None
+    delivery_address: Optional[str] = Field(default=None, max_length=1000)
+    transport_details: Optional[str] = Field(default=None, max_length=500)
+    tracking_reference: Optional[str] = Field(default=None, max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _valid(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to change.")
+        if "dispatch_date" in self.model_fields_set and self.dispatch_date is None:
+            raise ValueError("dispatch_date cannot be empty")
+        return self
+
+
+class DispatchLines(BaseModel):
+    """The complete set of lines of a draft dispatch. Lines that are not listed are not on it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lines: List[DispatchLineInput] = Field(max_length=500)
+
+
+class ListRef(BaseModel):
+    id: uuid.UUID
+    number: str
+    status: Status
+
+
+class DispatchLineResponse(BaseModel):
+    id: uuid.UUID
+    delivery_list_item_id: uuid.UUID
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    requested_quantity: Decimal  # what the client asked for
+    dispatched_elsewhere_quantity: Decimal  # confirmed on OTHER dispatches of the list
+    pending_elsewhere_quantity: Decimal  # being posted on other dispatches (reserved)
+    dispatchable_quantity: Decimal  # the most this dispatch may carry: requested - dispatched elsewhere - pending elsewhere
+    warehouse_id: uuid.UUID
+    warehouse_code: Optional[str]
+    quantity: Decimal
+    inventory_movement_id: Optional[uuid.UUID]  # the Inventory Service's stock movement, once confirmed
+    available_in_warehouse: Optional[Decimal] = None  # live stock of this product there (information only: not reserved)
+
+
+class PostingInfo(BaseModel):
+    attempts: int
+    started_at: Optional[datetime]
+    last_attempt_at: Optional[datetime]
+    last_error: Optional[str]
+
+
+class DispatchSummary(BaseModel):
+    id: uuid.UUID
+    number: str
+    status: DispatchStatus
+    delivery_list: ListRef
+    client: ClientRef
+    dispatch_date: date
+    tracking_reference: Optional[str]
+    line_count: int
+    created_by_email: str
+    created_at: datetime
+    confirmed_at: Optional[datetime]
+    confirmed_by_email: Optional[str]
+    cancelled_at: Optional[datetime]
+    cancelled_by_email: Optional[str]
+    updated_at: datetime
+
+
+class DispatchDetail(DispatchSummary):
+    delivery_address: Optional[str]
+    transport_details: Optional[str]
+    notes: Optional[str]
+    lines: List[DispatchLineResponse]
+    posting: PostingInfo
+    inventory_operation_id: Optional[uuid.UUID]
+    editable: bool  # only a draft can be edited
+    stock_status: Literal["ok", "unavailable", "not-needed"]  # whether the live stock shown on the lines could be read
+    lines_exceeding_stock: int  # lines whose quantity is more than the warehouse holds right now (a draft only)
+    stock_notice: str = DISPATCH_NOTICE
+
+
+class DispatchPage(BaseModel):
+    items: List[DispatchSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+DeliveryListDetail.model_rebuild()

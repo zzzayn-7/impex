@@ -257,3 +257,16 @@ export async function loadCodes(token: string, productId: string): Promise<Codes
   }
   return { ok: true, product: product!.data, identifiers, label };
 }
+
+
+// Stock per warehouse for these products (information for the dispatch form; nothing is reserved). Product id -> stock.
+export async function loadStockSummary(token: string, productIds: string[]): Promise<Record<string, StockProduct>> {
+  if (productIds.length === 0) return {};
+  const params = new URLSearchParams();
+  for (const id of productIds.slice(0, 100)) params.append("product_id", id);
+  const result = await inventoryRequest("GET", `/api/v1/inventory/stock/summary?${params}`, token);
+  if (!result || result.status !== 200) return {};
+  const out: Record<string, StockProduct> = {};
+  for (const item of result.data?.items ?? []) out[item.product_id] = item;
+  return out;
+}

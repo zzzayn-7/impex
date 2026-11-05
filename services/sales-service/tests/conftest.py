@@ -9,6 +9,7 @@ who the caller is, and which organization's products are visible, is decided by 
 Run them inside Docker (so the postgres hostname and credentials are available):
     docker compose run --rm --no-deps sales-service sh -c "pip install -q -r requirements-dev.txt && python -m pytest -v"
 """
+import json
 import os
 import uuid
 from contextlib import contextmanager
@@ -32,6 +33,7 @@ TEST_DB_NAME = "impex_sales_test"
 SERVICE_DIR = Path(__file__).resolve().parent.parent
 CLIENTS = "/api/v1/sales/clients"
 LISTS = "/api/v1/sales/delivery-lists"
+DISPATCHES = "/api/v1/sales/dispatches"
 
 
 def alembic_config() -> Config:
@@ -93,7 +95,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with empty tables and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE delivery_list_items, delivery_lists, delivery_list_counters, clients"))
+        conn.execute(text("TRUNCATE TABLE dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
 
     def override_get_db():
         db = session_factory()
@@ -172,6 +174,17 @@ class FakeInventory:
         self.stock = {}  # (product id, warehouse id) -> Decimal
         self.mode = None  # "down" | "500" | "401" | "403"
         self.requests = []  # (method, path, token)
+        # --- dispatch postings (the one write Sales makes), like the real Inventory Service: atomic, idempotent by key, one ledger
+        # movement per line, stock never negative, a source line posted at most once. Failures can be injected, one per POST, in order:
+        #   "timeout_before"  the request never reaches the service        "timeout_after"  it is applied but the answer is lost
+        #   "500_before"      the service fails before doing anything        "500_after"      it is applied, then answers 500
+        #   "reject"          a definitive 409 (nothing applied)             "wrong_answer"   applied, but the answer names other goods
+        self.post_modes = []
+        self.lookup_mode = None  # "500": the by-key lookup itself fails
+        self.operations = {}  # (org, idempotency key) -> the posting result
+        self.ledger = []  # every movement ever made by a posting
+        self.posted_lines = set()
+        self.post_calls = 0
 
     # -- building the world
     def add_warehouse(self, org: str, code: str = "MAIN", active: bool = True) -> str:
@@ -203,7 +216,8 @@ class FakeInventory:
         return {
             "product_id": product["id"], "sku": product["sku"], "name": product["name"], "category": "General", "unit": product["unit"],
             "unit_allows_fractions": product["unit"] in ("kg", "g", "l", "m"), "is_active": product["is_active"],
-            "total_quantity": format(total, "f"), "available_quantity": format(available, "f"), "lines": [],
+            "total_quantity": format(total, "f"), "available_quantity": format(available, "f"),
+            "lines": [{"warehouse_id": w["id"], "warehouse_code": w["code"], "warehouse_name": f"{w['code']} warehouse", "warehouse_active": w["is_active"], "quantity": format(q, "f")} for w, q in lines],
         }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -225,10 +239,89 @@ class FakeInventory:
             ids = request.url.params.get_list("product_id")
             items = [self._stock_item(org, p) for pid, p in self.products.get(org, {}).items() if pid in ids]
             return httpx.Response(200, json={"items": items})
+        if request.method == "POST" and path == "/api/v1/inventory/dispatches":
+            return self._post_dispatch(org, request)
+        if request.method == "GET" and path.startswith("/api/v1/inventory/dispatches/by-key/"):
+            if self.lookup_mode == "500":
+                return httpx.Response(500, json={"detail": "boom"})
+            found = self.operations.get((org, path.rsplit("/", 1)[1]))
+            if found is None:
+                return httpx.Response(404, json={"detail": "No dispatch was posted with this key."})
+            return httpx.Response(200, json={**found, "replayed": True})
         if request.method == "GET" and path.startswith("/api/v1/inventory/warehouses/"):
             warehouse = self.warehouses.get(org, {}).get(path.rsplit("/", 1)[1])
             return httpx.Response(200, json=warehouse) if warehouse else httpx.Response(404, json={"detail": "Warehouse not found."})
         return httpx.Response(404, json={"detail": "not found"})
+
+    def _post_dispatch(self, org: str, request: httpx.Request) -> httpx.Response:
+        self.post_calls += 1
+        mode = self.post_modes.pop(0) if self.post_modes else None
+        if mode == "timeout_before":
+            raise httpx.ReadTimeout("no answer")
+        if mode == "500_before":
+            return httpx.Response(500, json={"detail": "boom"})
+        if mode == "reject":
+            return httpx.Response(409, json={"detail": "Steel bolt is archived. Restore it before changing its stock."})
+        key, body = request.headers.get("idempotency-key", ""), json.loads(request.content)
+        previous = self.operations.get((org, key))
+        if previous is not None:
+            result, status_code = {**previous, "replayed": True}, 200
+        else:
+            problem = self._validate_posting(org, body)
+            if problem:
+                return httpx.Response(problem[0], json={"detail": problem[1]})
+            movements = []
+            for line in body["lines"]:
+                quantity = Decimal(line["quantity"])
+                balance = self.stock.get((line["product_id"], line["warehouse_id"]), Decimal(0)) - quantity
+                self.stock[(line["product_id"], line["warehouse_id"])] = balance
+                movement = {"id": str(uuid.uuid4()), "line_id": line["line_id"], "product_id": line["product_id"],
+                            "warehouse_id": line["warehouse_id"], "quantity": format(quantity, "f"), "balance_after": format(balance, "f")}
+                movements.append(movement)
+                self.ledger.append({**movement, "source_reference": body["dispatch_number"], "org": org})
+                self.posted_lines.add((org, line["line_id"]))
+            result = {"operation_id": str(uuid.uuid4()), "dispatch_number": body["dispatch_number"], "replayed": False, "movements": movements}
+            self.operations[(org, key)] = result
+            status_code = 201
+        if mode == "timeout_after":
+            raise httpx.ReadTimeout("the answer was lost")
+        if mode == "500_after":
+            return httpx.Response(500, json={"detail": "boom"})
+        if mode == "wrong_answer":
+            result = {**result, "movements": [{**result["movements"][0], "quantity": "9999.0000"}, *result["movements"][1:]]}
+        return httpx.Response(status_code, json=result)
+
+    def _validate_posting(self, org: str, body: dict):
+        """(status, message) if the real service would refuse the whole posting, else None. Nothing is applied before this passes."""
+        needed = {}
+        for line in body["lines"]:
+            product = self.products.get(org, {}).get(line["product_id"])
+            if product is None:
+                return 404, "Product not found."
+            warehouse = self.warehouses.get(org, {}).get(line["warehouse_id"])
+            if warehouse is None:
+                return 404, "Warehouse not found."
+            if not product["is_active"] or not warehouse["is_active"]:
+                return 409, "archived"
+            if product["unit"] != line["unit"]:
+                return 409, "A quantity is never converted"
+            if product["unit"] not in ("kg", "g", "l", "m") and Decimal(line["quantity"]) != Decimal(line["quantity"]).to_integral_value():
+                return 422, "Quantity must be a whole number"
+            if (org, line["line_id"]) in self.posted_lines:
+                return 409, "One of these dispatch lines was already deducted from stock by an earlier posting."
+            key = (line["product_id"], line["warehouse_id"])
+            needed[key] = needed.get(key, Decimal(0)) + Decimal(line["quantity"])
+        for (product_id, warehouse_id), quantity in needed.items():
+            if self.stock.get((product_id, warehouse_id), Decimal(0)) < quantity:
+                return 409, "Insufficient stock: not enough of the product in the warehouse."
+        return None
+
+    def quantity(self, product: str, warehouse: str) -> Decimal:
+        return self.stock.get((product, warehouse), Decimal(0))
+
+    def postings(self):
+        """The dispatch POSTs made to the (fake) Inventory Service."""
+        return [r for r in self.requests if r[0] == "POST" and r[1] == "/api/v1/inventory/dispatches"]
 
     def client(self) -> httpx.Client:
         return httpx.Client(transport=httpx.MockTransport(self.handle), base_url="http://inventory-service:8002")
@@ -290,6 +383,49 @@ class Api:
 
     def status(self, list_id, action):
         return self.client.post(f"{LISTS}/{list_id}/{action}", headers=self.headers)
+
+    # -- dispatches
+    def ready_list(self, shop, items=(("bolt", 15), ("flour", 2)), client_name="Acme Ltd") -> dict:
+        """A Ready delivery list with these items (product key in `shop`, quantity)."""
+        created = self.new_list(self.new_client(client_name)["id"])
+        for product, quantity in items:
+            response = self.add(created["id"], shop[product], quantity)
+            assert response.status_code == 201, response.text
+        marked = self.status(created["id"], "ready")
+        assert marked.status_code == 200, marked.text
+        return marked.json()
+
+    def dispatch_request(self, list_id, lines=(), key=None, **extra):
+        headers = {**self.headers, "Idempotency-Key": key or f"key-{uuid.uuid4()}"}
+        return self.client.post(DISPATCHES, json={"delivery_list_id": list_id, "lines": list(lines), **extra}, headers=headers)
+
+    def draft(self, list_id, lines=(), **extra) -> dict:
+        response = self.dispatch_request(list_id, lines, **extra)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def put_lines(self, dispatch_id, lines):
+        return self.client.put(f"{DISPATCHES}/{dispatch_id}/lines", json={"lines": list(lines)}, headers=self.headers)
+
+    def confirm(self, dispatch_id):
+        return self.client.post(f"{DISPATCHES}/{dispatch_id}/confirm", headers=self.headers)
+
+    def cancel_dispatch(self, dispatch_id):
+        return self.client.post(f"{DISPATCHES}/{dispatch_id}/cancel", headers=self.headers)
+
+    def get_dispatch(self, dispatch_id) -> dict:
+        response = self.client.get(f"{DISPATCHES}/{dispatch_id}", headers=self.headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+
+def item_of(delivery_list, product_id) -> dict:
+    return next(i for i in delivery_list["items"] if i["product_id"] == product_id)
+
+
+def sent(delivery_list, product_id, quantity, warehouse_id) -> dict:
+    """A dispatch line body for the list's item of this product."""
+    return {"delivery_list_item_id": item_of(delivery_list, product_id)["id"], "warehouse_id": warehouse_id, "quantity": str(quantity)}
 
 
 @pytest.fixture

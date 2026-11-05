@@ -9,15 +9,17 @@ import { StockAction, Warehouse, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "@/app/stock/stock-form";
 import CameraScanner from "./camera-scanner";
 import DeliverablesPanel, { ActiveList } from "./deliverables-panel";
+import DispatchPanel from "./dispatch-panel";
 
 // Warehouse transfers are not offered here: they stay on the Stock page. The scanner prioritises receiving, issuing and
 // preparing deliveries.
 const SCAN_ACTIONS: StockAction[] = ["in", "out"];
-type Panel = StockAction | "deliver";
+type Panel = StockAction | "deliver" | "dispatch";
 const ACTION_BUTTONS: { action: Panel; label: string }[] = [
   { action: "in", label: "Stock In" },
   { action: "out", label: "Stock Out" },
   { action: "deliver", label: "Add to Deliverables" },
+  { action: "dispatch", label: "Prepare Dispatch" },
 ];
 
 type Notice = { tone: "info" | "error" | "success"; text: string } | null;
@@ -246,7 +248,7 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Actions">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Actions">
                 {ACTION_BUTTONS.map(({ action, label }) => (
                   <button
                     key={action}
@@ -277,7 +279,17 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
                   onClose={() => { setPanel(null); refocus(); }}
                 />
               )}
-              {panel && panel !== "deliver" && !noWarehouse && (
+              {panel === "dispatch" && !noWarehouse && (
+                <DispatchPanel
+                  key={product.id}
+                  product={product}
+                  stock={stock}
+                  warehouses={activeWarehouses}
+                  onAdded={(message) => { setNotice({ tone: "success", text: message }); refocus(); }}
+                  onClose={() => { setPanel(null); refocus(); }}
+                />
+              )}
+              {panel && panel !== "deliver" && panel !== "dispatch" && !noWarehouse && (
                 <StockForm
                   key={`${product.id}-${panel}`}
                   initialAction={panel}

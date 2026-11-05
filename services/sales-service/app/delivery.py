@@ -8,8 +8,11 @@ The rules that matter most:
   * A product appears at most once per list. Adding it again is refused with the existing line, so the caller can
     EXPLICITLY set or increase its quantity; quantities are never incremented implicitly.
   * Items can be changed only while the list is a draft.
+  * Stock is deducted only by a CONFIRMED dispatch (app/dispatches.py). Once any dispatch exists the list can no longer be
+    reopened for editing, and a list with goods dispatched (or being dispatched) can never be cancelled.
 """
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -32,6 +35,7 @@ from app.schemas import (
 from app.tenancy import get_scoped, get_scoped_or_404, scoped_select
 
 ZERO = Decimal("0")
+# Only the moves a user asks for. Partially Dispatched / Dispatched are reached only by confirming dispatches.
 TRANSITIONS = {
     ("draft", "ready"): "ready",
     ("draft", "cancelled"): "cancelled",
@@ -152,6 +156,8 @@ def item_response(item: DeliveryListItem, info: Optional[ProductInfo]) -> ItemRe
 def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, delivery_list: DeliveryList) -> DeliveryListDetail:
     """The list with its items and LIVE stock. If the Inventory Service cannot be asked, the list is still shown (it is
     our own data) with stock_status = 'unavailable' instead of failing."""
+    from app import dispatches  # imported here: dispatches builds on this module
+
     items = list_items(db, tenant, delivery_list.id)
     infos: Dict[uuid.UUID, ProductInfo] = {}
     stock_status = "ok"
@@ -160,13 +166,22 @@ def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, delive
             infos = gateway.products(i.product_id for i in items)
         except InventoryUnavailable:
             stock_status = "unavailable"
-    rendered = [item_response(i, infos.get(i.product_id)) for i in items]
+    sums = dispatches.list_quantities(db, tenant, items)
+    rendered = []
+    for i in items:
+        response = item_response(i, infos.get(i.product_id))
+        done, pending = sums[i.id]
+        response.dispatched_quantity, response.pending_quantity = done, pending
+        response.remaining_quantity = max(i.quantity - done - pending, Decimal("0.0000"))
+        rendered.append(response)
     (summary,) = summaries(db, tenant, [delivery_list])
     return DeliveryListDetail(
         **summary.model_dump(),
         items=rendered,
         stock_status=stock_status,
         items_exceeding_stock=sum(1 for r in rendered if r.stock and r.stock.exceeds_available),
+        dispatches=dispatches.dispatches_of_list(db, tenant, delivery_list.id),
+        can_dispatch=delivery_list.status in dispatches.DISPATCHABLE_LIST_STATUSES and any(r.remaining_quantity > 0 for r in rendered),
     )
 
 
@@ -297,7 +312,11 @@ def remove_item(db: Session, tenant: TenantContext, list_id: uuid.UUID, item_id:
     require_draft(delivery_list)
     item = find_item(db, tenant, list_id, item_id)
     db.delete(item)  # only a line of a draft note: no stock was ever involved
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # a cancelled dispatch still refers to it: the history stays
+        db.rollback()
+        raise conflict(f"{item.product_name} cannot be removed: it appears in the dispatch history of this list.")
 
 
 # --- status -------------------------------------------------------------------------------------------------------------
@@ -307,7 +326,26 @@ def change_status(db: Session, tenant: TenantContext, gateway: InventoryGateway,
         db.rollback()
         return delivery_list  # already there: harmless to repeat
     if (delivery_list.status, target) not in TRANSITIONS:
+        if target == "cancelled" and delivery_list.status in ("partially_dispatched", "dispatched"):
+            raise conflict(
+                f"{delivery_list.number} already has goods dispatched against it, so it cannot be cancelled: a cancellation would hide that "
+                "the goods were delivered. The dispatches stay as the record."
+            )
+        if target == "draft" and delivery_list.status in ("partially_dispatched", "dispatched"):
+            raise conflict(f"{delivery_list.number} has goods dispatched against it and can no longer be reopened for editing.")
         raise conflict(f"{delivery_list.number} is {delivery_list.status} and cannot become {target}.")
+    if target in ("cancelled", "draft") and delivery_list.status == "ready":
+        from app.models import Dispatch
+
+        dispatch_rows = list(db.scalars(scoped_select(Dispatch, tenant).where(Dispatch.delivery_list_id == list_id)))
+        if any(d.status in ("posting", "confirmed") for d in dispatch_rows):
+            raise conflict(
+                f"{delivery_list.number} has goods dispatched (or being dispatched) against it, so it cannot be "
+                + ("cancelled: a cancellation would hide that the goods left." if target == "cancelled" else "reopened for editing.")
+            )
+        for draft in (d for d in dispatch_rows if d.status == "draft"):  # unfinished drafts go with the cancellation / reopening
+            draft.status, draft.cancelled_at, draft.cancelled_by_email = "cancelled", datetime.now(timezone.utc), tenant.email
+        db.flush()
     if target == "ready":
         require_active_client(db, tenant, delivery_list)
         items = list_items(db, tenant, list_id)

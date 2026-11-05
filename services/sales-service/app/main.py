@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.auth import create_auth_client, create_org_client
 from app.clients_api import router as clients_router
 from app.delivery_api import router as delivery_router
+from app.dispatches_api import router as dispatches_router
 from app.inventory import create_inventory_client
 
 
@@ -32,6 +33,7 @@ app = FastAPI(
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.
 app.include_router(clients_router)
 app.include_router(delivery_router)
+app.include_router(dispatches_router)
 
 PREFIX = "/api/v1/sales"
 
