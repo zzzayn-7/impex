@@ -13,7 +13,7 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from app import dispatches
-from app.auth import TenantContext, require_active_tenant
+from app.auth import TenantContext, require_active_tenant, require_active_tenant_for_recovery
 from app.database import get_db
 from app.inventory import InventoryGateway, get_gateway
 from app.models import Client, DeliveryList, Dispatch, DispatchLine
@@ -23,6 +23,8 @@ from app.tenancy import scoped_count, scoped_select
 
 router = APIRouter(prefix="/api/v1/sales")
 Tenant = Depends(require_active_tenant)
+# Confirming is the one route that must still work for a dispatch that is already `posting` when Sales is switched off (see app/auth.py).
+Recovery = Depends(require_active_tenant_for_recovery)
 
 IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:\-]{8,100}$")
 
@@ -110,7 +112,7 @@ def save_dispatch_lines(dispatch_id: uuid.UUID, payload: DispatchLines, tenant: 
 
 
 @router.post("/dispatches/{dispatch_id}/confirm", response_model=DispatchDetail, tags=["Dispatches"])
-def confirm_dispatch(dispatch_id: uuid.UUID, response: Response, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
+def confirm_dispatch(dispatch_id: uuid.UUID, response: Response, tenant: TenantContext = Recovery, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
     """Deduct the dispatched quantities from stock through the Inventory Service and mark the dispatch confirmed.
 
     200: confirmed (also when it already was: repeating this call never deducts stock twice).

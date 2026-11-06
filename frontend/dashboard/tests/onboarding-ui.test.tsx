@@ -424,7 +424,7 @@ describe("the portal header shows the company identity", () => {
     expect(screen.getByText("Organization workspace")).toBeTruthy();
   });
   it("keeps the navigation exactly as it was", () => {
-    render(<PortalHeader admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false }} />);
+    render(<PortalHeader admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false, modules: ["inventory", "purchasing", "sales"] }} />);
     const links = screen.getAllByRole("link").map((l) => [l.textContent, l.getAttribute("href")]);
     expect(links).toContainEqual(["Dashboard", "/"]);
     expect(links).toContainEqual(["Invoices", "/invoices"]);

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.auth import create_auth_client, create_org_client
 from app.inventory import create_inventory_client
 from app.orders_api import router as orders_router
+from app.module_usage_api import router as module_usage_router
 from app.receipts_api import router as receipts_router
 from app.suppliers_api import router as suppliers_router
 
@@ -34,6 +35,8 @@ app = FastAPI(
 app.include_router(suppliers_router)
 app.include_router(orders_router)
 app.include_router(receipts_router)
+# Asked only by the Organization Service (shared secret), before Purchasing is switched off: what is in progress.
+app.include_router(module_usage_router)
 
 PREFIX = "/api/v1/purchasing"
 

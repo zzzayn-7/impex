@@ -158,7 +158,7 @@ describe("Invoices index", () => {
 
 describe("navigation", () => {
   it("has an Invoices link, marked current on its own pages", () => {
-    render(<PortalHeader admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" />);
+    render(<PortalHeader admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }} />);
     const link = screen.getByRole("link", { name: "Invoices" });
     expect(link.getAttribute("href")).toBe("/invoices");
     expect(link.getAttribute("aria-current")).toBe("page");

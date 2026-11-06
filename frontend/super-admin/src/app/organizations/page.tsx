@@ -6,6 +6,7 @@ import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { listAdministrators, type AdministratorStatus } from "@/lib/administrators";
 import { listOrganizations } from "@/lib/organizations";
 import { getUnreadCount } from "@/lib/support";
+import Link from "next/link";
 import AdministratorPanel from "./administrator-panel";
 import OrganizationForm from "./organization-form";
 import AdministratorActions from "./administrator-actions";
@@ -92,6 +93,7 @@ export default async function OrganizationsPage() {
                     <th className="px-4 py-3 font-semibold">Tax ID</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
+                    <th className="px-4 py-3 font-semibold">Modules</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -119,6 +121,9 @@ export default async function OrganizationsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDate(org.created_at)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <Link href={`/organizations/${org.id}/modules`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-indigo-300 hover:bg-slate-800 hover:text-indigo-200">Manage modules</Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

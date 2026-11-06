@@ -202,7 +202,7 @@ def test_unauthenticated_create_stores_nothing(client, session_factory):
 # --- migrations -------------------------------------------------------------
 def test_schema_comes_from_migration_and_matches_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
         columns = {
             row.column_name: row.is_nullable
             for row in conn.execute(text(

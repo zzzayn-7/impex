@@ -72,11 +72,13 @@ export const alphaOrg = {
   id: ORG_ID, name: "Alpha Trading GmbH", slug: "alpha-trading", country_code: "DE", tax_identifier: "DE111111111",
   contact_email: "ops@alpha.example", is_active: true, created_at: "2026-11-01T10:00:00+00:00",
   setup_status: "completed", has_logo: false, logo_version: null, // first-time onboarding done (the Organization Service's record)
+  modules: ["inventory", "purchasing", "sales"], // what the Super Admin enabled
 };
 export const betaOrg = {
   id: ORG_B_ID, name: "Beta Logistics SARL", slug: "beta-logistics", country_code: "FR", tax_identifier: "FR222222222",
   contact_email: "ops@beta.example", is_active: true, created_at: "2026-11-02T10:00:00+00:00",
   setup_status: "completed", has_logo: false, logo_version: null,
+  modules: ["inventory", "purchasing", "sales"],
 };
 
 export type BackendEntry = { user: Record<string, unknown>; organization?: { status: number; body?: unknown } };

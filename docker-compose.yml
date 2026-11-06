@@ -61,6 +61,11 @@ services:
       - DEMO_MODE=${DEMO_MODE:-false}
       - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-12345678}
       - AUTH_INTERNAL_API_KEY=${AUTH_INTERNAL_API_KEY:?AUTH_INTERNAL_API_KEY must be set in .env}
+      # Module management: before a module is switched off, this service asks Purchasing and Sales what is in progress for the organization.
+      # The shared secret defaults to the existing internal key; set MODULE_INTERNAL_API_KEY in .env to use a separate one.
+      - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}
+      - PURCHASING_SERVICE_URL=http://purchasing-service:8004
+      - SALES_SERVICE_URL=http://sales-service:8003
       - ACTIVATION_API_KEY=${ORG_ACTIVATION_API_KEY:?ORG_ACTIVATION_API_KEY must be set in .env}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
       - SMTP_HOST=${SMTP_HOST:-mailpit}
@@ -146,6 +151,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
       - ORG_SERVICE_URL=http://organization-service:8001
+      - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}  # lets the Organization Service ask what is in progress before a module is switched off
       - INVENTORY_SERVICE_URL=http://inventory-service:8002
     depends_on:
       postgres:
@@ -172,6 +178,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
       - ORG_SERVICE_URL=http://organization-service:8001
+      - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}  # lets the Organization Service ask what is in progress before a module is switched off
       - INVENTORY_SERVICE_URL=http://inventory-service:8002
     depends_on:
       postgres:

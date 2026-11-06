@@ -157,7 +157,8 @@ class Directory:
         org = self.organizations.get(str(user.get("organization_id")))
         if user["role"] != "organization-admin" or org is None or not org["is_active"]:
             return httpx.Response(403, json={"detail": "not allowed"})
-        return httpx.Response(200, json={"id": user["organization_id"], "name": org["name"], "is_active": True, "setup_status": org["setup_status"]})
+        # `modules` is what the real Organization Service also reports: Help & Support never looks at it (it is a permanent capability)
+        return httpx.Response(200, json={"id": user["organization_id"], "name": org["name"], "is_active": True, "setup_status": org["setup_status"], "modules": org.get("modules", [])})
 
     def clients(self):
         auth = httpx.AsyncClient(transport=httpx.MockTransport(self._auth), base_url="http://auth-service:8000")

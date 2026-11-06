@@ -17,6 +17,8 @@ export type TenantOrganization = {
   setup_status?: "pending" | "in_progress" | "completed";
   has_logo?: boolean;
   logo_version?: string | null;
+  // The business modules the organization can use (the Super Admin decides). Missing or malformed = none: never "all".
+  modules?: string[];
 };
 
 export type OrganizationResult =

@@ -11,15 +11,15 @@ const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-sl
 
 /** Open a support ticket. The Idempotency-Key is made once per attempt: pressing Send twice, or retrying after a lost connection, can
  *  never create two tickets. A refused request gets a new key next time (it was not accepted); a lost connection keeps the same one. */
-export default function NewTicketForm() {
+export default function NewTicketForm({ initial }: { initial?: { subject: string; category: TicketCategory; message: string } }) {
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey());
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [category, setCategory] = useState<TicketCategory | "">("");
+  const [subject, setSubject] = useState(initial?.subject ?? "");
+  const [category, setCategory] = useState<TicketCategory | "">(initial?.category ?? "");
   const [priority, setPriority] = useState<TicketPriority>("normal");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initial?.message ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 

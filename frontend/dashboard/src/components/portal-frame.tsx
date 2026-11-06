@@ -1,4 +1,6 @@
+import ModuleAccessDenied from "@/components/module-access-denied";
 import PortalHeader from "@/components/portal-header";
+import { NAV_MODULE, canUse } from "@/lib/modules";
 import { redirect } from "next/navigation";
 import { loadWorkspace, requireTenantAdmin } from "@/lib/tenant-session";
 
@@ -16,6 +18,9 @@ export default async function PortalFrame({ current, children }: { current: Curr
   const workspace = await loadWorkspace(admin);
   if (workspace.kind === "setup") redirect("/setup");
   const organization = workspace.kind === "ready" ? workspace.organization : null;
+  // Module access: when the organization is known and the page's module is not enabled for it, the page is not rendered at all.
+  const module = NAV_MODULE[current];
+  const denied = workspace.kind === "ready" && organization !== null && module !== undefined && !canUse(organization.modules, module);
   return (
     <div className="flex min-h-screen flex-col">
       <PortalHeader admin={admin} current={current} organization={organization} />
@@ -25,6 +30,8 @@ export default async function PortalFrame({ current, children }: { current: Curr
             <p className="text-sm font-medium text-white">We couldn&apos;t load your workspace just now.</p>
             <p className="text-xs text-slate-400">Nothing was lost. Please refresh in a moment. You can sign out at any time.</p>
           </div>
+        ) : denied && module ? (
+          <ModuleAccessDenied module={module} />
         ) : (
           children
         )}

@@ -4,9 +4,9 @@
 
 | Job | What it does |
 | :--- | :--- |
-| `auth-service`, `organization-service`, `inventory-service`, `sales-service`, `purchasing-service`, `support-service` | installs the service's `requirements-dev.txt` and runs `python -m pytest -q` against a **throwaway PostgreSQL 16 container** that exists only for the job |
-| `dashboard (Organization Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Help & Support pages, routes and the setup gate), `npx next build` (which also type-checks the tests) |
-| `super-admin (Super Admin Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Support Inbox pages, routes and UI), `npx next build` |
+| `auth-service`, `organization-service`, `inventory-service`, `sales-service`, `purchasing-service`, `support-service` | installs the service's `requirements-dev.txt` and runs `python -m pytest -q` against a **throwaway PostgreSQL 16 container** that exists only for the job (the Organization Service's run covers module management and its migration; Inventory, Purchasing and Sales cover module enforcement on every route) |
+| `dashboard (Organization Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Help & Support pages, routes, the setup gate and the module gate: menu, access-denied pages, API routes), `npx next build` (which also type-checks the tests) |
+| `super-admin (Super Admin Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Support Inbox and module management pages, routes and UI), `npx next build` |
 
 ## Safety
 

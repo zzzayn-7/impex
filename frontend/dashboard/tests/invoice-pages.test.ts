@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { orgAdmin, orgAdminB, superAdmin } from "./helpers";
+import { alphaOrg, orgAdmin, orgAdminB, superAdmin } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
@@ -102,6 +102,7 @@ function stubWorld(options: { status?: number } = {}) {
       calls.push({ url, headers, method: init.method ?? "GET" });
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return users[token] ? json(200, users[token]) : json(401, {});
+      if (url.endsWith("/api/v1/tenant/organization")) return users[token] ? json(200, alphaOrg) : json(401, {}); // the layout asks for the organization (its setup and its modules)
       if (!url.includes("/api/v1/sales/")) return json(404, {});
       if (options.status) return json(options.status, { detail: "x" });
       const org = (orgs as any)[token];

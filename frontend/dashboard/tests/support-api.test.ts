@@ -161,7 +161,7 @@ describe("the business APIs wait for setup (middleware)", () => {
       if (url.endsWith("/api/v1/auth/me")) {
         return opts.me ? json(opts.me, { detail: "x" }) : json(200, { role: opts.role ?? "organization-admin", is_active: true, profile_setup_completed_at: opts.profile === undefined ? DONE : opts.profile });
       }
-      if (url.endsWith("/api/v1/tenant/organization")) return opts.org ? json(opts.org, { detail: "x" }) : json(200, { setup_status: opts.setup ?? "completed" });
+      if (url.endsWith("/api/v1/tenant/organization")) return opts.org ? json(opts.org, { detail: "x" }) : json(200, { setup_status: opts.setup ?? "completed", modules: ["inventory", "purchasing", "sales"] });
       return json(404, {});
     });
   const api = (path: string, cookie: string | null = `impex_tenant_session=${TOKEN}`) => new NextRequest(`http://localhost:3001${path}`, { method: "POST", headers: cookie ? { cookie } : {} });

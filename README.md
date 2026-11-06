@@ -59,6 +59,7 @@ docker compose up --build
 - **Auth Service Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Organization Service Docs**: [http://localhost:8001/docs](http://localhost:8001/docs)
 - **Support Service Docs**: [http://localhost:8005/docs](http://localhost:8005/docs) (Help & Support: see [`docs/support.md`](docs/support.md))
+- **Module management** (which business modules each organization can use): see [`docs/modules.md`](docs/modules.md)
 
 ---
 

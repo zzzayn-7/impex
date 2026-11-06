@@ -196,9 +196,9 @@ describe("the Help & Support list", () => {
 
   it("the new-request page needs a session", async () => {
     stubWorld();
-    expect(await render(NewTicketPage())).toContain("New request");
+    expect(await render(NewTicketPage({ searchParams: {} }))).toContain("New request");
     delete jar[TENANT_SESSION_COOKIE];
-    await expect(NewTicketPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(NewTicketPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
   });
 });
 

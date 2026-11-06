@@ -179,6 +179,12 @@ organization or a user. The organization and the user come from the verified tok
 inactive organization or a disabled administrator is refused. Logos are stored under random server-made keys that never reach a browser, and are served only
 through an authenticated, tenant-bound route. See [`docs/onboarding.md`](onboarding.md).
 
+## Module access (Step 19)
+
+Tenant isolation says *whose* records; module access says *which parts of the platform* the organization may use. The Organization Service decides and lists the usable modules in the same answer
+the other services already ask for (`GET /api/v1/tenant/organization`, with the caller's own token); `require_active_tenant` in the Inventory, Purchasing and Sales services refuses (`403 module_disabled`)
+a request whose module, or a module it requires, is not listed, and answers `503` when the list is missing. Nothing the browser sends is read. See [`modules.md`](modules.md).
+
 ## Help & Support (Support Service)
 
 Tickets belong to the organization of the administrator who opened them, taken from the verified token (Auth Service `/auth/me`, then the

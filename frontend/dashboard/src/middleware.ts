@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { canUse, moduleForApi } from "@/lib/modules";
 import { setupNeed } from "@/lib/onboarding";
 import { orgServiceUrl } from "@/lib/organization";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
@@ -17,7 +18,7 @@ import { authServiceUrl } from "@/lib/tenant-auth";
 const GATED_API = /^\/api\/(products|warehouses|stock|scan|sales|purchasing)(\/|$)/;
 
 const NO_STORE = { "Cache-Control": "no-store" };
-const refuse = (status: number, error: string, code: string) => NextResponse.json({ error, code }, { status, headers: NO_STORE });
+const refuse = (status: number, error: string, code: string, extra: Record<string, unknown> = {}) => NextResponse.json({ error, code, ...extra }, { status, headers: NO_STORE });
 
 async function get(url: string, token: string): Promise<{ status: number; data: any } | null> {
   try {
@@ -39,6 +40,13 @@ export async function gateApi(req: NextRequest): Promise<NextResponse> {
   if (org.status === 401 || org.status === 403) return NextResponse.next(); // an inactive organization is refused by the services
   if (org.status !== 200 || !org.data) return refuse(503, "We could not check your organization setup right now. Please try again in a moment.", "setup_check_unavailable");
   if (setupNeed(me.data, org.data).required) return refuse(403, "Finish the first-time setup before using this part of Impex.", "setup_required");
+  // MODULES: the route's module must be enabled for the organization (the Organization Service's list, read with the caller's own token).
+  // A list that is missing or malformed is an outage of that decision, not a "yes". The services behind enforce the same rule again.
+  const module = moduleForApi(req.nextUrl.pathname);
+  if (module) {
+    if (!Array.isArray(org.data.modules)) return refuse(503, "We could not check which modules your organization can use right now. Please try again in a moment.", "module_check_unavailable");
+    if (!canUse(org.data.modules, module)) return refuse(403, "This part of Impex is not enabled for your organization.", "module_disabled", { module });
+  }
   return NextResponse.next();
 }
 

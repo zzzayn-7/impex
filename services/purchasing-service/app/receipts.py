@@ -34,7 +34,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.auth import TenantContext
+from app.auth import TenantContext, refuse_unless_recovering
 from app.inventory import InventoryGateway, InventoryUnavailable, PostingOutcome, ProductInfo, unavailable_error
 from app.models import (
     GoodsReceipt,
@@ -589,6 +589,7 @@ def confirm_receipt(db: Session, tenant: TenantContext, gateway: InventoryGatewa
     """Returns (receipt, confirmed). confirmed=False means the posting could not be verified yet: the receipt stays `posting`
     and confirming it again (the same call) finishes the job without ever adding the goods twice."""
     receipt = get_receipt_or_404(db, tenant, receipt_id)
+    refuse_unless_recovering(tenant, receipt.status)  # module switched off: only a receipt already `posting` may be finished
     if receipt.status == "confirmed":
         db.rollback()
         return receipt, True  # confirming twice is harmless
@@ -610,6 +611,7 @@ def confirm_receipt(db: Session, tenant: TenantContext, gateway: InventoryGatewa
     try:
         order = get_order_or_404(db, tenant, order_id, lock=True)  # the order first, then the receipt: one lock order everywhere
         receipt = get_receipt_or_404(db, tenant, receipt_id, lock=True)
+        refuse_unless_recovering(tenant, receipt.status)
         if receipt.status == "confirmed":
             db.rollback()
             return receipt, True

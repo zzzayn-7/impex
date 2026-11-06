@@ -13,7 +13,7 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from app import receipts
-from app.auth import TenantContext, require_active_tenant
+from app.auth import TenantContext, require_active_tenant, require_active_tenant_for_recovery
 from app.database import get_db
 from app.inventory import InventoryGateway, get_gateway
 from app.models import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, Supplier
@@ -23,6 +23,8 @@ from app.tenancy import scoped_count, scoped_select
 
 router = APIRouter(prefix="/api/v1/purchasing")
 Tenant = Depends(require_active_tenant)
+# Confirming is the one route that must still work for a receipt that is already `posting` when Purchasing is switched off (see app/auth.py).
+Recovery = Depends(require_active_tenant_for_recovery)
 
 IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:\-]{8,100}$")
 
@@ -117,7 +119,7 @@ def save_goods_receipt_lines(
 
 @router.post("/goods-receipts/{receipt_id}/confirm", response_model=ReceiptDetail, tags=["Goods receipts"])
 def confirm_goods_receipt(
-    receipt_id: uuid.UUID, response: Response, tenant: TenantContext = Tenant,
+    receipt_id: uuid.UUID, response: Response, tenant: TenantContext = Recovery,
     gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db),
 ):
     """Add the ACCEPTED quantities to stock through the Inventory Service and mark the receipt confirmed.

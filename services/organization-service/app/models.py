@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Uuid, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Identity, Index, String, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -79,3 +79,41 @@ class OrganizationInvitation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class OrganizationModule(Base):
+    """One organization's entitlement to one business module (see app/modules.py). Never deleted: switching a module off keeps the row,
+    and every business record stays where it is; switching it on again restores access to all of it."""
+
+    __tablename__ = "organization_modules"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    module_key: Mapped[str] = mapped_column(String(30), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    # The Super Admin (Auth Service user id: users live in another database) who last changed it; NULL for the default and the migration.
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrganizationModuleHistory(Base):
+    """Append-only record of every entitlement change: who, when, from what to what. A database trigger refuses UPDATE and DELETE."""
+
+    __tablename__ = "organization_module_history"
+    __table_args__ = (
+        CheckConstraint("action IN ('seeded', 'migrated', 'enabled', 'disabled')", name="action_valid"),
+        Index("ix_organization_module_history_organization_id_seq", "organization_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), nullable=False)  # a strict order, even inside one transaction
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    module_key: Mapped[str] = mapped_column(String(30), nullable=False)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    old_enabled: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    new_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    changed_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    changed_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    changed_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the changes confirmed together
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

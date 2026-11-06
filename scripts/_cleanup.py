@@ -45,6 +45,9 @@ def delete_exact(psql: PsqlFn, database: str, table: str, ids: List[str], column
     if not ids:
         return "0"
     id_list = _in_list(ids)
+    # An organization's module history is append-only (a trigger refuses to delete it), and is removed with the organization by cascade:
+    # that needs the same out-of-band maintenance switch, which the application itself never sets.
+    ledger = ledger or table == "organizations"
     if ledger:
         psql(database, f"BEGIN; SET LOCAL app.allow_ledger_maintenance = 'on'; DELETE FROM {table} WHERE {column} IN ({id_list}); COMMIT;")
     else:

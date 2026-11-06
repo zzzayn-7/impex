@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 
+import Link from "next/link";
+
 import PortalHeader from "@/components/portal-header";
+import { MODULE_DESCRIPTIONS, MODULE_LABELS, MODULE_PAGES, usableModules } from "@/lib/modules";
 import { setupNeed } from "@/lib/onboarding";
 import { fetchTenantOrganization } from "@/lib/organization";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
@@ -25,6 +28,8 @@ export default async function OrganizationDashboard() {
   // setup is never assumed complete.
   if (result.ok && setupNeed(admin, result.organization).required) redirect("/setup");
   const organization = result.ok ? result.organization : null;
+  // Only the modules the Super Admin enabled for this organization are listed (an unknown list means none).
+  const enabledModules = usableModules(organization?.modules);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -110,10 +115,38 @@ export default async function OrganizationDashboard() {
           )}
         </section>
 
-        <section className="rounded-xl border border-dashed border-slate-800 p-6 text-center">
-          <p className="text-sm text-slate-400">Your organization workspace is being set up.</p>
-          <p className="mt-1 text-xs text-slate-500">Inventory, orders and invoicing will appear here as they become available.</p>
-        </section>
+        {organization && (
+          <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/40 p-6" aria-labelledby="modules-heading">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Your modules</p>
+              <h2 id="modules-heading" className="mt-1 text-xl font-semibold text-white">Where would you like to work?</h2>
+            </div>
+            {enabledModules.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-center text-sm text-slate-400">
+                No business modules are enabled for your organization yet.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {enabledModules.map((key) => (
+                  <div key={key} data-module={key} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+                    <h3 className="text-sm font-semibold text-white">{MODULE_LABELS[key]}</h3>
+                    <p className="mt-1 text-xs text-slate-400">{MODULE_DESCRIPTIONS[key]}</p>
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {MODULE_PAGES[key].map((page) => (
+                        <li key={page.href}>
+                          <Link href={page.href} className="inline-flex rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-indigo-300 hover:bg-slate-800 hover:text-indigo-200">{page.label}</Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-slate-500">
+              Need another module? <Link href="/support/new?module=other" className="text-indigo-300 hover:text-indigo-200">Ask the Impex team</Link>. Only the Impex team can enable it.
+            </p>
+          </section>
+        )}
       </main>
     </div>
   );

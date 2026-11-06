@@ -119,9 +119,10 @@ class Directory:
         self.auth_mode = None  # "down" | "500"
         self.org_mode = None
 
-    def add_organization(self, name: str, active: bool = True) -> str:
+    def add_organization(self, name: str, active: bool = True, modules=None) -> str:
         org_id = str(uuid.uuid4())
-        self.organizations[org_id] = {"name": name, "is_active": active}
+        # `modules` is what the Organization Service reports as usable for the organization (default: everything this release can use)
+        self.organizations[org_id] = {"name": name, "is_active": active, "modules": list(modules) if modules is not None else ["inventory", "purchasing", "sales"]}
         return org_id
 
     def add_user(self, token: str, role: str, organization_id=None, **overrides) -> dict:
@@ -154,7 +155,10 @@ class Directory:
         organization = self.organizations.get(str(user.get("organization_id")))
         if user["role"] != "organization-admin" or organization is None or not organization["is_active"]:
             return httpx.Response(403, json={"detail": "Your organization is not active."})
-        return httpx.Response(200, json={"id": user["organization_id"], "name": organization["name"], "is_active": True})
+        body = {"id": user["organization_id"], "name": organization["name"], "is_active": True}
+        if self.org_mode != "no-modules":  # "no-modules": an old/broken Organization Service that does not say which modules are enabled
+            body["modules"] = organization["modules"] if self.org_mode != "garbled-modules" else "all"
+        return httpx.Response(200, json=body)
 
     def clients(self):
         auth = httpx.AsyncClient(transport=httpx.MockTransport(self._auth), base_url="http://auth-service:8000")

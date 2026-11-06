@@ -35,7 +35,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.auth import TenantContext
+from app.auth import TenantContext, refuse_unless_recovering
 from app.delivery import conflict, get_list_or_404, human, list_items
 from app.inventory import InventoryGateway, InventoryUnavailable, PostingOutcome, ProductInfo, unavailable_error
 from app.models import Client, DeliveryList, DeliveryListItem, Dispatch, DispatchCounter, DispatchLine, DispatchRequest
@@ -602,6 +602,7 @@ def confirm_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatew
     """Returns (dispatch, confirmed). confirmed=False means the posting could not be verified yet: the dispatch stays `posting`
     and confirming it again (the same call) finishes the job without ever deducting the goods twice."""
     dispatch = get_dispatch_or_404(db, tenant, dispatch_id)
+    refuse_unless_recovering(tenant, dispatch.status)  # module switched off: only a dispatch already `posting` may be finished
     if dispatch.status == "confirmed":
         db.rollback()
         return dispatch, True  # confirming twice is harmless
@@ -623,6 +624,7 @@ def confirm_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatew
     try:
         delivery_list = get_list_or_404(db, tenant, list_id, lock=True)  # the list first, then the dispatch: one lock order everywhere
         dispatch = get_dispatch_or_404(db, tenant, dispatch_id, lock=True)
+        refuse_unless_recovering(tenant, dispatch.status)
         if dispatch.status == "confirmed":
             db.rollback()
             return dispatch, True

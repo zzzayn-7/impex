@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import LogoutButton from "@/components/logout-button";
+import { NAV_MODULE, canUse } from "@/lib/modules";
 import { monogram } from "@/lib/setup-validation";
 import type { TenantAdmin } from "@/lib/tenant-auth";
 
@@ -21,7 +22,7 @@ const NAV_LINKS = [
   { key: "support", href: "/support", label: "Help & Support" },
 ] as const;
 
-export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null };
+export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null; modules?: string[] };
 
 export default function PortalHeader({
   admin,
@@ -64,7 +65,12 @@ export default function PortalHeader({
           </div>
         </div>
         <nav aria-label="Main" className="flex flex-wrap items-center gap-1">
-          {NAV_LINKS.map((link) => (
+          {NAV_LINKS.filter((link) => {
+            // Dashboard and Help & Support are always there. A business page is listed only when its module is enabled; when the
+            // organization (so its modules) is unknown, no business page is listed.
+            const module = NAV_MODULE[link.key];
+            return !module || canUse(organization?.modules, module);
+          }).map((link) => (
             <Link
               key={link.key}
               href={link.href}

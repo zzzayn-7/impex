@@ -29,6 +29,8 @@ from app.auth import create_auth_client, require_super_admin
 from app.database import get_db
 from app.invitations import invitation_status, issue_invitation
 from app.models import Organization, OrganizationInvitation
+from app.module_usage import UsageClient
+from app.modules_api import router as modules_router, seed_new_organization, usable_modules
 from app.onboarding import logo_version, router as onboarding_router
 from app.tenancy import require_tenant_organization
 
@@ -37,7 +39,9 @@ from app.tenancy import require_tenant_organization
 async def lifespan(app: FastAPI):
     app.state.auth_client = create_auth_client()
     app.state.internal_auth_client = create_internal_auth_client()
+    app.state.usage_client = UsageClient()
     yield
+    app.state.usage_client.close()
     await app.state.auth_client.aclose()
     app.state.internal_auth_client.close()
 
@@ -56,6 +60,9 @@ super_admin_only = [Depends(require_super_admin)]
 
 # First-time company setup (tenant administrators only; see app/onboarding.py).
 app.include_router(onboarding_router)
+
+# Module management: entitlements per organization (Super Admin) and the organization's own view (see app/modules_api.py).
+app.include_router(modules_router)
 
 # CORS Middleware
 app.add_middleware(
@@ -120,9 +127,12 @@ class TenantOrganizationResponse(BaseModel):
     setup_status: str
     has_logo: bool
     logo_version: Optional[str] = None
+    # The business modules the organization can use right now (Super Admin decides; see app/modules.py). The other services enforce
+    # exactly this list, so it is part of the answer they already ask for: one call says active, which organization, and which modules.
+    modules: List[str] = []
 
 
-def to_tenant_response(org: Organization) -> TenantOrganizationResponse:
+def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -> TenantOrganizationResponse:
     return TenantOrganizationResponse(
         id=str(org.id),
         name=org.name,
@@ -135,6 +145,7 @@ def to_tenant_response(org: Organization) -> TenantOrganizationResponse:
         setup_status=org.setup_status,
         has_logo=bool(org.logo_storage_key),
         logo_version=logo_version(org),
+        modules=modules or [],
     )
 
 
@@ -242,8 +253,8 @@ async def health_check():
 # user's record (see app/auth.py and docs/multi-tenancy.md), so there is nothing to manipulate.
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/tenant/organization", response_model=TenantOrganizationResponse, tags=["Tenant"])
-def get_my_organization(organization: Organization = Depends(require_tenant_organization)):
-    return to_tenant_response(organization)
+def get_my_organization(organization: Organization = Depends(require_tenant_organization), db: Session = Depends(get_db)):
+    return to_tenant_response(organization, usable_modules(db, organization.id))
 
 
 @app.get("/api/v1/organizations", response_model=List[OrganizationResponse], tags=["Organizations"], dependencies=super_admin_only)
@@ -271,6 +282,8 @@ def create_organization(payload: OrganizationCreate, db: Session = Depends(get_d
     )
     db.add(org)
     try:
+        db.flush()
+        seed_new_organization(db, org.id)  # Inventory on, optional modules off: in the same transaction as the organization
         db.commit()
     except IntegrityError:  # two requests with the same slug raced past the check above
         db.rollback()
