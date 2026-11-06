@@ -142,7 +142,16 @@ export function formatQuantity(value: string): string {
 // One key per intended action: resubmitting the same form (a double click, a retry after a timeout) reuses it,
 // so the stock service applies the change once and replays the first answer.
 export function newIdempotencyKey(): string {
-  return `ui-${globalThis.crypto.randomUUID()}`;
+  const c = globalThis.crypto;
+  // crypto.randomUUID() exists only in secure contexts (https or localhost). Over plain http on a LAN address (a phone, another PC) it is
+  // missing and used to crash the whole form, so fall back to getRandomValues(), which every browser offers everywhere.
+  if (typeof c?.randomUUID === "function") return `ui-${c.randomUUID()}`;
+  const bytes = new Uint8Array(16);
+  c.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `ui-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export type StockAction = "opening" | "in" | "out" | "transfer";

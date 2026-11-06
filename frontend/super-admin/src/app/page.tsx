@@ -1,9 +1,11 @@
 import PortalHeader from "@/components/portal-header";
-import { requireSuperAdmin } from "@/lib/auth";
+import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
+import { getUnreadCount } from "@/lib/support";
 
 export default async function SuperAdminDashboard() {
   // Redirects to /login unless the session belongs to an active super-admin
   const user = await requireSuperAdmin();
+  const supportUnread = (await getUnreadCount(getSessionToken() ?? "")) ?? 0;
 
   const services = [
     { name: "Auth Service", status: "Operational", port: 8000, route: "/api/v1/auth" },
@@ -22,7 +24,7 @@ export default async function SuperAdminDashboard() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="dashboard" />
+      <PortalHeader user={user} current="dashboard" supportUnread={supportUnread} />
 
       {/* Main Content */}
       <main className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">

@@ -4,8 +4,9 @@
 
 | Job | What it does |
 | :--- | :--- |
-| `auth-service`, `organization-service`, `inventory-service`, `sales-service`, `purchasing-service` | installs the service's `requirements-dev.txt` and runs `python -m pytest -q` against a **throwaway PostgreSQL 16 container** that exists only for the job |
-| `dashboard (Organization Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run`, `npx next build` (which also type-checks the tests) |
+| `auth-service`, `organization-service`, `inventory-service`, `sales-service`, `purchasing-service`, `support-service` | installs the service's `requirements-dev.txt` and runs `python -m pytest -q` against a **throwaway PostgreSQL 16 container** that exists only for the job |
+| `dashboard (Organization Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Help & Support pages, routes and the setup gate), `npx next build` (which also type-checks the tests) |
+| `super-admin (Super Admin Portal)` | `npm install`, `npx tsc --noEmit`, `npx vitest run` (includes the Support Inbox pages, routes and UI), `npx next build` |
 
 ## Safety
 
@@ -19,4 +20,6 @@
 docker compose run --rm --no-deps sales-service sh -c "pip install -q -r requirements-dev.txt && python -m pytest -q"   # any service
 docker build --target test -t impex-dashboard-test ./frontend/dashboard
 docker run --rm impex-dashboard-test sh -c "npx tsc --noEmit && npx vitest run"
+docker build --target test -t impex-super-admin-test ./frontend/super-admin
+docker run --rm impex-super-admin-test sh -c "npx tsc --noEmit && npx vitest run"
 ```

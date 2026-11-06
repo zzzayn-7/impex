@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   EMPTY_STOCK_FORM,
@@ -118,5 +118,22 @@ describe("idempotency keys", () => {
     const keys = new Set(Array.from({ length: 50 }, newIdempotencyKey));
     expect(keys.size).toBe(50);
     for (const key of keys) expect(key).toMatch(IDEMPOTENCY_KEY_RE);
+  });
+
+  it("still work over plain http, where crypto.randomUUID does not exist (a phone or another PC on the LAN)", () => {
+    const real = globalThis.crypto;
+    // an insecure-context crypto: getRandomValues only
+    vi.stubGlobal("crypto", { getRandomValues: (array: Uint8Array) => real.getRandomValues(array) });
+    try {
+      expect((globalThis.crypto as any).randomUUID).toBeUndefined();
+      const keys = new Set(Array.from({ length: 50 }, newIdempotencyKey));
+      expect(keys.size).toBe(50);
+      for (const key of keys) {
+        expect(key).toMatch(IDEMPOTENCY_KEY_RE);
+        expect(key).toMatch(/^ui-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

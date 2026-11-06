@@ -102,20 +102,20 @@ describe("middleware", () => {
   const request = (cookie?: string) =>
     new NextRequest("http://localhost:3001/", { headers: cookie ? { cookie } : {} });
 
-  it("sends visitors without a tenant cookie to /login", () => {
-    const res = middleware(request());
+  it("sends visitors without a tenant cookie to /login", async () => {
+    const res = await middleware(request());
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
   });
 
-  it("does not accept the Super Admin cookie", () => {
-    const res = middleware(request("impex_session=super-admin-token"));
+  it("does not accept the Super Admin cookie", async () => {
+    const res = await middleware(request("impex_session=super-admin-token"));
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
   });
 
-  it("lets a request with a tenant cookie continue to the server-side check", () => {
-    const res = middleware(request(`${TENANT_SESSION_COOKIE}=anything`));
+  it("lets a request with a tenant cookie continue to the server-side check", async () => {
+    const res = await middleware(request(`${TENANT_SESSION_COOKIE}=anything`));
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 

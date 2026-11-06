@@ -28,6 +28,7 @@ impex/
 │   │
 │   ├── inventory-service/         # Warehousing & Stock Tracking (Planned)
 │   ├── sales-service/             # Clients, Delivery Lists, Dispatches, Invoices & Payments
+│   ├── support-service/           # Help & Support tickets, Support Inbox, durable e-mail notifications
 │   └── finance-service/           # Invoicing, Customs & Duties (Planned)
 │
 ├── gateway/
@@ -57,6 +58,7 @@ docker compose up --build
 - **Super Admin Frontend**: [http://localhost](http://localhost) (or directly at [http://localhost:3000](http://localhost:3000))
 - **Auth Service Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Organization Service Docs**: [http://localhost:8001/docs](http://localhost:8001/docs)
+- **Support Service Docs**: [http://localhost:8005/docs](http://localhost:8005/docs) (Help & Support: see [`docs/support.md`](docs/support.md))
 
 ---
 

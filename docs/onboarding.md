@@ -43,6 +43,22 @@ Migration `0004` (Organization Service) adds the columns with default `completed
 the default to `pending` for new ones. Migration `0003` (Auth Service) marks every existing account as confirmed. Both are additive and
 reversible; nothing is deleted or reset. Organizations that existed before have no logo and show a monogram until a logo is added.
 
+## Setup is enforced on the server, not only on the screens
+
+Hiding pages is not enough: typing an API address, or calling it from a script with a valid session, must not bypass first-time setup. The
+Organization Portal's `middleware.ts` therefore checks the setup state (Auth Service `/auth/me` + Organization Service `/tenant/organization`,
+through the same `setupNeed` rule the pages use) before every business route (`/api/products`, `/api/warehouses`, `/api/stock`, `/api/scan`,
+`/api/sales`, `/api/purchasing`):
+
+* setup not finished → `403` with `code: "setup_required"`;
+* the setup state cannot be read (a service is down) → `503` (fail closed: never "assume complete");
+* no session → the route answers `401` itself; an inactive organization or user is refused by the services as before.
+
+**Always reachable during setup:** sign-in/out, the setup wizard and its routes, the logo, **Help & Support** (`/support`, `/api/support/*`) and the
+health endpoints. Help & Support is available *without* finishing setup on purpose, because setup is where people most often need help; it
+does not complete or skip anything. The services behind the portal keep enforcing authentication, roles and tenant isolation on their own.
+Cost: two small service calls per business API request. The live scripts keep working because they mark their throwaway organizations as set up.
+
 ## Logo storage and safety
 
 * **Where**: the Organization Service's `LogoStorage` interface (`app/storage.py`) with a directory implementation. `LOGO_STORAGE_DIR`
@@ -110,5 +126,5 @@ The other live scripts mark their own throwaway organizations as already set up 
 
 Super Admin registration, invitation and activation, email/password login, session tokens, roles, DEMO_MODE, products, warehouses, scanning,
 suppliers, purchasing, goods receiving, clients, delivery lists, dispatches, invoices and payments, and every existing API. The dark portal theme is unchanged
-(only the setup screens use the ivory/sage palette). The data APIs behind the pages are not gated by onboarding (it is a screen gate; tenant isolation and
-authorization are unchanged).
+(only the setup screens use the ivory/sage palette). The services behind the pages (inventory, sales, purchasing) are unchanged: tenant isolation and
+authorization work as before. The portal's business routes are refused on the server until setup is finished (see "Setup is enforced on the server").

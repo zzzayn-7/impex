@@ -5,6 +5,7 @@ import PortalHeader from "@/components/portal-header";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { listAdministrators, type AdministratorStatus } from "@/lib/administrators";
 import { listOrganizations } from "@/lib/organizations";
+import { getUnreadCount } from "@/lib/support";
 import AdministratorPanel from "./administrator-panel";
 import OrganizationForm from "./organization-form";
 import AdministratorActions from "./administrator-actions";
@@ -29,7 +30,7 @@ export default async function OrganizationsPage() {
   // Redirects to /login unless the session belongs to an active super-admin
   const user = await requireSuperAdmin();
   const token = getSessionToken() ?? "";
-  const [result, adminsResult] = await Promise.all([listOrganizations(token), listAdministrators(token)]);
+  const [result, adminsResult, supportUnread] = await Promise.all([listOrganizations(token), listAdministrators(token), getUnreadCount(token)]);
   if ((!result.ok && result.reason === "unauthorized") || (!adminsResult.ok && adminsResult.reason === "unauthorized")) {
     redirect("/login");
   }
@@ -41,7 +42,7 @@ export default async function OrganizationsPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="organizations" />
+      <PortalHeader user={user} current="organizations" supportUnread={supportUnread ?? 0} />
 
       <main className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">
         <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">

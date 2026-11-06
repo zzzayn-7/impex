@@ -179,6 +179,15 @@ organization or a user. The organization and the user come from the verified tok
 inactive organization or a disabled administrator is refused. Logos are stored under random server-made keys that never reach a browser, and are served only
 through an authenticated, tenant-bound route. See [`docs/onboarding.md`](onboarding.md).
 
+## Help & Support (Support Service)
+
+Tickets belong to the organization of the administrator who opened them, taken from the verified token (Auth Service `/auth/me`, then the
+Organization Service for an active organization); a body or query field that names an organization is ignored, and another organization's
+ticket is a `404` indistinguishable from a missing one. The Super Admin reads every organization's tickets through separate `/support/admin/*`
+endpoints whose role is verified by the Auth Service on every call; an organization administrator's token gets `403` there. Notification
+e-mail recipients are decided by the server (the configured support address, or the requester's address recorded when the ticket was opened),
+never by a request. See [`support.md`](support.md).
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

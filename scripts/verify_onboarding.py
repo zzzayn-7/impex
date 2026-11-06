@@ -261,7 +261,9 @@ def main() -> int:
         s, data, _, loc, _h = call(TENANT_PORTAL, "GET", "/setup")
         check("/setup without a session goes to the login page", is_redirect(s) and "/login" in loc, (s, loc))
         s, body = api("a1", "GET", "/api/sales/clients")
-        check("the data APIs behind the pages keep their own rules (onboarding gates the screens; tenant isolation is unchanged)", s == 200, s)
+        check("the business APIs are refused on the SERVER too while setup is unfinished (403 setup_required): typing an API address does not bypass the wizard", s == 403 and body.get("code") == "setup_required", (s, body))
+        s, body = api("a1", "GET", "/api/support/tickets")
+        check("...but Help & Support stays reachable during setup", s == 200, (s, body))
 
         print("\n== 3. the company logo: what is refused")
         invalid = {
@@ -348,8 +350,8 @@ def main() -> int:
         first_time, first_profile_time = row[1], profile[0]
         s, html, loc = page("a1", "/")
         check("the dashboard now opens (200): no further redirect", s == 200 and "Welcome, Olivia Owner-Smith" in html, (s, loc))
-        check("the header shows the company logo, the company name, the platform name and the administrator's updated name",
-              "/api/organization/logo?v=" in html and "Onboarding Check Alpha GmbH" in html and "IMPEX Organization Portal" in html and html.count("Olivia Owner-Smith") >= 2, "")
+        check("the header shows the company logo, the company name, the Admin Portal subtitle and the administrator's updated name",
+              "/api/organization/logo?v=" in html and "Onboarding Check Alpha GmbH" in html and "Admin Portal" in html and html.count("Olivia Owner-Smith") >= 2, "")
         for path in ("/products", "/stock", "/invoices", "/clients"):
             s, html, loc = page("a1", path)
             check(f"{path} opens now, with the company branding in its header", s == 200 and "/api/organization/logo?v=" in html, (s, loc))

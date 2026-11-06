@@ -149,7 +149,9 @@ describe("typing a page's address cannot skip the wizard", () => {
   it("every page layout goes through the gate (this fails if a new layout skips it)", () => {
     const root = join(process.cwd(), "src", "app");
     const layouts = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(root, d.name, "layout.tsx"))).map((d) => d.name);
-    expect(layouts.sort()).toEqual([...LAYOUTS, "setup"].sort());
+    // "setup" is the wizard itself; "support" deliberately does NOT redirect (a new administrator with an onboarding problem must be able to
+    // ask for help): it is covered by its own tests below, but it still checks the session and loads the workspace.
+    expect(layouts.sort()).toEqual([...LAYOUTS, "setup", "support"].sort());
     for (const name of layouts.filter((n) => n !== "setup")) {
       const source = readFileSync(join(root, name, "layout.tsx"), "utf-8");
       expect(/PortalFrame|loadWorkspace/.test(source), `${name}/layout.tsx must use PortalFrame or loadWorkspace`).toBe(true);

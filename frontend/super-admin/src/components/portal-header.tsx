@@ -6,14 +6,17 @@ import type { AuthUser } from "@/lib/auth";
 const NAV_LINKS = [
   { key: "dashboard", href: "/", label: "Dashboard" },
   { key: "organizations", href: "/organizations", label: "Organizations" },
+  { key: "support", href: "/support", label: "Support Inbox" },
 ] as const;
 
 export default function PortalHeader({
   user,
   current,
+  supportUnread = 0,
 }: {
   user: AuthUser;
   current: (typeof NAV_LINKS)[number]["key"];
+  supportUnread?: number; // tickets with customer messages nobody has opened yet
 }) {
   return (
     <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
@@ -40,6 +43,11 @@ export default function PortalHeader({
               }`}
             >
               {link.label}
+              {link.key === "support" && supportUnread > 0 && (
+                <span aria-label={`${supportUnread} unread`} className="ml-2 rounded-full bg-sky-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                  {supportUnread > 99 ? "99+" : supportUnread}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

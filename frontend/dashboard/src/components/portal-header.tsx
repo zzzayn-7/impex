@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { key: "suppliers", href: "/suppliers", label: "Suppliers" },
   { key: "purchasing", href: "/purchase-orders", label: "Purchase Orders" },
   { key: "receipts", href: "/goods-receipts", label: "Goods Receipts" },
+  { key: "support", href: "/support", label: "Help & Support" },
 ] as const;
 
 export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null };
