@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin } from "./helpers";
+import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin, alphaOrg } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
@@ -75,6 +75,7 @@ function stubWorld(options: { status?: number; orgs?: Record<string, Org> } = {}
       calls.push({ url, headers, method: init.method ?? "GET" });
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return users[token] ? json(200, users[token]) : json(401, {});
+      if (url.endsWith("/api/v1/tenant/organization")) return users[token] ? json(200, alphaOrg) : json(401, {}); // the layout checks first-time setup
       if (!url.includes("/api/v1/inventory/")) return json(404, {});
       if (options.status) return json(options.status, { detail: "x" });
       const org = orgs[token];

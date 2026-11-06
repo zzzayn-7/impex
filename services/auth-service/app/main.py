@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.organization_admins import (
     require_internal_key,
     update_organization_admin,
 )
+from app.profile import complete_profile, update_profile
 from app.security import hash_password, verify_password
 
 # ---------------------------------------------------------------------------
@@ -76,6 +77,8 @@ class UserProfile(BaseModel):
     organization_id: Optional[str] = None
     is_active: bool
     created_at: str
+    # NULL until the person has confirmed their own profile (first-time onboarding of organization administrators).
+    profile_setup_completed_at: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +98,7 @@ def to_profile(user: User) -> UserProfile:
         organization_id=str(user.organization_id) if user.organization_id else None,
         is_active=user.is_active,
         created_at=user.created_at.isoformat(),
+        profile_setup_completed_at=user.profile_setup_completed_at.isoformat() if user.profile_setup_completed_at else None,
     )
 
 
@@ -168,6 +172,33 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/v1/auth/me", response_model=UserProfile, tags=["Auth"])
 def get_me(current_user: User = Depends(get_current_user)):
     return to_profile(current_user)
+
+
+class ProfileUpdate(BaseModel):
+    """The ONLY thing a person can change about themselves here. Role, e-mail, organization and password are not
+    accepted (unknown fields are refused with 422), and the user is always the one the token belongs to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str
+
+
+class ProfileComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Optional[str] = None  # the name to confirm; omit to keep the current one
+
+
+@app.patch("/api/v1/auth/me/profile", response_model=UserProfile, tags=["Auth"])
+def update_my_profile(payload: ProfileUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Correct your own full name (organization administrators)."""
+    return to_profile(update_profile(db, current_user, payload.full_name))
+
+
+@app.post("/api/v1/auth/me/profile/complete", response_model=UserProfile, tags=["Auth"])
+def complete_my_profile(payload: ProfileComplete, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Confirm your profile (optionally with a corrected name) in one step. Safe to repeat."""
+    return to_profile(complete_profile(db, current_user, payload.full_name))
 
 
 # ---------------------------------------------------------------------------

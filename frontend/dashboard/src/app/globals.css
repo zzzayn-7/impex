@@ -14,6 +14,28 @@ body {
 }
 
 
+/* First-time setup screens: a gentle fade between steps. Opt-in (only elements with .ix-fade); off for reduced motion. */
+@keyframes ix-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ix-fade {
+  animation: ix-fade-in 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-fade {
+    animation: none;
+  }
+}
+
 /* Labels are printed black on white, whatever the portal's dark theme. */
 @media print {
   html,

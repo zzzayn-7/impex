@@ -11,6 +11,8 @@ export type AuthUser = {
   organization_id: string | null;
   is_active: boolean;
   created_at: string;
+  // null until the administrator has confirmed their own profile (first-time onboarding). The Auth Service is the record.
+  profile_setup_completed_at?: string | null;
 };
 
 export type TenantAdmin = AuthUser & { role: "organization-admin"; organization_id: string; is_active: true };

@@ -55,6 +55,8 @@ services:
       - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
+      - LOGO_STORAGE_DIR=/data/logos
+      - LOGO_MAX_BYTES=${LOGO_MAX_BYTES:-2097152}
       - TENANT_PORTAL_URL=${TENANT_PORTAL_URL:-http://localhost:3001}
       - DEMO_MODE=${DEMO_MODE:-false}
       - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-12345678}
@@ -69,6 +71,8 @@ services:
       - SMTP_SSL=${SMTP_SSL:-false}
       - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-no-reply@impex.local}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Impex}
+    volumes:
+      - org-logos:/data/logos  # uploaded company logos: persistent (removed only by `docker compose down -v`)
     depends_on:
       postgres:
         condition: service_healthy
@@ -253,6 +257,7 @@ services:
 volumes:
   postgres_data:
   caddy_data:
+  org-logos:  # uploaded company logos (Organization Service)
 
 networks:
   impex-network:

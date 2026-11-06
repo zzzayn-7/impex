@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin } from "./helpers";
+import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin, alphaOrg } from "./helpers";
 
 // A mutable cookie jar standing in for the incoming request's cookies.
 const jar: Record<string, string> = {};
@@ -45,6 +45,7 @@ function stubWorld(world: World) {
       calls.push({ url, headers });
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return world.users[token] ? json(200, world.users[token]) : json(401, {});
+      if (url.endsWith("/api/v1/tenant/organization")) return world.users[token] ? json(200, alphaOrg) : json(401, {}); // the layout checks first-time setup
       if (url.includes("/api/v1/inventory/")) {
         if (world.inventoryStatus) return json(world.inventoryStatus, { detail: "x" });
         const own = world.catalogs[token];
@@ -199,7 +200,7 @@ describe("Products layout (runs before the page streams)", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await renderLayout();
-    for (const expected of ["PAGE-CONTENT", "IMPEX Organization Portal", "Dashboard", 'aria-current="page"', "Products", "Sign out"]) {
+    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Admin Portal", "Dashboard", 'aria-current="page"', "Products", "Sign out"]) {
       expect(html, expected).toContain(expected);
     }
   });

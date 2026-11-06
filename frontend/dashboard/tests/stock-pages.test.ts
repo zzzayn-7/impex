@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin } from "./helpers";
+import { ORG_B_ID, ORG_ID, orgAdmin, orgAdminB, superAdmin, alphaOrg } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
@@ -84,6 +84,7 @@ function stubWorld(world: World) {
       calls.push({ url, headers });
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return world.users[token] ? json(200, world.users[token]) : json(401, {});
+      if (url.endsWith("/api/v1/tenant/organization")) return world.users[token] ? json(200, alphaOrg) : json(401, {}); // the layout checks first-time setup
       if (url.includes("/api/v1/inventory/")) {
         if (world.inventoryStatus) return json(world.inventoryStatus, { detail: "x" });
         const org = world.orgs[token];
@@ -313,7 +314,7 @@ describe("layouts (run before the page streams)", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await layout({ children: "PAGE-CONTENT" }));
-    for (const expected of ["PAGE-CONTENT", "IMPEX Organization Portal", "Dashboard", "Products", "Warehouses", "Stock", "Movements", "Sign out"]) {
+    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Admin Portal", "Dashboard", "Products", "Warehouses", "Stock", "Movements", "Sign out"]) {
       expect(html, expected).toContain(expected);
     }
     const current = html.match(/<a[^>]*aria-current="page"[^>]*>([^<]*)</);

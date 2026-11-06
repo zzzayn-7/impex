@@ -29,6 +29,7 @@ from app.auth import create_auth_client, require_super_admin
 from app.database import get_db
 from app.invitations import invitation_status, issue_invitation
 from app.models import Organization, OrganizationInvitation
+from app.onboarding import logo_version, router as onboarding_router
 from app.tenancy import require_tenant_organization
 
 
@@ -52,6 +53,9 @@ app = FastAPI(
 # Organization management is restricted to active Super Admins (verified by the Auth Service).
 # Health endpoints below intentionally do not use this.
 super_admin_only = [Depends(require_super_admin)]
+
+# First-time company setup (tenant administrators only; see app/onboarding.py).
+app.include_router(onboarding_router)
 
 # CORS Middleware
 app.add_middleware(
@@ -111,6 +115,11 @@ class TenantOrganizationResponse(BaseModel):
     contact_email: str
     is_active: bool
     created_at: str
+    # First-time setup (never anything about another tenant): where it stands and whether a logo exists. The logo itself is
+    # fetched from /api/v1/tenant/organization/logo; its storage key is never exposed.
+    setup_status: str
+    has_logo: bool
+    logo_version: Optional[str] = None
 
 
 def to_tenant_response(org: Organization) -> TenantOrganizationResponse:
@@ -123,6 +132,9 @@ def to_tenant_response(org: Organization) -> TenantOrganizationResponse:
         contact_email=org.contact_email,
         is_active=org.is_active,
         created_at=org.created_at.isoformat(),
+        setup_status=org.setup_status,
+        has_logo=bool(org.logo_storage_key),
+        logo_version=logo_version(org),
     )
 
 

@@ -10,6 +10,7 @@ export const orgAdmin = {
   organization_id: ORG_ID,
   is_active: true,
   created_at: "2026-11-03T00:00:00+00:00",
+  profile_setup_completed_at: "2026-11-03T00:05:00+00:00", // first-time onboarding done (the Auth Service's record)
 };
 export const superAdmin = { ...orgAdmin, id: "22222222-2222-4222-8222-222222222222", email: "root@impex.example", full_name: "Root Admin", role: "super-admin", organization_id: null };
 export const regularUser = { ...orgAdmin, id: "33333333-3333-4333-8333-333333333333", email: "user@example.org", full_name: "Regular User", role: "user", organization_id: null };
@@ -70,10 +71,12 @@ export const orgAdminB = {
 export const alphaOrg = {
   id: ORG_ID, name: "Alpha Trading GmbH", slug: "alpha-trading", country_code: "DE", tax_identifier: "DE111111111",
   contact_email: "ops@alpha.example", is_active: true, created_at: "2026-11-01T10:00:00+00:00",
+  setup_status: "completed", has_logo: false, logo_version: null, // first-time onboarding done (the Organization Service's record)
 };
 export const betaOrg = {
   id: ORG_B_ID, name: "Beta Logistics SARL", slug: "beta-logistics", country_code: "FR", tax_identifier: "FR222222222",
   contact_email: "ops@beta.example", is_active: true, created_at: "2026-11-02T10:00:00+00:00",
+  setup_status: "completed", has_logo: false, logo_version: null,
 };
 
 export type BackendEntry = { user: Record<string, unknown>; organization?: { status: number; body?: unknown } };

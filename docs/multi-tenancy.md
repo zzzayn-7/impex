@@ -171,6 +171,14 @@ allocation must belong to a **confirmed** dispatch of the **invoice's own client
 Invoicing makes **no call to the Inventory Service at all**, so there is no cross-service token to forward and no way for an invoice to move another tenant's stock. Another organization's invoice, payment, client or dispatch line is `404 ... not found`, identical to an id that does not
 exist, for every route (read, edit, lines, issue, void, pay, reverse, PDF, client account, billable lines).
 
+## First-time onboarding (company name and logo)
+
+The company's setup state and logo live on the `organizations` row (Organization Service); the administrator's profile confirmation lives on the
+`users` row (Auth Service). Every onboarding endpoint is a tenant endpoint in the sense of this document: no id, query, header or body names an
+organization or a user. The organization and the user come from the verified token, a logo or a name of another organization is unreachable, and an
+inactive organization or a disabled administrator is refused. Logos are stored under random server-made keys that never reach a browser, and are served only
+through an authenticated, tenant-bound route. See [`docs/onboarding.md`](onboarding.md).
+
 ## Testing checklist for every new tenant endpoint
 
 Create two organizations with an administrator each, then prove, for **both** directions (A to B and B to A):

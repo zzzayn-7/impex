@@ -31,3 +31,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # First-time onboarding: NULL until the administrator has confirmed their own profile. The authoritative record
+    # (never a cookie or browser storage).
+    profile_setup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

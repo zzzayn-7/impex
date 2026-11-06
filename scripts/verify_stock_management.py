@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _cleanup import CreatedIds, delete_exact  # noqa: E402
+from _onboarding import mark_setup_complete  # noqa: E402
 
 AUTH, ORG, INVENTORY, SUPER_PORTAL, TENANT_PORTAL = 8000, 8001, 8002, 3000, 3001
 results = []
@@ -161,6 +162,7 @@ def main() -> int:
             status, text, sc, _ = call(TENANT_PORTAL, "POST", "/api/auth/login", {"email": emails[key], "password": password})
             cookies[key] = cookie_value(sc, "impex_tenant_session")
             check(f"administrator {key.upper()} signs in to the Organization Portal", status == 200 and cookies[key], (status, text))
+            mark_setup_complete(psql, org_ids[key])  # this script tests other features: skip the first-time wizard for its throwaway organization (verify_onboarding.py tests the wizard)
 
         print("\n== 1. warehouses: create, edit, archive, restore")
         s, a_main = warehouse("a", "main", "StockA main depot", address="1 Alpha Street")

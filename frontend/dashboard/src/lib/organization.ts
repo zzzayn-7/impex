@@ -13,6 +13,10 @@ export type TenantOrganization = {
   contact_email: string;
   is_active: boolean;
   created_at: string;
+  // First-time setup (the Organization Service is the record): pending | in_progress | completed.
+  setup_status?: "pending" | "in_progress" | "completed";
+  has_logo?: boolean;
+  logo_version?: string | null;
 };
 
 export type OrganizationResult =

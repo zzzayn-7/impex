@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function LogoutButton() {
+export default function LogoutButton({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +22,11 @@ export default function LogoutButton() {
       type="button"
       onClick={logout}
       disabled={loading}
-      className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:opacity-60"
+      className={
+        variant === "light"
+          ? "rounded-xl border border-[#E4E8E2] bg-white px-3.5 py-2 text-xs font-medium text-[#426B58] transition duration-200 hover:bg-[#E8F0EA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#658675]/40 disabled:opacity-60 motion-reduce:transition-none"
+          : "rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:opacity-60"
+      }
     >
       {loading ? "Signing out…" : "Sign out"}
     </button>

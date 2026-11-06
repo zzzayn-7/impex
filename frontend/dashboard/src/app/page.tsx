@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import PortalHeader from "@/components/portal-header";
+import { setupNeed } from "@/lib/onboarding";
 import { fetchTenantOrganization } from "@/lib/organization";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
 
@@ -19,11 +20,15 @@ export default async function OrganizationDashboard() {
   // The organization's details come from the Organization Service, called with the same session token.
   const result = await fetchTenantOrganization(getTenantToken() ?? "");
   if (!result.ok && result.reason === "unauthorized") redirect("/login");
+  // First-time onboarding: until the company and the administrator's own profile are set up (the services' records, checked on
+  // every request) the dashboard is not shown. If the Organization Service cannot answer, the panel below says so (recoverable);
+  // setup is never assumed complete.
+  if (result.ok && setupNeed(admin, result.organization).required) redirect("/setup");
   const organization = result.ok ? result.organization : null;
 
   return (
     <div className="flex min-h-screen flex-col">
-      <PortalHeader admin={admin} current="dashboard" />
+      <PortalHeader admin={admin} current="dashboard" organization={organization} />
 
       <main className="flex-1 p-8 max-w-4xl mx-auto w-full space-y-6">
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 space-y-5">
