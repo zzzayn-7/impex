@@ -15,7 +15,11 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/finance",
 }));
 
-import OrganizationDashboard from "@/app/page";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import DashboardPage from "@/app/(dashboard)/page";
+
+// The dashboard is its layout (session, setup gate, frame) around its page (the data): rendered together, as a visitor gets them.
+const OrganizationDashboard = async () => DashboardLayout({ children: await DashboardPage() });
 import SetupPage from "@/app/setup/page";
 import SetupLayout from "@/app/setup/layout";
 import ProductsLayout from "@/app/products/layout";
@@ -134,7 +138,7 @@ describe("the dashboard waits for setup", () => {
 // =====================================================================================================
 // every other page (manual navigation before completion)
 // =====================================================================================================
-const LAYOUTS = ["clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "scan", "settings", "stock", "suppliers", "warehouses"];
+const LAYOUTS = ["(dashboard)", "clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "scan", "settings", "stock", "suppliers", "warehouses"];
 
 describe("typing a page's address cannot skip the wizard", () => {
   it.each(LAYOUTS)("%s: an incomplete setup is redirected to /setup", async (name) => {

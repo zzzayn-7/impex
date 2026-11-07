@@ -11,6 +11,8 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        // The Organization Dashboard's calm blue-grey / sea-glass palette (used only by components/dashboard/*).
+        ix: { deep: "#172A32", slate: "#324D58", teal: "#568E8F", sea: "#86B6AA", sage: "#A6C1B2", mist: "#D8E8E3", text: "#EDF4F1", muted: "#B5CBC9" },
       },
     },
   },

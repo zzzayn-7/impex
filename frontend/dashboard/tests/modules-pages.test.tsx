@@ -20,7 +20,11 @@ import DispatchesLayout from "@/app/dispatches/layout";
 import GoodsReceiptsLayout from "@/app/goods-receipts/layout";
 import InvoicesLayout from "@/app/invoices/layout";
 import MovementsLayout from "@/app/movements/layout";
-import OrganizationDashboard from "@/app/page";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import DashboardPage from "@/app/(dashboard)/page";
+
+// The dashboard is its layout (session, setup gate, frame) around its page (the data): rendered together, as a visitor gets them.
+const OrganizationDashboard = async () => DashboardLayout({ children: await DashboardPage() });
 import ProductsLayout from "@/app/products/layout";
 import PurchaseOrdersLayout from "@/app/purchase-orders/layout";
 import ScanLayout from "@/app/scan/layout";

@@ -1,0 +1,146 @@
+"use client";
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+
+import type { NavGroup } from "@/lib/dashboard-nav";
+import Icon from "./icons";
+
+// The dashboard's navigation. On a desktop it is a fixed 76px icon rail that EXPANDS OVER the page (a fixed-position overlay: the page itself
+// never moves) when the pointer is over it or keyboard focus is inside it, or when the toggle has pinned it open. Below the `lg` breakpoint it is
+// an off-canvas drawer opened from the header's menu button: nothing depends on hover. Escape closes whichever is open. The expanding is plain CSS
+// (group-hover / group-focus-within), so there is no flicker, no layout shift and no hydration difference; the only state is "pinned" and "drawer open".
+
+type NavState = { mobileOpen: boolean; setMobileOpen: (open: boolean) => void; pinned: boolean; setPinned: (pinned: boolean) => void };
+const NavContext = createContext<NavState | null>(null);
+
+function useNav(): NavState {
+  const value = useContext(NavContext);
+  if (!value) throw new Error("NavProvider is missing");
+  return value;
+}
+
+export function NavProvider({ children }: { children: React.ReactNode }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const value = useMemo(() => ({ mobileOpen, setMobileOpen, pinned, setPinned }), [mobileOpen, pinned]);
+  return <NavContext.Provider value={value}>{children}</NavContext.Provider>;
+}
+
+/** The header's menu button: opens the drawer on small screens only. */
+export function MenuButton() {
+  const { mobileOpen, setMobileOpen } = useNav();
+  return (
+    <button
+      type="button"
+      onClick={() => setMobileOpen(!mobileOpen)}
+      aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+      aria-expanded={mobileOpen}
+      aria-controls="ix-sidebar"
+      className="grid h-11 w-11 place-items-center rounded-2xl border border-ix-mist/15 bg-ix-mist/10 text-ix-text transition duration-200 hover:bg-ix-mist/15 lg:hidden"
+    >
+      <Icon name={mobileOpen ? "close" : "menu"} />
+    </button>
+  );
+}
+
+const label = "ix-nav-label whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 max-lg:opacity-100";
+
+export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHref: string }) {
+  const { mobileOpen, setMobileOpen, pinned, setPinned } = useNav();
+  const ref = useRef<HTMLElement>(null);
+
+  const dismiss = useCallback(() => {
+    setPinned(false);
+    setMobileOpen(false);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && ref.current?.contains(active)) active.blur(); // focus-within would otherwise keep the rail open
+  }, [setMobileOpen, setPinned]);
+
+  // Escape closes the drawer from anywhere on the page (the rail handles it itself, below).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileOpen, setMobileOpen]);
+
+  return (
+    <>
+      {mobileOpen && <button type="button" aria-label="Close navigation" tabIndex={-1} onClick={() => setMobileOpen(false)} className="fixed inset-0 z-30 bg-ix-deep/60 lg:hidden" />}
+      <aside
+        id="ix-sidebar"
+        ref={ref}
+        aria-label="Primary"
+        data-pinned={pinned}
+        data-mobile-open={mobileOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") dismiss();
+        }}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
+        }}
+        className={[
+          "ix-glass group fixed z-40 flex flex-col overflow-hidden",
+          // desktop: an icon rail inset from the edges that grows over the page
+          "lg:inset-y-3 lg:left-3 lg:w-[76px] lg:translate-x-0 lg:visible lg:hover:w-[256px] lg:focus-within:w-[256px] lg:data-[pinned=true]:w-[256px] lg:transition-[width,box-shadow] lg:duration-200 lg:ease-out",
+          "lg:hover:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)] lg:focus-within:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)]",
+          // below lg: an off-canvas drawer (invisible, so unreachable by Tab, while closed)
+          "max-lg:inset-y-3 max-lg:left-3 max-lg:w-[286px] max-lg:max-w-[calc(100vw-24px)] max-lg:transition-transform max-lg:duration-200",
+          mobileOpen ? "max-lg:translate-x-0 max-lg:visible" : "max-lg:-translate-x-[110%] max-lg:invisible",
+        ].join(" ")}
+      >
+        <div className="flex h-[68px] shrink-0 items-center px-3">
+          <span className="grid h-[52px] w-[52px] shrink-0 place-items-center" aria-hidden="true">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-ix-teal to-ix-sea text-sm font-bold text-ix-deep">IX</span>
+          </span>
+          <span className={`${label} ml-1 tracking-wide text-ix-text`}>Impex</span>
+          <button
+            type="button"
+            onClick={() => setPinned(!pinned)}
+            aria-pressed={pinned}
+            aria-label={pinned ? "Collapse navigation" : "Expand navigation"}
+            title={pinned ? "Collapse navigation" : "Expand navigation"}
+            className="ml-auto hidden h-9 w-9 shrink-0 place-items-center rounded-xl text-ix-muted opacity-0 transition duration-200 hover:bg-ix-mist/10 hover:text-ix-text focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 lg:grid"
+          >
+            <Icon name={pinned ? "chevronLeft" : "chevronRight"} className="h-4 w-4" />
+          </button>
+        </div>
+
+        <nav aria-label="Main" className="ix-scroll flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3">
+          {groups.map((group) => (
+            <div key={group.id} data-nav-group={group.id} role="group" aria-label={group.label}>
+              <div className="relative h-7" aria-hidden="true">
+                <span className="absolute inset-x-3 top-1/2 h-px bg-ix-mist/10 transition-opacity duration-200 group-hover:opacity-0 group-focus-within:opacity-0 group-data-[pinned=true]:opacity-0 max-lg:opacity-0" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-ix-muted/80 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 max-lg:opacity-100">
+                  {group.label}
+                </span>
+              </div>
+              <ul className="space-y-1">
+                {group.items.map((item) => {
+                  const active = item.href === currentHref;
+                  return (
+                    <li key={item.key}>
+                      <Link
+                        href={item.href}
+                        title={item.label}
+                        aria-current={active ? "page" : undefined}
+                        className={`relative flex h-11 items-center rounded-2xl transition-colors duration-200 ${active ? "bg-ix-sea/20 text-ix-text shadow-[inset_0_0_0_1px_rgba(134,182,170,0.28)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
+                      >
+                        {active && <span aria-hidden="true" className="absolute -left-3 top-2.5 h-6 w-1 rounded-r-full bg-ix-sea" />}
+                        <span className="grid h-11 w-[52px] shrink-0 place-items-center"><Icon name={item.icon} /></span>
+                        <span className={label}>{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </aside>
+    </>
+  );
+}

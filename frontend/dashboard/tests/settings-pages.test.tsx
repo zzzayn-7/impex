@@ -12,7 +12,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => undefined, refresh: () => undefined, push: () => undefined }),
 }));
 
-import OrganizationDashboard from "@/app/page";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import DashboardPage from "@/app/(dashboard)/page";
+
+// The dashboard is its layout (session, setup gate, frame) around its page (the data): rendered together, as a visitor gets them.
+const OrganizationDashboard = async () => DashboardLayout({ children: await DashboardPage() });
 import SettingsLayout from "@/app/settings/layout";
 import SettingsPage from "@/app/settings/page";
 import NewTicketPage from "@/app/support/new/page";

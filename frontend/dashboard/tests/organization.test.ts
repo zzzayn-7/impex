@@ -15,7 +15,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => undefined, refresh: () => undefined }),
 }));
 
-import OrganizationDashboard from "@/app/page";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import DashboardPage from "@/app/(dashboard)/page";
+
+// The dashboard is its layout (session, setup gate, frame) around its page (the data): rendered together, as a visitor gets them.
+const OrganizationDashboard = async () => DashboardLayout({ children: await DashboardPage() });
 import { fetchTenantOrganization } from "@/lib/organization";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
@@ -89,9 +93,11 @@ describe("the dashboard page", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     await render();
     const calls = organizationCalls();
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(ORG_ENDPOINT);
-    expect(calls[0].headers.Authorization).toBe("Bearer token-alpha");
+    expect(calls).toHaveLength(2); // the frame (layout) asks once for setup and identity, the page once for its figures
+    for (const call of calls) {
+      expect(call.url).toBe(ORG_ENDPOINT); // no query string, no organization id: the service derives the organization from the token
+      expect(call.headers.Authorization).toBe("Bearer token-alpha");
+    }
   });
 
   it("two organizations, two administrators: each page contains only its own organization's data", async () => {

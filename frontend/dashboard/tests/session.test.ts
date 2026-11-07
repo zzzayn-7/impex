@@ -16,7 +16,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => undefined, refresh: () => undefined }),
 }));
 
-import OrganizationDashboard from "@/app/page";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import DashboardPage from "@/app/(dashboard)/page";
+
+// The dashboard is its layout (session, setup gate, frame) around its page (the data): rendered together, as a visitor gets them.
+const OrganizationDashboard = async () => DashboardLayout({ children: await DashboardPage() });
 import { config, middleware } from "@/middleware";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 import { getTenantAdmin, requireTenantAdmin } from "@/lib/tenant-session";

@@ -44,3 +44,124 @@ body {
     color: #000 !important;
   }
 }
+
+/* ------------------------------------------------------------------------------------------------------------------------------
+   Organization Dashboard (Step 22A). Everything below is namespaced with .ix-dash / .ix-glass, so no other page is affected.
+   Palette: deep slate #172A32, blue-grey #324D58, muted teal #568E8F, sea-glass #86B6AA, sage #A6C1B2, mist #D8E8E3.
+   ------------------------------------------------------------------------------------------------------------------------------ */
+.ix-dash {
+  position: relative;
+  min-height: 100vh;
+  color: #edf4f1;
+  background-color: #172a32;
+  isolation: isolate;
+}
+
+/* The atmosphere: a quiet slate foundation with two restrained ambient lights. It is one fixed layer, never animated, never blurred. */
+.ix-dash::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 38rem at 12% -8%, rgba(86, 142, 143, 0.32), transparent 62%),
+    radial-gradient(52rem 34rem at 96% 8%, rgba(134, 182, 170, 0.15), transparent 60%),
+    radial-gradient(46rem 40rem at 70% 112%, rgba(50, 77, 88, 0.55), transparent 65%),
+    linear-gradient(165deg, #1b333c 0%, #172a32 48%, #13232a 100%);
+}
+
+/* Frosted glass: translucent layered surface, real background blur, a thin cool border, a soft light on the upper edge. */
+.ix-glass {
+  border-radius: 22px;
+  border: 1px solid rgba(216, 232, 227, 0.13);
+  background:
+    linear-gradient(158deg, rgba(216, 232, 227, 0.11) 0%, rgba(134, 182, 170, 0.06) 38%, rgba(23, 42, 50, 0.3) 100%),
+    rgba(50, 77, 88, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(237, 244, 241, 0.16),
+    inset 0 -1px 0 rgba(23, 42, 50, 0.35),
+    0 14px 32px -18px rgba(4, 12, 15, 0.6);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+/* The light along the top edge. */
+.ix-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(237, 244, 241, 0.09), transparent 34%);
+  -webkit-mask: linear-gradient(#000, transparent 70%);
+  mask: linear-gradient(#000, transparent 70%);
+}
+
+.ix-glass-sm {
+  border-radius: 18px;
+}
+
+.ix-glass-lift {
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.ix-glass-lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(216, 232, 227, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(237, 244, 241, 0.2),
+    inset 0 -1px 0 rgba(23, 42, 50, 0.35),
+    0 18px 36px -18px rgba(4, 12, 15, 0.7);
+}
+
+/* No backdrop-filter (older browsers): a calm, more opaque surface keeps every label readable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ix-glass {
+    background: linear-gradient(158deg, rgba(48, 76, 86, 0.96), rgba(32, 56, 65, 0.96));
+  }
+}
+
+/* A glass skeleton for loading states. */
+@keyframes ix-shimmer {
+  0% { opacity: 0.55; }
+  50% { opacity: 0.9; }
+  100% { opacity: 0.55; }
+}
+.ix-skeleton {
+  border-radius: 12px;
+  background: rgba(216, 232, 227, 0.1);
+  animation: ix-shimmer 1.8s ease-in-out infinite;
+}
+
+/* Quiet scrollbars inside the sidebar. */
+.ix-scroll {
+  scrollbar-width: none;
+}
+.ix-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ix-dash :focus-visible {
+  outline: 2px solid rgba(166, 193, 178, 0.85);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-dash *,
+  .ix-dash *::before,
+  .ix-dash *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ix-glass-lift:hover {
+    transform: none;
+  }
+}
+
+@media print {
+  .ix-dash::before {
+    display: none;
+  }
+}
