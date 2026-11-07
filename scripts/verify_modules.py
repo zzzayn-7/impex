@@ -321,7 +321,7 @@ def main() -> int:
         a = state("a")
         check("a NEW organization has Inventory enabled and Purchasing, Sales and Finance disabled", enabled("a") == {"inventory": True, "purchasing": False, "sales": False, "finance": False}, enabled("a"))
         check("the Super Admin's view lists the four modules with their features, dependencies and the permanent capabilities", [m["key"] for m in a["modules"]] == ["inventory", "purchasing", "sales", "finance"]
-              and a["modules"][1]["requires"] == ["inventory"] and a["modules"][3]["available"] is False and [p["key"] for p in a["permanent"]] == ["authentication", "organization", "onboarding", "support"], a)
+              and a["modules"][1]["requires"] == ["inventory"] and a["modules"][3]["available"] is True and [p["key"] for p in a["permanent"]] == ["authentication", "organization", "onboarding", "support"], a)
         check("the defaults are in the history, recorded by the system", {h["action"] for h in history("a")} == {"seeded"} and len(history("a")) == 4)
         check("the organization's own answer lists only what it can use", tenant_modules("a1") == ["inventory"], tenant_modules("a1"))
         pre_existing = psql("impex_organizations", f"SELECT count(*) FROM organizations o WHERE o.id NOT IN ('{org_ids['a']}', '{org_ids['b']}', '{org_ids['c']}')")
@@ -389,7 +389,7 @@ def main() -> int:
         check("...and the Sales and Purchasing Services now serve A1 directly", svc("a1", SALES, "GET", "/api/v1/sales/clients")[0] == 200 and svc("a1", PURCHASING, "GET", "/api/v1/purchasing/suppliers")[0] == 200)
         page_status, page_data, _, _ = sa_portal("GET", f"/organizations/{org_ids['a']}/modules")
         html = text_of(page_data)
-        check("the Super Admin's module page shows both as enabled, with the history and the permanent capabilities", page_status == 200 and "Module management" in html and "Approved in" in html and "Always available" in html and "Planned: not available yet" in html, page_status)
+        check("the Super Admin's module page shows both as enabled, with the history and the permanent capabilities", page_status == 200 and "Module management" in html and "Approved in" in html and "Always available" in html and "Planned: not available yet" not in html and "Journal Entries" in html, page_status)  # Finance is released (Step 21A)
 
         print("\n== 5. the records are kept when a module is switched off, and come back")
         client_a = new_client("a1", "Acme Ltd")
@@ -420,7 +420,9 @@ def main() -> int:
         status, body = apply("a", {"inventory": True, "purchasing": True, "sales": True}, reason="Back in business")
         check("they can be enabled together (200), and every record is back", status == 200 and svc("a1", SALES, "GET", f"/api/v1/sales/clients/{client_a['id']}")[0] == 200 and svc("a1", INVENTORY, "GET", f"/api/v1/inventory/products/{bolt_a['id']}")[0] == 200, (status, body))
         status, body = apply("a", {"finance": True})
-        check("Finance cannot be enabled (planned, not available)", status == 409 and any(b["code"] == "module_unavailable" for b in body.get("blockers", [])), (status, body))
+        check("Finance (released in Step 21A) needs no other module: the Super Admin can enable it on its own (200)", status == 200 and enabled("a")["finance"] is True, (status, body))
+        status, body = apply("a", {"finance": False})
+        check("...and switch it off again (200), which keeps everything", status == 200 and enabled("a")["finance"] is False, (status, body))
         for key in ("support", "authentication", "onboarding", "organization", "banana"):
             status, body = apply("a", {key: False})
             check(f"'{key}' is not a module: it cannot be switched off ({status})", status in (400, 422), (status, body))

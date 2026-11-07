@@ -1,0 +1,8 @@
+-- Creates the impex_finance database on an EXISTING PostgreSQL volume.
+-- Safe to run any number of times: it does nothing if the database already exists, and it never touches
+-- the other databases. (Fresh installs get this database from database/init/01-create-databases.sql.)
+--
+-- PowerShell:
+--   Get-Content database/add-finance-database.sql | docker exec -i impex-postgres sh -c 'psql -U $POSTGRES_USER -d postgres'
+SELECT 'CREATE DATABASE impex_finance'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'impex_finance')\gexec

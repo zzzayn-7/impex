@@ -394,10 +394,10 @@ def main() -> int:
         print("\n== 8. enabled modules, requests, and what a request can never do")
         psql("impex_organizations", f"UPDATE organization_modules SET enabled = (module_key IN ('inventory', 'purchasing')) WHERE organization_id = '{org_ids['a']}'")
         s, html, _ = page("a1", "/settings")
-        check("the module list shows Inventory and Purchasing enabled, Sales not enabled and Finance planned, with the dependencies explained",
+        check("the module list shows Inventory and Purchasing enabled, Sales and Finance not enabled, with the dependencies explained",
               re.search(r'data-module="inventory" data-enabled="true"', html) and re.search(r'data-module="purchasing" data-enabled="true"', html) and re.search(r'data-module="sales" data-enabled="false"', html)
-              and "Planned: not available yet" in html and "Purchasing and Sales both need Inventory" in html)
-        check("Request access is offered for the module that is not enabled, and not for the enabled ones or Finance", 'href="/support/new?module=sales"' in html and 'href="/support/new?module=inventory"' not in html and 'href="/support/new?module=finance"' not in html)
+              and re.search(r'data-module="finance" data-enabled="false"', html) and "Planned: not available yet" not in html and "Purchasing and Sales both need Inventory" in html)
+        check("Request access is offered for the modules that are not enabled (Sales, Finance), and not for the enabled ones", 'href="/support/new?module=sales"' in html and 'href="/support/new?module=inventory"' not in html and 'href="/support/new?module=finance"' in html)
         check("nothing on the page can enable a module", not re.search(r'<input[^>]*type="checkbox"', html) and "Enable</button>" not in html)
         mods_before = psql("impex_organizations", f"SELECT string_agg(module_key || ':' || enabled::text, ',' ORDER BY module_key) FROM organization_modules WHERE organization_id = '{org_ids['a']}'")
         s, html, _ = page("a1", "/support/new?module=sales")

@@ -12,10 +12,10 @@ import { authServiceUrl } from "@/lib/tenant-auth";
 //
 // 2. BUSINESS APIs - first-time setup is mandatory before business activity, and that is enforced here on the SERVER, not just by hiding
 //    pages: until the organization AND the administrator are set up, the portal's business routes (products, warehouses, stock, scan,
-//    sales, purchasing) answer 403 `setup_required`. Authentication, setup, Help & Support, the logo, health checks and everything else
+//    sales, purchasing, finance) answer 403 `setup_required`. Authentication, setup, Help & Support, the logo, health checks and everything else
 //    stay reachable (they are not matched). If the setup state cannot be read, the answer is 503 (fail closed), never "assume complete".
 //    The services behind keep enforcing authentication, roles and tenant isolation on their own.
-const GATED_API = /^\/api\/(products|warehouses|stock|scan|sales|purchasing)(\/|$)/;
+const GATED_API = /^\/api\/(products|warehouses|stock|scan|sales|purchasing|finance)(\/|$)/;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 const refuse = (status: number, error: string, code: string, extra: Record<string, unknown> = {}) => NextResponse.json({ error, code, ...extra }, { status, headers: NO_STORE });
@@ -64,7 +64,7 @@ export const config = {
     // pages (everything except login, the API, static files)
     "/((?!login$|login/|api/|_next/|favicon.ico$).*)",
     // the business APIs that setup gates
-    "/api/(products|warehouses|stock|scan|sales|purchasing)/:path*",
-    "/api/(products|warehouses|stock|scan|sales|purchasing)",
+    "/api/(products|warehouses|stock|scan|sales|purchasing|finance)/:path*",
+    "/api/(products|warehouses|stock|scan|sales|purchasing|finance)",
   ],
 };

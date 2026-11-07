@@ -112,6 +112,8 @@ describe("company validation (the same rules as the Organization Service)", () =
     expect(checkPhone("(021) 123-4567")).toEqual({ ok: true, value: "(021) 123-4567" });
     expect(checkWebsite("http://localhost.example:8080/x?y=1")).toEqual({ ok: true, value: "http://localhost.example:8080/x?y=1" });
     expect(checkWebsite("https://alpha.example/")).toEqual({ ok: true, value: "https://alpha.example" });
+    expect(checkWebsite("https://alpha.example:8443/shop")).toEqual({ ok: true, value: "https://alpha.example:8443/shop" });
+    for (const bad of ["https://alpha.example:99999", "https://alpha.example:abc", "alpha.example:70000", "https://alpha.example:-1"]) expect(checkWebsite(bad).ok, bad).toBe(false);
     expect(checkDescription("line one\r\nline two")).toEqual({ ok: true, value: "line one\nline two" });
   });
 

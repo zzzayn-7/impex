@@ -32,6 +32,7 @@ from app.models import Organization, OrganizationInvitation
 from app.module_usage import UsageClient
 from app.modules_api import router as modules_router, seed_new_organization, usable_modules
 from app.onboarding import logo_version, router as onboarding_router
+from app.internal_api import router as internal_router
 from app.settings_api import router as settings_router
 from app.tenancy import require_tenant_organization
 
@@ -67,6 +68,9 @@ app.include_router(modules_router)
 
 # Organization Settings: company profile, branding and business preferences (see app/settings_api.py).
 app.include_router(settings_router)
+
+# Read-only entitlement answers for the other services' background workers (shared secret; see app/internal_api.py).
+app.include_router(internal_router)
 
 # CORS Middleware
 app.add_middleware(

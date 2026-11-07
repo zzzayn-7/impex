@@ -208,11 +208,11 @@ describe("asking for a module from Help & Support", () => {
   });
 
   it("nothing in the address is ever used as text", async () => {
-    for (const bad of ["<script>alert(1)</script>", "sales; DROP", "finance", "support", "", ["sales", "x"].reverse()]) {
+    for (const bad of ["<script>alert(1)</script>", "sales; DROP", "support", "", ["sales", "x"].reverse()]) {
       const html = await form(bad as any);
       expect(html, String(bad)).not.toContain("alert(1)");
     }
-    expect(await form("finance")).not.toContain("Request to activate");
+    expect(await form("finance")).toContain('value="Request to activate the Finance module"'); // a real module key, fixed wording
     expect(await form()).not.toContain("Request to activate");
   });
 

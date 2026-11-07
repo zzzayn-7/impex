@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
     throw new Error(`REDIRECT:${to}`);
   },
   useRouter: () => ({ replace: () => undefined, refresh: () => undefined, push: () => undefined }),
+  usePathname: () => "/finance",
 }));
 
 import OrganizationDashboard from "@/app/page";
@@ -45,7 +46,7 @@ const state = (name: "ready" | "no-company" | "half-company" | "no-profile", ove
   user: { ...orgAdmin, profile_setup_completed_at: name === "no-profile" || name === "no-company" ? null : DONE, ...over.user },
   org: {
     status: 200,
-    body: { ...alphaOrg, setup_status: name === "no-company" ? "pending" : name === "half-company" ? "in_progress" : "completed", ...over.org },
+    body: { ...alphaOrg, modules: [...alphaOrg.modules, "finance"], setup_status: name === "no-company" ? "pending" : name === "half-company" ? "in_progress" : "completed", ...over.org },
   },
 });
 
@@ -133,7 +134,7 @@ describe("the dashboard waits for setup", () => {
 // =====================================================================================================
 // every other page (manual navigation before completion)
 // =====================================================================================================
-const LAYOUTS = ["clients", "delivery-lists", "dispatches", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "scan", "settings", "stock", "suppliers", "warehouses"];
+const LAYOUTS = ["clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "scan", "settings", "stock", "suppliers", "warehouses"];
 
 describe("typing a page's address cannot skip the wizard", () => {
   it.each(LAYOUTS)("%s: an incomplete setup is redirected to /setup", async (name) => {

@@ -7,7 +7,8 @@ Registry rules:
   * Authentication, Organization Management, Onboarding and Help & Support are PERMANENT platform capabilities: they are not
     modules, cannot be switched off, and nothing here can reach them.
   * Purchasing and Sales REQUIRE Inventory (they read products and move stock through it).
-  * Finance is planned: it exists in the registry so it is visible, but it is not available and can never be enabled yet.
+  * Finance (the Finance Service: accounts, journal, expenses) is available to enable, but never on by default: only a Super Admin enables it,
+    organization by organization. It needs no other module (it can also record manual entries), though its automatic postings come from Sales and Purchasing.
   * An organization created from now on starts with Inventory enabled and the optional modules disabled.
     Organizations that existed when this was introduced keep everything they could use (migration 0005).
 """
@@ -43,8 +44,8 @@ REGISTRY: Dict[str, ModuleDef] = {
         ("Clients", "Delivery Lists", "Dispatches", "Invoices and Payments"), requires=("inventory",),
     ),
     "finance": ModuleDef(
-        "finance", "Finance", "Accounting, tax and reporting. Planned: not available yet.",
-        ("Accounting", "Tax", "Reporting"), available=False,
+        "finance", "Finance", "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
+        ("Accounts", "Expenses", "Journal Entries", "Financial Overview"),
     ),
 }
 assert tuple(REGISTRY) == MODULE_KEYS

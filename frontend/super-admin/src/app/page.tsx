@@ -12,7 +12,7 @@ export default async function SuperAdminDashboard() {
     { name: "Organization Service", status: "Operational", port: 8001, route: "/api/v1/organizations" },
     { name: "Inventory Service", status: "Planned", port: 8002, route: "/api/v1/inventory" },
     { name: "Sales Service", status: "Planned", port: 8003, route: "/api/v1/sales" },
-    { name: "Finance Service", status: "Planned", port: 8004, route: "/api/v1/finance" },
+    { name: "Finance Service", status: "Operational", port: 8006, route: "/api/v1/finance" },
   ];
 
   const stats = [

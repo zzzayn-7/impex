@@ -98,6 +98,8 @@ class TenantContext:
     user_id: str
     email: str
     full_name: str
+    # The Auth Service's record that this administrator confirmed their own profile during first-time setup.
+    profile_confirmed: bool = False
 
 
 async def require_tenant_admin(user: dict = Depends(authenticated_user)) -> TenantContext:
@@ -120,4 +122,5 @@ async def require_tenant_admin(user: dict = Depends(authenticated_user)) -> Tena
         user_id=str(user.get("id", "")),
         email=str(user.get("email", "")),
         full_name=str(user.get("full_name", "")),
+        profile_confirmed=bool(user.get("profile_setup_completed_at")),
     )

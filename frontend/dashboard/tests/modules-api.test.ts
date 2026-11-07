@@ -35,17 +35,23 @@ const passes = (res: Response) => res.headers.get("x-middleware-next") === "1";
 const INVENTORY = ["/api/products", "/api/products/abc/archive", "/api/warehouses", "/api/warehouses/x", "/api/stock/in", "/api/stock/transfer", "/api/scan/resolve"];
 const PURCHASING = ["/api/purchasing/suppliers", "/api/purchasing/purchase-orders/x/lines", "/api/purchasing/goods-receipts/x/confirm"];
 const SALES = ["/api/sales/clients", "/api/sales/delivery-lists/x/items", "/api/sales/dispatches/x/confirm", "/api/sales/invoices", "/api/sales/invoices/x/payments"];
+const FINANCE = ["/api/finance/accounts", "/api/finance/accounts/x", "/api/finance/journal-entries", "/api/finance/journal-entries/x/post", "/api/finance/expenses", "/api/finance/expenses/x/reverse", "/api/finance/sync/run", "/api/finance/sync/events/x/retry"];
 
 describe("the module registry of the portal", () => {
   it("knows which routes and pages belong to which module", () => {
     for (const path of INVENTORY) expect(moduleForApi(path), path).toBe("inventory");
     for (const path of PURCHASING) expect(moduleForApi(path), path).toBe("purchasing");
     for (const path of SALES) expect(moduleForApi(path), path).toBe("sales");
+    for (const path of FINANCE) expect(moduleForApi(path), path).toBe("finance");
+    expect(moduleForApi("/api/financeX/accounts")).toBeNull();
     for (const path of ["/api/support/tickets", "/api/auth/login", "/api/auth/logout", "/api/setup/company", "/api/organization/logo", "/api/productsX", "/api/salesforce"]) expect(moduleForApi(path), path).toBeNull();
     expect(Object.keys(MODULE_PAGES)).toEqual(MODULE_KEYS);
     expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Products", "Warehouses", "Stock", "Scan Product", "Movements"]);
     expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Goods Receipts"]);
     expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Delivery Lists", "Dispatches", "Invoices"]);
+    expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Financial Overview", "Accounts", "Expenses", "Journal Entries"]);
+    expect(MODULE_PAGES.finance.map((p) => p.href)).toEqual(["/finance", "/finance/accounts", "/finance/expenses", "/finance/journal"]);
+    expect(NAV_MODULE.finance).toBe("finance");
   });
 
   it("Dashboard and Help & Support belong to no module", () => {
@@ -57,7 +63,9 @@ describe("the module registry of the portal", () => {
     expect(usableModules(["inventory", "purchasing", "sales"])).toEqual(["inventory", "purchasing", "sales"]);
     expect(usableModules(["sales"])).toEqual([]); // Sales needs Inventory
     expect(usableModules(["inventory", "sales"])).toEqual(["inventory", "sales"]);
-    for (const odd of [undefined, null, "inventory", 5, {}, [1, 2], ["finance", "support", "banana"]]) expect(usableModules(odd), String(odd)).toEqual([]);
+    for (const odd of [undefined, null, "inventory", 5, {}, [1, 2], ["support", "banana"]]) expect(usableModules(odd), String(odd)).toEqual([]);
+    expect(usableModules(["finance", "support", "banana"])).toEqual(["finance"]); // Finance needs no other module; unknown names are ignored
+    expect(usableModules(["finance"])).toEqual(["finance"]);
     expect(canUse(["inventory"], "sales")).toBe(false);
   });
 
@@ -88,14 +96,30 @@ describe("the business APIs wait for the module (middleware)", () => {
     expect(passes(await middleware(api(path)))).toBe(true);
   });
 
+  it.each([...FINANCE])("%s is refused when Finance is off (it is off by default), and allowed when it is on", async (path) => {
+    world({ modules: ["inventory", "purchasing", "sales"] }); // everything but Finance
+    const res = await middleware(api(path));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "This part of Impex is not enabled for your organization.", code: "module_disabled", module: "finance" });
+    world({ modules: ["finance"] }); // Finance needs no other module
+    expect(passes(await middleware(api(path)))).toBe(true);
+  });
+
+  it("Finance is gated by setup first, and fails closed like the other modules", async () => {
+    world({ modules: ["finance"], setup: "pending" });
+    expect(await (await middleware(api("/api/finance/accounts"))).json()).toMatchObject({ code: "setup_required" });
+    world({ modules: undefined });
+    expect((await middleware(api("/api/finance/accounts"))).status).toBe(503);
+  });
+
   it("Purchasing and Sales also need Inventory, even if the list says otherwise", async () => {
     world({ modules: ["purchasing", "sales"] });
     for (const path of [...INVENTORY, ...PURCHASING, ...SALES]) expect((await middleware(api(path))).status, path).toBe(403);
   });
 
   it("everything is allowed when everything is enabled", async () => {
-    world();
-    for (const path of [...INVENTORY, ...PURCHASING, ...SALES]) expect(passes(await middleware(api(path))), path).toBe(true);
+    world({ modules: ["inventory", "purchasing", "sales", "finance"] });
+    for (const path of [...INVENTORY, ...PURCHASING, ...SALES, ...FINANCE]) expect(passes(await middleware(api(path))), path).toBe(true);
   });
 
   it("fails closed: a missing or malformed module list is an outage (503), never 'all'", async () => {

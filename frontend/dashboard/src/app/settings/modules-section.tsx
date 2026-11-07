@@ -16,17 +16,10 @@ export default function ModulesSection({ modules }: { modules: unknown }) {
           const on = enabled.includes(key);
           return <ModuleRow key={key} moduleKey={key} on={on} />;
         })}
-        <li data-module="finance" className="rounded-xl border border-[#E4E8E2] bg-[#F8F8F4] p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-[#1B211D]">Finance</h3>
-            <span className="rounded-full border border-[#E4E8E2] bg-white px-2.5 py-0.5 text-xs font-medium text-[#777F79]">Planned: not available yet</span>
-          </div>
-          <p className="mt-1 text-xs text-[#777F79]">Accounting, tax and reporting. It will appear here when it is released.</p>
-        </li>
       </ul>
 
       <div className="mt-5 rounded-xl border border-[#E4E8E2] bg-[#F8F8F4] px-4 py-3 text-xs text-[#777F79]">
-        <p><span className="font-semibold text-[#1B211D]">How modules depend on each other.</span> Purchasing and Sales both need Inventory: they read your products and move stock through it. Inventory cannot be switched off while either of them is on.</p>
+        <p><span className="font-semibold text-[#1B211D]">How modules depend on each other.</span> Purchasing and Sales both need Inventory: they read your products and move stock through it. Inventory cannot be switched off while either of them is on. Finance stands on its own: it posts entries from your issued invoices, payments and goods receipts when those modules are also enabled.</p>
         <p className="mt-2"><span className="font-semibold text-[#1B211D]">Always available, for everyone:</span> {PERMANENT.join(", ")}.</p>
         <p className="mt-2">Switching a module off never deletes anything: its records are kept and come back when it is enabled again. A request for a module never enables it by itself.</p>
       </div>

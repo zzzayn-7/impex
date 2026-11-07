@@ -40,7 +40,7 @@ def bearer(token):
 def account(role, organization_id, **overrides):
     return {
         "id": str(uuid.uuid4()), "email": f"{role}@example.org", "full_name": f"Test {role}", "role": role,
-        "organization_id": organization_id, "is_active": True, "created_at": "2026-11-04T00:00:00+00:00", **overrides,
+        "organization_id": organization_id, "is_active": True, "profile_setup_completed_at": "2026-11-04T00:05:00+00:00", "created_at": "2026-11-04T00:00:00+00:00", **overrides,
     }
 
 
@@ -196,7 +196,7 @@ class TestCompanyProfile:
         ("name", "A"), ("name", "<script>alert(1)</script>"), ("name", "x" * 121), ("name", 5), ("contact_email", "not-an-email"), ("contact_email", "a@b"), ("contact_email", "a b@c.example"),
         ("contact_email", "x@y.example\r\nBcc: spy@evil.example"), ("contact_email", "a@b.example," + "c@d.example"), ("contact_phone", "abc"), ("contact_phone", "12"), ("contact_phone", "+1 555 <b>"),
         ("address_street", "x" * 256), ("address_city", "<b>Karachi</b>"), ("address_state", "x" * 121), ("address_postal_code", "x" * 31), ("website", "javascript:alert(1)"),
-        ("website", "ftp://files.example"), ("website", "https://user:pw@evil.example"), ("website", "https://nodot"), ("website", "https://exa mple.com"), ("website", "https://" + "a" * 250 + ".com"),
+        ("website", "ftp://files.example"), ("website", "https://user:pw@evil.example"), ("website", "https://alpha.example:99999"), ("website", "https://alpha.example:abc"), ("website", "https://alpha.example:65536"), ("website", "alpha.example:-1"), ("website", "https://[::1"), ("website", "https://nodot"), ("website", "https://exa mple.com"), ("website", "https://" + "a" * 250 + ".com"),
         ("description", "x" * 1001), ("description", "<img src=x onerror=alert(1)>"), ("description", "bell\x07"), ("address_street", "line\x00break"),
     ])
     def test_invalid_and_malicious_values_are_refused_and_nothing_changes(self, client, session_factory, tenants, field, value):
@@ -222,6 +222,13 @@ class TestCompanyProfile:
         assert response.status_code == 422, response.text
         after = row(session_factory, tenants, "alpha")
         assert (after.name, after.slug, after.country_code, after.tax_identifier, after.is_active, after.setup_status, after.default_currency) == (before_row.name, before_row.slug, before_row.country_code, before_row.tax_identifier, True, "completed", "USD")
+
+    def test_a_valid_port_is_kept_and_an_invalid_one_is_a_validation_error_never_a_server_error(self, client):
+        assert patch(client, COMPANY, {"website": "https://alpha.example:8443/shop"}).json()["company"]["website"] == "https://alpha.example:8443/shop"
+        for bad in ("https://alpha.example:99999", "http://alpha.example:abc/x", "alpha.example:70000", "https://alpha.example:1e3"):
+            response = patch(client, COMPANY, {"website": bad})
+            assert response.status_code == 422, (bad, response.status_code)
+            assert response.json()["detail"]["field"] == "website"
 
     def test_an_empty_request_is_refused(self, client):
         assert patch(client, COMPANY, {}).status_code == 422
@@ -503,6 +510,23 @@ class TestAccess:
         assert patch(client, COMPANY, {"name": "Gamma Two"}, who="gamma-1", version=1).status_code == 403
         assert patch(client, PREFS, {"timezone": "UTC"}, who="gamma-1", version=1).status_code == 403
         assert client.put(LOGO, files={"file": ("a.png", PNG, "image/png")}, data={"expected_version": "1"}, headers=bearer("gamma-1")).status_code == 403
+
+    def test_an_administrator_who_has_not_confirmed_their_own_profile_is_refused_too(self, client, tokens, tenants, session_factory):
+        """Settings need the PERSON's setup as well as the organization's: a configured organization is not enough."""
+        tokens["alpha-new"] = (200, account("organization-admin", str(tenants["alpha"].id), email="new@alpha.example", profile_setup_completed_at=None))
+        for url in (SETTINGS, HISTORY):
+            response = client.get(url, headers=bearer("alpha-new"))
+            assert response.status_code == 403 and response.json()["detail"]["code"] == "setup_required", url
+        assert client.patch(COMPANY, json={"expected_version": 1, "name": "Nope"}, headers=bearer("alpha-new")).status_code == 403
+        assert client.patch(PREFS, json={"expected_version": 1, "timezone": "UTC"}, headers=bearer("alpha-new")).status_code == 403
+        assert client.put(LOGO, files={"file": ("a.png", PNG, "image/png")}, data={"expected_version": "1"}, headers=bearer("alpha-new")).status_code == 403
+        assert client.delete(f"{LOGO}?expected_version=1", headers=bearer("alpha-new")).status_code == 403
+        assert row(session_factory, tenants, "alpha").name == "Alpha Trading" and read(client)["version"] == 1
+        # a missing or odd confirmation is never read as "confirmed"; the same organization's confirmed administrator is unaffected
+        for value in (None, "", 0, False):
+            tokens["alpha-new"] = (200, account("organization-admin", str(tenants["alpha"].id), email="new@alpha.example", profile_setup_completed_at=value))
+            assert client.get(SETTINGS, headers=bearer("alpha-new")).status_code == 403
+        assert client.get(SETTINGS, headers=bearer("alpha-1")).status_code == 200
 
     def test_a_setup_in_progress_is_never_completed_or_changed_by_settings(self, client, session_factory, tenants):
         client.patch(COMPANY, json={"name": "Gamma Two", "expected_version": 1}, headers=bearer("gamma-1"))

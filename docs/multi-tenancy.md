@@ -214,3 +214,18 @@ Create two organizations with an administrator each, then prove, for **both** di
 
 The portals call tenant APIs from **server-side** code only, using the HttpOnly session cookie as the Bearer token.
 The browser never sends an organization id, and the dashboard page takes no parameters, so there is nothing to tamper with.
+
+## Background workers (Finance, Step 21A)
+
+A background worker has no logged-in user, so the five rules above need an equivalent. The Finance worker follows these:
+
+1. **The organization is never taken from a request or a feed.** The worker asks the Organization Service (shared secret `MODULE_INTERNAL_API_KEY`) which
+   organizations can use Finance *right now* (active, first-time setup done, module enabled) and processes only those, one at a time; every stored row
+   carries that organization's id.
+2. **Feeds are organization-scoped and read-only.** `GET /internal/v1/organizations/{id}/finance-feed` on Sales and Purchasing returns only that
+   organization's events, requires the shared secret (a user token is not a credential there), is hidden from the public API documentation, answers
+   `503` if no secret is configured, and only SELECTs.
+3. **Idempotency keys are per organization** (`UNIQUE (organization_id, event_key)`), so the same key in another organization is a different fact.
+4. **A disabled organization is simply not synchronised**; its records are kept, and what happened meanwhile is caught up once when it is enabled again.
+5. **Nothing is written back.** Finance never changes a Sales, Purchasing or Inventory record.
+

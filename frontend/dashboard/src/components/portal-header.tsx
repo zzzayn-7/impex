@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { key: "suppliers", href: "/suppliers", label: "Suppliers" },
   { key: "purchasing", href: "/purchase-orders", label: "Purchase Orders" },
   { key: "receipts", href: "/goods-receipts", label: "Goods Receipts" },
+  { key: "finance", href: "/finance", label: "Finance" },
   { key: "support", href: "/support", label: "Help & Support" },
   { key: "settings", href: "/settings", label: "Settings" },
 ] as const;

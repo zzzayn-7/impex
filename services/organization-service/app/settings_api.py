@@ -99,11 +99,12 @@ def clean_website(value: Any) -> Optional[str]:
     try:
         parts = urlsplit(candidate)
         host = parts.hostname or ""
+        port = parts.port  # raises ValueError for a port that is not a number or is outside 0-65535: every access to it stays inside this try
     except ValueError:
         raise invalid("website", "Enter a valid website address, for example https://www.yourcompany.com.")
     if parts.scheme not in ("http", "https") or "@" in parts.netloc or " " in text or "." not in host or len(host) < 4 or not re.match(r"^[A-Za-z0-9.-]+$", host):
         raise invalid("website", "Enter a valid website address starting with http:// or https://, for example https://www.yourcompany.com.")
-    normalized = f"{parts.scheme}://{host.lower()}" + (f":{parts.port}" if parts.port else "") + (parts.path if parts.path != "/" else "") + (f"?{parts.query}" if parts.query else "")
+    normalized = f"{parts.scheme}://{host.lower()}" + (f":{port}" if port else "") + (parts.path if parts.path != "/" else "") + (f"?{parts.query}" if parts.query else "")
     if len(normalized) > 255:
         raise invalid("website", "The website address can be at most 255 characters.")
     return normalized
@@ -270,9 +271,11 @@ def to_view(org: Organization) -> SettingsView:
 
 
 # ------------------------------------------------------------------------------------------------------ helpers
-def require_completed(org: Organization) -> None:
-    """Settings belong to a configured organization. First-time setup is its own flow (and is never restarted from here)."""
-    if org.setup_status != "completed":
+def require_completed(org: Organization, tenant: TenantContext) -> None:
+    """Settings belong to a configured organization AND an administrator who finished their own setup. First-time setup is its own flow
+    (and is never restarted from here). Both facts are checked on every call: the organization's from this service's own record, the person's
+    from the Auth Service's record of the verified token (a missing confirmation counts as "not done")."""
+    if org.setup_status != "completed" or not tenant.profile_confirmed:
         raise fail(403, "setup_required", "Finish the first-time setup before using Settings.")
 
 
@@ -283,7 +286,7 @@ def conflict(org: Organization) -> HTTPException:
 def locked_org(db: Session, tenant: TenantContext, expected_version: int) -> Organization:
     """The caller's organization, locked, completed, and at the version the caller saw. (An inactive organization is the usual 403.)"""
     org = get_org(db, tenant, lock=True)
-    require_completed(org)
+    require_completed(org, tenant)
     if org.settings_version != expected_version:
         raise conflict(org)
     return org
@@ -327,7 +330,7 @@ def apply_patch(db: Session, org: Organization, tenant: TenantContext, payload: 
 @router.get("", response_model=SettingsView)
 def get_settings(tenant: TenantContext = Depends(require_tenant_admin), db: Session = Depends(get_db)):
     org = get_org(db, tenant)
-    require_completed(org)
+    require_completed(org, tenant)
     return to_view(org)
 
 
@@ -366,7 +369,7 @@ def put_logo(
     """Replace the logo. Same validation and storage as the first-time setup (PNG, JPEG or WebP, size and dimension limits, decoded and
     re-encoded); the previous file is deleted only after the new one is committed. Invoices already issued keep their own snapshots."""
     org = get_org(db, tenant)
-    require_completed(org)
+    require_completed(org, tenant)
     data = file.file.read(max_bytes() + 1)  # never read more than the limit allows
     try:
         logo = normalize_logo(data, file.content_type or "")
@@ -422,7 +425,7 @@ def delete_logo(
 @router.get("/history", response_model=HistoryPage)
 def get_history(limit: int = Query(default=25, ge=1, le=100), offset: int = Query(default=0, ge=0), tenant: TenantContext = Depends(require_tenant_admin), db: Session = Depends(get_db)):
     org = get_org(db, tenant)
-    require_completed(org)
+    require_completed(org, tenant)
     where = OrganizationSettingsHistory.organization_id == org.id
     total = db.scalar(select(func.count()).select_from(OrganizationSettingsHistory).where(where)) or 0
     rows = db.scalars(select(OrganizationSettingsHistory).where(where).order_by(OrganizationSettingsHistory.seq.desc()).limit(limit).offset(offset)).all()

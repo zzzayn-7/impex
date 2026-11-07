@@ -357,15 +357,16 @@ describe("Business preferences", () => {
 });
 
 describe("Enabled modules", () => {
-  it("shows enabled and not enabled modules, the planned Finance, dependencies and Request access", () => {
+  it("shows enabled and not enabled modules (Finance too), dependencies and Request access", () => {
     view({ modules: ["inventory", "purchasing"] });
     const rows = within(document.getElementById("modules")!);
     expect(document.querySelector('[data-module="inventory"]')?.getAttribute("data-enabled")).toBe("true");
     expect(document.querySelector('[data-module="purchasing"]')?.getAttribute("data-enabled")).toBe("true");
     expect(document.querySelector('[data-module="sales"]')?.getAttribute("data-enabled")).toBe("false");
-    expect(rows.getByText("Planned: not available yet")).toBeTruthy();
+    expect(document.querySelector('[data-module="finance"]')?.getAttribute("data-enabled")).toBe("false");
+    expect(rows.queryByText("Planned: not available yet")).toBeNull();
     expect(rows.getAllByText(/Requires Inventory/).length).toBe(2);
-    expect(rows.getByRole("link", { name: "Request access" }).getAttribute("href")).toBe("/support/new?module=sales");
+    expect(rows.getAllByRole("link", { name: "Request access" }).map((a) => a.getAttribute("href"))).toEqual(["/support/new?module=sales", "/support/new?module=finance"]);
     expect(rows.queryAllByRole("checkbox")).toHaveLength(0);
     expect(rows.getByText(/Purchasing and Sales both need Inventory/)).toBeTruthy();
   });

@@ -4,20 +4,21 @@
 //
 // Fail closed: a missing or malformed list means "no modules", never "all".
 
-export type ModuleKey = "inventory" | "purchasing" | "sales";
+export type ModuleKey = "inventory" | "purchasing" | "sales" | "finance";
 
-export const MODULE_KEYS: ModuleKey[] = ["inventory", "purchasing", "sales"];
+export const MODULE_KEYS: ModuleKey[] = ["inventory", "purchasing", "sales", "finance"];
 
-export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory", purchasing: "Purchasing", sales: "Sales" };
+export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory", purchasing: "Purchasing", sales: "Sales", finance: "Finance" };
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Products, warehouses and stock, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock.",
   sales: "Selling to clients: delivery lists, dispatches from stock, invoices and payments.",
+  finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
 };
 
 // The modules a module cannot work without (the Organization Service enforces the same rule when the Super Admin changes them).
-export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], purchasing: ["inventory"], sales: ["inventory"] };
+export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], purchasing: ["inventory"], sales: ["inventory"], finance: [] };
 
 // What each module contains, as pages in this portal.
 export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> = {
@@ -39,6 +40,12 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
     { label: "Dispatches", href: "/dispatches" },
     { label: "Invoices", href: "/invoices" },
   ],
+  finance: [
+    { label: "Financial Overview", href: "/finance" },
+    { label: "Accounts", href: "/finance/accounts" },
+    { label: "Expenses", href: "/finance/expenses" },
+    { label: "Journal Entries", href: "/finance/journal" },
+  ],
 };
 
 // Header navigation keys -> module. A key that is not here (dashboard, support) is always available.
@@ -46,6 +53,7 @@ export const NAV_MODULE: Record<string, ModuleKey> = {
   products: "inventory", warehouses: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
   deliveries: "sales", dispatches: "sales", invoices: "sales", clients: "sales",
+  finance: "finance",
 };
 
 // The portal's business API routes -> module (the same routes the setup gate covers).
@@ -53,6 +61,7 @@ const API_MODULES: [RegExp, ModuleKey][] = [
   [/^\/api\/(products|warehouses|stock|scan)(\/|$)/, "inventory"],
   [/^\/api\/purchasing(\/|$)/, "purchasing"],
   [/^\/api\/sales(\/|$)/, "sales"],
+  [/^\/api\/finance(\/|$)/, "finance"],
 ];
 
 export function moduleForApi(pathname: string): ModuleKey | null {

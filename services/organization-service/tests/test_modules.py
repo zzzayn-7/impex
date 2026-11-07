@@ -113,7 +113,7 @@ class TestRegistry:
         assert REGISTRY["inventory"].features == ("Products", "Warehouses", "Stock", "Scanning", "Movements")
         assert REGISTRY["purchasing"].features == ("Suppliers", "Purchase Orders", "Goods Receipts")
         assert REGISTRY["sales"].features == ("Clients", "Delivery Lists", "Dispatches", "Invoices and Payments")
-        assert REGISTRY["finance"].available is False
+        assert REGISTRY["finance"].available is True and REGISTRY["finance"].requires == () and REGISTRY["finance"].default_for_new is False
 
     def test_permanent_capabilities_are_not_modules(self):
         assert [key for key, _n, _d in PERMANENT] == ["authentication", "organization", "onboarding", "support"]
@@ -123,7 +123,8 @@ class TestRegistry:
         assert default_enabled() == {"inventory": True, "purchasing": False, "sales": False, "finance": False}
 
     def test_effective_needs_the_requirements(self):
-        assert effective({"inventory": True, "purchasing": True, "sales": True, "finance": True}) == {"inventory", "purchasing", "sales"}  # finance is not available
+        assert effective({"inventory": True, "purchasing": True, "sales": True, "finance": True}) == {"inventory", "purchasing", "sales", "finance"}
+        assert effective({"finance": True}) == {"finance"}  # Finance needs no other module
         assert effective({"inventory": False, "purchasing": True, "sales": True}) == set()  # enabled by hand without Inventory: unusable
         assert effective({"inventory": True, "sales": True}) == {"inventory", "sales"}
         assert effective({}) == set()
@@ -136,7 +137,8 @@ class TestRegistry:
         _target, blockers = validate_target({**current, "sales": True}, {"inventory": False})
         assert [b.code for b in blockers] == ["required_by"]
         assert validate_target({**current, "sales": True, "purchasing": True}, {"inventory": False, "sales": False, "purchasing": False})[1] == []
-        assert [b.code for b in validate_target(current, {"finance": True})[1]] == ["module_unavailable"]
+        assert validate_target(current, {"finance": True})[1] == []
+        assert validate_target({**current, "finance": True}, {"finance": False})[1] == []  # nothing depends on Finance
 
     def test_which_services_are_asked_before_switching_things_off(self):
         assert modules_to_ask(["sales"]) == ["sales"]
@@ -154,7 +156,7 @@ class TestDefaults:
         assert [m["key"] for m in data["modules"] if m["effective"]] == ["inventory"]
         assert [p["key"] for p in data["permanent"]] == ["authentication", "organization", "onboarding", "support"]
         finance = next(m for m in data["modules"] if m["key"] == "finance")
-        assert finance["available"] is False and finance["enabled"] is False
+        assert finance["available"] is True and finance["enabled"] is False and finance["effective"] is False  # available to enable, off by default
 
     def test_the_defaults_are_recorded_in_the_history(self, client):
         org = make_org(client)
@@ -239,7 +241,7 @@ class TestChanging:
     def test_the_change_is_confirmed_as_one_unit_or_not_at_all(self, client):
         org = make_org(client)
         before = state(client, org)
-        response = apply(client, org, {"sales": True, "finance": True})  # the second part is not allowed
+        response = apply(client, org, {"sales": True, "inventory": False})  # the second part is not allowed (Sales needs Inventory)
         assert response.status_code == 409 and response.json()["detail"]["code"] == "blocked"
         after = state(client, org)
         assert enabled(after) == enabled(before) and after["revision"] == before["revision"]
@@ -272,10 +274,19 @@ class TestDependencies:
             assert response.status_code == 409 and response.json()["detail"]["blockers"][0]["code"] == "requires"
         assert apply(client, org, {"inventory": True, "sales": True}).status_code == 200  # together is fine
 
-    def test_finance_cannot_be_enabled_yet(self, client):
+    def test_finance_is_enabled_only_by_the_super_admin_and_is_off_by_default(self, client, tokens):
         org = make_org(client)
-        response = apply(client, org, {"finance": True})
-        assert response.status_code == 409 and response.json()["detail"]["blockers"][0]["code"] == "module_unavailable"
+        who = admin_for(tokens, org)
+        assert enabled(state(client, org))["finance"] is False
+        assert "finance" not in client.get(TENANT_MODULES, headers=bearer(who)).json()["modules"]
+        assert apply(client, org, {"finance": True}, token=who).status_code == 403  # an organization administrator cannot
+        response = apply(client, org, {"finance": True}, reason="Finance Service is ready")
+        assert response.status_code == 200 and enabled(response.json())["finance"] is True
+        assert client.get(TENANT_MODULES, headers=bearer(who)).json()["modules"] == ["finance", "inventory"]
+        assert client.get(TENANT_ORG, headers=bearer(who)).json()["modules"] == ["finance", "inventory"]
+        history = client.get(f"{ORGS}/{org}/modules/history", headers=bearer("super")).json()["items"]
+        assert any(h["module"] == "finance" and h["action"] == "enabled" and h["changed_by_name"] == "Sam Super" for h in history)
+        assert apply(client, org, {"finance": False}).status_code == 200  # and switched off again; nothing else depends on it
 
     def test_permanent_capabilities_and_unknown_modules_cannot_be_touched(self, client):
         org = make_org(client)
@@ -568,3 +579,46 @@ class TestMigrationOfExistingOrganizations:
                 diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
             engine.dispose()
         assert diff == []
+
+
+# ----------------------------------------------------------------------------------------------------- what a background worker may ask
+class TestInternalEntitlements:
+    URL = "/internal/v1/organizations/{}/entitlements"
+
+    def test_it_answers_with_the_secret_only(self, client, tokens, monkeypatch):
+        org = make_org(client)
+        apply(client, org, {"finance": True})
+        monkeypatch.setenv("MODULE_INTERNAL_API_KEY", "worker-secret")
+        body = client.get(self.URL.format(org), headers={"X-Internal-Key": "worker-secret"}).json()
+        assert body == {"organization_id": org, "is_active": False or body["is_active"], "setup_completed": False, "modules": ["finance", "inventory"], "default_currency": "USD"}
+        assert body["is_active"] is True
+        for headers in ({}, {"X-Internal-Key": "wrong"}, bearer("super")):
+            assert client.get(self.URL.format(org), headers=headers).status_code == 401
+        who = admin_for(tokens, org)
+        assert client.get(self.URL.format(org), headers=bearer(who)).status_code == 401  # an administrator's token is not a service credential
+
+    def test_it_is_never_open_when_no_secret_is_configured_and_is_not_public(self, client, monkeypatch):
+        org = make_org(client)
+        monkeypatch.delenv("MODULE_INTERNAL_API_KEY", raising=False)
+        assert client.get(self.URL.format(org), headers={"X-Internal-Key": "anything"}).status_code == 503
+        monkeypatch.setenv("MODULE_INTERNAL_API_KEY", "k")
+        assert client.get(self.URL.format(uuid.uuid4()), headers={"X-Internal-Key": "k"}).status_code == 404
+        assert client.get(self.URL.format("not-a-uuid"), headers={"X-Internal-Key": "k"}).status_code == 422
+        assert "/internal/v1" not in client.get("/openapi.json").text
+
+    def test_organizations_using_a_module_are_listed_only_when_active_set_up_and_switched_on(self, client, tokens, session_factory, monkeypatch):
+        monkeypatch.setenv("MODULE_INTERNAL_API_KEY", "k")
+        url, headers = "/internal/v1/modules/finance/organizations", {"X-Internal-Key": "k"}
+        on, not_set_up, off, inactive = (make_org(client, name=f"Org {n}", slug=f"org-{n}") for n in range(4))
+        for org in (on, not_set_up, inactive):
+            apply(client, org, {"finance": True})
+        with session_factory() as db:
+            db.execute(text("UPDATE organizations SET setup_status = 'completed', setup_completed_at = now() WHERE id IN (:a, :b, :c)"), {"a": on, "b": off, "c": inactive})
+            db.execute(text("UPDATE organizations SET is_active = false WHERE id = :o"), {"o": inactive})
+            db.commit()
+        listed = client.get(url, headers=headers).json()
+        assert [row["organization_id"] for row in listed] == [on]
+        assert listed[0]["default_currency"] == "USD" and listed[0]["enabled_at"]
+        apply(client, on, {"finance": False})
+        assert client.get(url, headers=headers).json() == []  # switched off: the worker stops synchronising it
+        assert client.get(url).status_code == 401 and client.get(url, headers={"X-Internal-Key": "wrong"}).status_code == 401

@@ -47,7 +47,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Finance as the service reports it once released (Step 21A): a module like the others, switched on only by the Super Admin.
+const withFinanceReleased = (enabled: Record<string, boolean>) => {
+  const s = state(enabled);
+  s.modules = s.modules.map((m) => (m.key === "finance" ? { ...m, description: "Accounts, journal and expenses.", features: ["Accounts", "Expenses"], available: true, enabled: Boolean(enabled.finance), effective: Boolean(enabled.finance) } : m));
+  return s;
+};
+
 describe("ModuleManager", () => {
+  it("lets the Super Admin switch Finance on once it is released (off by default), and reviews it like any other module", async () => {
+    stubFetch((url) => (url.endsWith("/preview") ? json(200, { preview: preview({ changes: [{ module: "finance", name: "Finance", from_enabled: false, to_enabled: true }] }) }) : json(200, history)));
+    render(<ModuleManager initial={withFinanceReleased(base)} initialHistory={history} />);
+    expect(toggle("Finance").checked).toBe(false);
+    expect(toggle("Finance").disabled).toBe(false);
+    expect(screen.queryByText("Planned: not available yet")).toBeNull();
+    await userEvent.click(toggle("Finance"));
+    await userEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    await screen.findByRole("region", { name: "Review changes" });
+    expect(bodyOf(calls[0])).toEqual({ changes: { finance: true } });
+  });
+
   it("shows what is on, what is off, and that Finance is planned and cannot be switched", () => {
     render(<ModuleManager initial={state(base)} initialHistory={history} />);
     expect(toggle("Inventory").checked).toBe(true);

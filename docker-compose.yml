@@ -230,6 +230,37 @@ services:
     networks:
       - impex-network
 
+  # Chart of accounts, double-entry journal and expenses. Own database: impex_finance. Off for every organization until the Super Admin
+  # enables the Finance module. A background worker PULLS issued invoices, payments and confirmed goods receipts from the Sales and
+  # Purchasing services (read-only feeds, shared secret) and posts each exactly once. It never changes a Sales/Purchasing/Inventory record.
+  finance-service:
+    build:
+      context: ./services/finance-service
+      dockerfile: Dockerfile
+    container_name: impex-finance-service
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      - PORT=8006
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${FINANCE_DB_NAME:-impex_finance}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - ORG_SERVICE_URL=http://organization-service:8001
+      - SALES_SERVICE_URL=http://sales-service:8003
+      - PURCHASING_SERVICE_URL=http://purchasing-service:8004
+      - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}  # reads the Sales/Purchasing feeds and each organization's entitlements
+      - FINANCE_SYNC_ENABLED=${FINANCE_SYNC_ENABLED:-true}
+      - FINANCE_SYNC_INTERVAL_SECONDS=${FINANCE_SYNC_INTERVAL_SECONDS:-15}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - impex-network
+
   # Organization administrator portal (separate app, separate session cookie from the Super Admin portal)
   dashboard:
     build:
@@ -247,6 +278,7 @@ services:
       - SALES_SERVICE_URL=http://sales-service:8003
       - PURCHASING_SERVICE_URL=http://purchasing-service:8004
       - SUPPORT_SERVICE_URL=http://support-service:8005
+      - FINANCE_SERVICE_URL=http://finance-service:8006
     depends_on:
       - auth-service
     networks:
