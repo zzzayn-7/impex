@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Identity, Index, String, Uuid, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Identity, Index, Integer, String, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -14,6 +14,10 @@ class Organization(Base):
         CheckConstraint("setup_status IN ('pending', 'in_progress', 'completed')", name="setup_status_valid"),
         CheckConstraint("setup_status <> 'completed' OR setup_completed_at IS NOT NULL", name="completed_has_a_time"),
         CheckConstraint("(logo_storage_key IS NULL) = (logo_content_type IS NULL)", name="logo_key_and_type_together"),
+        CheckConstraint("default_currency ~ '^[A-Z]{3}$'", name="default_currency_valid"),
+        CheckConstraint("date_format IN ('DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD')", name="date_format_valid"),
+        CheckConstraint("number_format IN ('comma_dot', 'dot_comma', 'space_comma', 'indian')", name="number_format_valid"),
+        CheckConstraint("settings_version >= 1", name="settings_version_positive"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -40,6 +44,23 @@ class Organization(Base):
     logo_storage_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     logo_content_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     logo_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Company details the organization's administrators maintain in Settings (the name and contact_email above are edited there too).
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    address_street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address_city: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    address_state: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    address_postal_code: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    # Business preferences: DEFAULTS and presentation only. They never rewrite or convert a stored record (see app/settings_api.py).
+    default_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD", server_default=text("'USD'"))
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default=text("'UTC'"))
+    date_format: Mapped[str] = mapped_column(String(10), nullable=False, default="YYYY-MM-DD", server_default=text("'YYYY-MM-DD'"))
+    number_format: Mapped[str] = mapped_column(String(12), nullable=False, default="comma_dot", server_default=text("'comma_dot'"))
+    # Optimistic concurrency for every settings change, and who/when changed them last.
+    settings_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    settings_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    settings_updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
 
 
 class OrganizationInvitation(Base):
@@ -116,4 +137,30 @@ class OrganizationModuleHistory(Base):
     changed_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     batch_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the changes confirmed together
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrganizationSettingsHistory(Base):
+    """Append-only record of every Settings change: which organization, who, which field, from what to what, and when. Secrets and
+    storage keys are never recorded (a logo change records only 'added', 'replaced' or 'removed'). A trigger refuses UPDATE and DELETE."""
+
+    __tablename__ = "organization_settings_history"
+    __table_args__ = (
+        CheckConstraint("section IN ('company', 'branding', 'preferences')", name="section_valid"),
+        Index("ix_organization_settings_history_organization_id_seq", "organization_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), nullable=False)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    section: Mapped[str] = mapped_column(String(20), nullable=False)
+    field: Mapped[str] = mapped_column(String(40), nullable=False)
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    changed_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    changed_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="settings", server_default=text("'settings'"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

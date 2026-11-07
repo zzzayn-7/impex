@@ -22,8 +22,8 @@ const plain = (value: string) => qty(value).replace(/,/g, "");
  *  discount and tax rate; nothing is filled in from the catalog. The amounts shown are an exact preview: the Sales Service calculates them
  *  again when the draft is saved. Saving a draft changes no stock. */
 export default function InvoiceForm({
-  clients, clientId, billable, invoice, problem,
-}: { clients: Client[]; clientId: string; billable: BillableLine[]; invoice: InvoiceDetail | null; problem?: string }) {
+  clients, clientId, billable, invoice, problem, defaultCurrency,
+}: { clients: Client[]; clientId: string; billable: BillableLine[]; invoice: InvoiceDetail | null; problem?: string; defaultCurrency?: string }) {
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey()); // one key per attempt: a double click or a retry returns the same draft
   const [chosen, setChosen] = useState(clientId);
@@ -31,7 +31,8 @@ export default function InvoiceForm({
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [header, setHeader] = useState({
-    currencyCode: invoice?.currency_code ?? "USD", invoiceDate: invoice?.invoice_date ?? today(), dueDate: invoice?.due_date ?? "", notes: invoice?.notes ?? "",
+    // A NEW invoice starts in the organization's default currency (Settings); an existing invoice always keeps the currency it was made in.
+    currencyCode: invoice?.currency_code ?? defaultCurrency ?? "USD", invoiceDate: invoice?.invoice_date ?? today(), dueDate: invoice?.due_date ?? "", notes: invoice?.notes ?? "",
   });
   const savedHeader = useRef(header);
   const [rows, setRows] = useState<Record<string, Row>>(() => {

@@ -142,11 +142,11 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Delivery Lists", "Dispatches", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support"],
+      ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Delivery Lists", "Dispatches", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {
-    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Help & Support"]);
+    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Help & Support", "Settings"]);
   });
   it("Inventory and Sales", () => {
     const shown = labels(nav(["inventory", "sales"]));
@@ -155,10 +155,10 @@ describe("the navigation lists only what is enabled", () => {
     expect(shown).not.toContain("Goods Receipts");
   });
   it("nothing enabled, an unknown list or no organization: only Dashboard and Help & Support", () => {
-    same(labels(nav([])), ["Dashboard", "Help & Support"]);
-    same(labels(nav(undefined)), ["Dashboard", "Help & Support"]);
-    same(labels(renderToStaticMarkup(<PortalHeader admin={orgAdmin as any} current="dashboard" />)), ["Dashboard", "Help & Support"]);
-    same(labels(nav(["sales"])), ["Dashboard", "Help & Support"]); // Sales without Inventory is not usable
+    same(labels(nav([])), ["Dashboard", "Help & Support", "Settings"]);
+    same(labels(nav(undefined)), ["Dashboard", "Help & Support", "Settings"]);
+    same(labels(renderToStaticMarkup(<PortalHeader admin={orgAdmin as any} current="dashboard" />)), ["Dashboard", "Help & Support", "Settings"]);
+    same(labels(nav(["sales"])), ["Dashboard", "Help & Support", "Settings"]); // Sales without Inventory is not usable
   });
   it("Help & Support is always in the menu, and a disabled module's links are not in the page at all", () => {
     const html = nav([]);

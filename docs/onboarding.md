@@ -59,6 +59,10 @@ health endpoints. Help & Support is available *without* finishing setup on purpo
 does not complete or skip anything. The services behind the portal keep enforcing authentication, roles and tenant isolation on their own.
 Cost: two small service calls per business API request. The live scripts keep working because they mark their throwaway organizations as set up.
 
+## After setup: Settings
+
+Once setup is complete, the company's name, logo, details and preferences are maintained from **Settings** (`/settings`; see [`settings.md`](settings.md)). Settings never restart or change the setup state, and the wizard's own endpoints keep refusing a completed organization. The services behind the portal (Inventory, Purchasing, Sales) now also refuse business calls until setup is complete, so the wizard cannot be bypassed by calling them directly.
+
 ## Logo storage and safety
 
 * **Where**: the Organization Service's `LogoStorage` interface (`app/storage.py`) with a directory implementation. `LOGO_STORAGE_DIR`

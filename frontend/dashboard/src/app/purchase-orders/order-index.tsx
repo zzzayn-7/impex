@@ -12,7 +12,7 @@ import type { OrderFilters, OrderStatus, Paged, PurchaseOrderSummary, Supplier }
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
-export default function OrderIndex({ list, filters, suppliers }: { list: Paged<PurchaseOrderSummary>; filters: OrderFilters; suppliers: Supplier[] }) {
+export default function OrderIndex({ list, filters, suppliers, defaultCurrency }: { list: Paged<PurchaseOrderSummary>; filters: OrderFilters; suppliers: Supplier[]; defaultCurrency?: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
@@ -47,7 +47,7 @@ export default function OrderIndex({ list, filters, suppliers }: { list: Paged<P
         </button>
       </div>
 
-      {creating && <NewOrderForm suppliers={activeSuppliers} defaultSupplierId={filters.supplierId} onCancel={() => setCreating(false)} />}
+      {creating && <NewOrderForm suppliers={activeSuppliers} defaultSupplierId={filters.supplierId} defaultCurrency={defaultCurrency} onCancel={() => setCreating(false)} />}
 
       <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
         <div className="flex flex-wrap items-end gap-3">
@@ -128,10 +128,10 @@ export default function OrderIndex({ list, filters, suppliers }: { list: Paged<P
   );
 }
 
-function NewOrderForm({ suppliers, defaultSupplierId, onCancel }: { suppliers: Supplier[]; defaultSupplierId: string; onCancel: () => void }) {
+function NewOrderForm({ suppliers, defaultSupplierId, defaultCurrency, onCancel }: { suppliers: Supplier[]; defaultSupplierId: string; defaultCurrency?: string; onCancel: () => void }) {
   const router = useRouter();
   const [values, setValues] = useState({
-    supplierId: suppliers.some((s) => s.id === defaultSupplierId) ? defaultSupplierId : "", currencyCode: "USD", supplierReference: "",
+    supplierId: suppliers.some((s) => s.id === defaultSupplierId) ? defaultSupplierId : "", currencyCode: defaultCurrency ?? "USD", supplierReference: "",
     orderDate: new Date().toISOString().slice(0, 10), expectedDeliveryDate: "", notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});

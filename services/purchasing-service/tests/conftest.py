@@ -122,13 +122,13 @@ class Directory:
     def add_organization(self, name: str, active: bool = True, modules=None) -> str:
         org_id = str(uuid.uuid4())
         # `modules` is what the Organization Service reports as usable for the organization (default: everything this release can use)
-        self.organizations[org_id] = {"name": name, "is_active": active, "modules": list(modules) if modules is not None else ["inventory", "purchasing", "sales"]}
+        self.organizations[org_id] = {"name": name, "is_active": active, "setup_status": "completed", "modules": list(modules) if modules is not None else ["inventory", "purchasing", "sales"]}
         return org_id
 
     def add_user(self, token: str, role: str, organization_id=None, **overrides) -> dict:
         user = {
             "id": str(uuid.uuid4()), "email": f"{token}@example.org", "full_name": f"User {token}", "role": role,
-            "organization_id": organization_id, "is_active": True, "created_at": "2026-11-05T00:00:00+00:00", **overrides,
+            "organization_id": organization_id, "is_active": True, "profile_setup_completed_at": "2026-11-04T00:05:00+00:00", "created_at": "2026-11-05T00:00:00+00:00", **overrides,
         }
         self.users[token] = user
         return user
@@ -156,6 +156,8 @@ class Directory:
         if user["role"] != "organization-admin" or organization is None or not organization["is_active"]:
             return httpx.Response(403, json={"detail": "Your organization is not active."})
         body = {"id": user["organization_id"], "name": organization["name"], "is_active": True}
+        if self.org_mode != "no-setup-status":  # an old/broken Organization Service that does not say whether setup is complete
+            body["setup_status"] = organization.get("setup_status", "completed")
         if self.org_mode != "no-modules":  # "no-modules": an old/broken Organization Service that does not say which modules are enabled
             body["modules"] = organization["modules"] if self.org_mode != "garbled-modules" else "all"
         return httpx.Response(200, json=body)

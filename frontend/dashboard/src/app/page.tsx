@@ -3,15 +3,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import PortalHeader from "@/components/portal-header";
+import { formatDate, normalizePreferences } from "@/lib/format";
 import { MODULE_DESCRIPTIONS, MODULE_LABELS, MODULE_PAGES, usableModules } from "@/lib/modules";
 import { setupNeed } from "@/lib/onboarding";
 import { fetchTenantOrganization } from "@/lib/organization";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
-
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
-}
 
 // Organization dashboard: the administrator's own organization. No business data yet.
 // This page takes no parameters on purpose: which organization to show is decided on the server from the
@@ -101,7 +97,7 @@ export default async function OrganizationDashboard() {
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-4 sm:col-span-2">
                 <dt className="text-xs font-medium text-slate-400">Registered</dt>
-                <dd className="mt-1 text-sm text-white">{formatDate(organization.created_at)}</dd>
+                <dd className="mt-1 text-sm text-white">{formatDate(organization.created_at, normalizePreferences(organization))}</dd>
               </div>
             </dl>
           ) : result.ok === false && result.reason === "forbidden" ? (

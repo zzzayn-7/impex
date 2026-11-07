@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { loadPreferences } from "@/lib/preferences";
 import { listBillableLines, listClientChoices } from "@/lib/sales";
 import { UUID_RE } from "@/lib/stock-validation";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
@@ -20,7 +21,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: S
   await requireTenantAdmin();
   const token = getTenantToken() ?? "";
   const requested = (first(searchParams?.client) ?? "").trim();
-  const clients = await listClientChoices(token, "all");
+  const [clients, preferences] = await Promise.all([listClientChoices(token, "all"), loadPreferences(token)]);
   const back = <Link href="/invoices" className="text-xs text-indigo-300 hover:text-indigo-200">← All invoices</Link>;
   const heading = (
     <div>
@@ -34,7 +35,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: S
       <div className="space-y-5">
         {back}
         {heading}
-        <InvoiceForm clients={clients} clientId="" billable={[]} invoice={null} />
+        <InvoiceForm clients={clients} clientId="" billable={[]} invoice={null} defaultCurrency={preferences.default_currency} />
       </div>
     );
   }
@@ -58,7 +59,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: S
       {back}
       {heading}
       {client && !client.is_active && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">This client is inactive. Reactivate them in Clients before creating an invoice.</p>}
-      <InvoiceForm key={requested} clients={clients} clientId={requested} billable={found.lines} invoice={null} />
+      <InvoiceForm key={requested} clients={clients} clientId={requested} billable={found.lines} invoice={null} defaultCurrency={preferences.default_currency} />
     </div>
   );
 }

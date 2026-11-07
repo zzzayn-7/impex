@@ -19,6 +19,12 @@ export type TenantOrganization = {
   logo_version?: string | null;
   // The business modules the organization can use (the Super Admin decides). Missing or malformed = none: never "all".
   modules?: string[];
+  // Business preferences (Settings): defaults and presentation only.
+  default_currency?: string;
+  timezone?: string;
+  date_format?: string;
+  number_format?: string;
+  settings_version?: number;
 };
 
 export type OrganizationResult =

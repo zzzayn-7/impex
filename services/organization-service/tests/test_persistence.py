@@ -202,7 +202,7 @@ def test_unauthenticated_create_stores_nothing(client, session_factory):
 # --- migrations -------------------------------------------------------------
 def test_schema_comes_from_migration_and_matches_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006"
         columns = {
             row.column_name: row.is_nullable
             for row in conn.execute(text(
@@ -215,6 +215,9 @@ def test_schema_comes_from_migration_and_matches_models(engine):
         # first-time setup (migration 0004)
         "setup_status": "NO", "setup_completed_at": "YES", "setup_completed_by": "YES",
         "logo_storage_key": "YES", "logo_content_type": "YES", "logo_updated_at": "YES",
+        # organization settings (migration 0006)
+        "contact_phone": "YES", "address_street": "YES", "address_city": "YES", "address_state": "YES", "address_postal_code": "YES", "website": "YES", "description": "YES",
+        "default_currency": "NO", "timezone": "NO", "date_format": "NO", "number_format": "NO", "settings_version": "NO", "settings_updated_at": "YES", "settings_updated_by": "YES",
     }
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart

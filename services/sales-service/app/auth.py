@@ -9,6 +9,9 @@ implementation). In short:
   * Only an ACTIVE `organization-admin` with an organization may use this service. Super Admins never pass.
   * The caller's organization must exist and be active (asked of the Organization Service with the caller's own token).
 
+  * First-time setup must be COMPLETE: the organization's setup_status is 'completed' (the Organization Service's record) and the
+    administrator's own profile is confirmed (the Auth Service's record). Until then every business route answers 403 `setup_required`,
+    so the mandatory setup cannot be skipped by calling this service directly. Help & Support and the setup itself live elsewhere.
   * The organization must also have this service's MODULE enabled (and the modules it depends on). The Organization Service owns that
     decision and returns it, for the caller's own token, in the same answer that says the organization is active. It is enforced
     HERE, on every request, whatever a browser menu shows. If the answer is missing or malformed the request is refused (503), never
@@ -98,6 +101,8 @@ class TenantContext:
     organization_name: str = ""  # the organization's name, once the Organization Service has confirmed it (used on invoices)
     # True only on the two "finish what was started" routes, when the module has been switched off: see require_active_tenant_for_recovery.
     recovery_only: bool = False
+    # The Auth Service's record that this administrator confirmed their own profile during first-time setup.
+    profile_confirmed: bool = False
 
 
 async def require_tenant_admin(user: dict = Depends(authenticated_user)) -> TenantContext:
@@ -114,6 +119,7 @@ async def require_tenant_admin(user: dict = Depends(authenticated_user)) -> Tena
         user_id=str(user.get("id", "")),
         email=str(user.get("email", "")),
         full_name=str(user.get("full_name", "")),
+        profile_confirmed=bool(user.get("profile_setup_completed_at")),
     )
 
 
@@ -150,7 +156,17 @@ async def _verified_tenant(tenant: TenantContext, credentials: Optional[HTTPAuth
     ):
         raise inactive
     tenant = replace(tenant, organization_name=str(organization.get("name") or ""))
+    if not _setup_done(organization, tenant):
+        raise setup_required()  # before the module: an organization that is not set up has nothing to be entitled to yet
     return tenant, _module_allowed(organization, unavailable)
+
+
+def setup_required() -> HTTPException:
+    """First-time setup is mandatory before business activity: the same status and shape as the portal's own gate."""
+    return HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        detail={"code": "setup_required", "message": "Finish the first-time setup before using this part of Impex."},
+    )
 
 
 def module_disabled() -> HTTPException:
@@ -160,6 +176,11 @@ def module_disabled() -> HTTPException:
         status.HTTP_403_FORBIDDEN,
         detail={"code": "module_disabled", "module": SERVICE_MODULE, "message": f"The {names.get(SERVICE_MODULE, SERVICE_MODULE)} module is not enabled for your organization."},
     )
+
+
+def _setup_done(organization: dict, tenant: TenantContext) -> bool:
+    """Fail closed: only an explicit 'completed' (and a confirmed profile) counts. A missing field is "not done", never "done"."""
+    return organization.get("setup_status") == "completed" and tenant.profile_confirmed
 
 
 def _module_allowed(organization: dict, unavailable: HTTPException) -> bool:

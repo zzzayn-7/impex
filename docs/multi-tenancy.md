@@ -179,6 +179,10 @@ organization or a user. The organization and the user come from the verified tok
 inactive organization or a disabled administrator is refused. Logos are stored under random server-made keys that never reach a browser, and are served only
 through an authenticated, tenant-bound route. See [`docs/onboarding.md`](onboarding.md).
 
+## First-time setup is enforced by the services too (Step 20)
+
+`require_active_tenant` in the Inventory, Purchasing and Sales services also refuses (`403 setup_required`) an administrator whose organization is not `completed` or whose own profile is unconfirmed, so setup cannot be skipped by calling a service directly. See [`settings.md`](settings.md).
+
 ## Module access (Step 19)
 
 Tenant isolation says *whose* records; module access says *which parts of the platform* the organization may use. The Organization Service decides and lists the usable modules in the same answer

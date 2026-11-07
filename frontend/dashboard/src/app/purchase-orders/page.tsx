@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { loadPreferences } from "@/lib/preferences";
 import { OrderFilters, listPurchaseOrders, listSupplierChoices } from "@/lib/purchasing";
 import { UUID_RE } from "@/lib/stock-validation";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
@@ -31,7 +32,7 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
   await requireTenantAdmin(); // the layout already redirects invalid sessions; this keeps the page safe on its own too
   const token = getTenantToken() ?? "";
   const filters = parseFilters(searchParams ?? {});
-  const [list, suppliers] = await Promise.all([listPurchaseOrders(token, filters), listSupplierChoices(token, "all")]);
+  const [list, suppliers, preferences] = await Promise.all([listPurchaseOrders(token, filters), listSupplierChoices(token, "all"), loadPreferences(token)]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
-  return <OrderIndex list={list} filters={filters} suppliers={suppliers} />;
+  return <OrderIndex list={list} filters={filters} suppliers={suppliers} defaultCurrency={preferences.default_currency} />;
 }

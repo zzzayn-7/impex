@@ -32,6 +32,7 @@ from app.models import Organization, OrganizationInvitation
 from app.module_usage import UsageClient
 from app.modules_api import router as modules_router, seed_new_organization, usable_modules
 from app.onboarding import logo_version, router as onboarding_router
+from app.settings_api import router as settings_router
 from app.tenancy import require_tenant_organization
 
 
@@ -63,6 +64,9 @@ app.include_router(onboarding_router)
 
 # Module management: entitlements per organization (Super Admin) and the organization's own view (see app/modules_api.py).
 app.include_router(modules_router)
+
+# Organization Settings: company profile, branding and business preferences (see app/settings_api.py).
+app.include_router(settings_router)
 
 # CORS Middleware
 app.add_middleware(
@@ -130,6 +134,13 @@ class TenantOrganizationResponse(BaseModel):
     # The business modules the organization can use right now (Super Admin decides; see app/modules.py). The other services enforce
     # exactly this list, so it is part of the answer they already ask for: one call says active, which organization, and which modules.
     modules: List[str] = []
+    # Business preferences (defaults and presentation only; see app/settings_api.py): the portal formats dates and numbers with them and
+    # starts new documents in the default currency. They never change a stored record.
+    default_currency: str = "USD"
+    timezone: str = "UTC"
+    date_format: str = "YYYY-MM-DD"
+    number_format: str = "comma_dot"
+    settings_version: int = 1
 
 
 def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -> TenantOrganizationResponse:
@@ -146,6 +157,11 @@ def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -
         has_logo=bool(org.logo_storage_key),
         logo_version=logo_version(org),
         modules=modules or [],
+        default_currency=org.default_currency,
+        timezone=org.timezone,
+        date_format=org.date_format,
+        number_format=org.number_format,
+        settings_version=org.settings_version,
     )
 
 
