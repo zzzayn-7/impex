@@ -9,12 +9,12 @@ import { NO_STOCK_NOTICE, ORDER_STATUS_LABELS, ORDER_STATUS_STYLE, RECEIPT_STATU
 import { api, jsonBody, qty } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
-import { validateQuantity, type Warehouse } from "@/lib/stock-validation";
+import { validateQuantity } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, Supplier } from "@/lib/purchasing";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
-export default function OrderDetail({ order, warehouses, suppliers }: { order: PurchaseOrderDetail; warehouses: Warehouse[]; suppliers: Supplier[] }) {
+export default function OrderDetail({ order, suppliers }: { order: PurchaseOrderDetail; suppliers: Supplier[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -145,7 +145,7 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
                   <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Quantity</th><th className="px-3 py-3 font-semibold text-right">Unit price</th>
-                  <th className="px-3 py-3 font-semibold text-right">Line total</th><th className="px-3 py-3 font-semibold">Planned for</th>
+                  <th className="px-3 py-3 font-semibold text-right">Line total</th>
                   {!draft && <><th className="px-3 py-3 font-semibold text-right">Received</th><th className="px-3 py-3 font-semibold text-right">Remaining</th></>}{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
                 </tr>
               </thead>
@@ -182,7 +182,6 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
                         <td className="px-3 py-3 text-right font-mono font-semibold whitespace-nowrap text-white">{money(line.line_total)}</td>
                       </>
                     )}
-                    <td className="px-3 py-3 text-xs">{line.planned_warehouse_code ?? <span className="text-slate-600">—</span>}</td>
                     {!draft && (
                       <>
                         <td className="px-3 py-3 text-right font-mono text-xs">
@@ -215,7 +214,7 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
                 <tr className="border-t border-slate-700">
                   <th scope="row" colSpan={3} className="px-3 py-3 text-right text-xs font-semibold uppercase text-slate-400">Order total</th>
                   <td className="px-3 py-3 text-right font-mono text-base font-bold whitespace-nowrap text-white" data-testid="order-total">{money(order.total_amount)}</td>
-                  <td colSpan={draft ? 2 : 3} />
+                  <td colSpan={draft ? 1 : 2} />
                 </tr>
               </tfoot>
             </table>
@@ -262,7 +261,7 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
               <button type="button" onClick={() => setEditingHeader((v) => !v)} aria-expanded={editingHeader} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">{editingHeader ? "Close" : "Edit order details"}</button>
             </div>
           </div>
-          {adding && <ProductLookup order={order} warehouses={warehouses} onAdded={(text) => { setMessage({ ok: true, text }); refresh(); }} />}
+          {adding && <ProductLookup order={order} onAdded={(text) => { setMessage({ ok: true, text }); refresh(); }} />}
           {editingHeader && <HeaderForm order={order} suppliers={suppliers} onSaved={(text) => { setEditingHeader(false); setMessage({ ok: true, text }); refresh(); }} />}
         </section>
       )}
@@ -271,7 +270,7 @@ export default function OrderDetail({ order, warehouses, suppliers }: { order: P
 }
 
 // Find an existing product by SKU or barcode (typed, or scanned into the box) and add it with a quantity and a purchase price.
-function ProductLookup({ order, warehouses, onAdded }: { order: PurchaseOrderDetail; warehouses: Warehouse[]; onAdded: (message: string) => void }) {
+function ProductLookup({ order, onAdded }: { order: PurchaseOrderDetail; onAdded: (message: string) => void }) {
   const [code, setCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [found, setFound] = useState<ScanResult | null>(null);
@@ -309,7 +308,6 @@ function ProductLookup({ order, warehouses, onAdded }: { order: PurchaseOrderDet
           orderNumber={order.number}
           currency={order.currency_code}
           product={found.product}
-          warehouses={warehouses}
           onAdded={(message) => { setFound(null); setCode(""); onAdded(message); }}
           onDuplicate={() => undefined}
         />

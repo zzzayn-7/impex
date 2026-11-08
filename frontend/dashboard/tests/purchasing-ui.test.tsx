@@ -25,21 +25,20 @@ const product = (id: string, sku: string, name: string, unit: string, extra: Rec
 });
 const result = (p: ReturnType<typeof product>) => ({
   matched_by: "sku", identifier_kind: null, product: p,
-  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3", available_quantity: "3", lines: [] },
+  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3" },
 });
 const CATALOG: Record<string, any> = {
   "BOLT-1": result(product(BOLT, "BOLT-1", "Steel bolt", "pcs")), FLOUR: result(product(FLOUR, "FLOUR", "Flour", "kg")),
   "OLD-1": result(product(BOLT, "OLD-1", "Old bolt", "pcs", { is_active: false })),
 };
 const supplier = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, code: null, contact_person: null, email: null, phone: null, address: null, country_code: null, tax_identifier: null, is_active: true, created_at: now, updated_at: now, ...extra });
-const line = (extra: Record<string, unknown> = {}) => ({ id: L1, product_id: BOLT, product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", quantity: "50.0000", unit_price: "1.2500", line_total: "62.5000", planned_warehouse_id: null, planned_warehouse_code: null, notes: null, created_at: now, updated_at: now, ...extra });
+const line = (extra: Record<string, unknown> = {}) => ({ id: L1, product_id: BOLT, product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", quantity: "50.0000", unit_price: "1.2500", line_total: "62.5000", notes: null, created_at: now, updated_at: now, ...extra });
 const order = (extra: Record<string, unknown> = {}) => ({
   id: O1, number: "PO-000001", supplier: { id: S1, name: "Acme Supplies", code: null, is_active: true }, supplier_reference: null, order_date: "2026-11-06", expected_delivery_date: null,
   currency_code: "USD", notes: null, status: "draft", line_count: 1, total_amount: "62.5000", created_by_email: "a@b.c", ordered_at: null, ordered_by_email: null,
   cancelled_at: null, cancelled_by_email: null, created_at: now, updated_at: now, lines: [line()], frozen: false,
   stock_notice: "A purchase order does not change your stock. Placing an order does not add the goods to inventory; they are added only when they are received (a later step).", ...extra,
 });
-const warehouses = [{ id: W1, code: "MAIN", name: "Main depot", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 0 }];
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 type Call = { url: string; method: string; body: any; headers: any };
@@ -81,14 +80,14 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const setup = () => userEvent.setup();
 
 async function openLookup(user: ReturnType<typeof setup>, code: string, props: Record<string, unknown> = {}) {
-  render(<OrderDetail order={order(props) as any} warehouses={warehouses as any} suppliers={[supplier(S1, "Acme Supplies"), supplier(S2, "Other Co")] as any} />);
+  render(<OrderDetail order={order(props) as any} suppliers={[supplier(S1, "Acme Supplies"), supplier(S2, "Other Co")] as any} />);
   await user.click(screen.getByRole("button", { name: /Find a product/ }));
   await user.type(screen.getByLabelText("SKU or barcode"), `${code}{Enter}`);
 }
 
 describe("Purchase order detail: the lines and the total", () => {
   it("shows the lines, the backend-calculated total and the 'no stock' notice", () => {
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     const lines = screen.getByRole("region", { name: "Products on this order" });
     expect(lines.textContent).toContain("Steel bolt");
     expect(lines.textContent).toContain("50 pcs");
@@ -110,22 +109,22 @@ describe("Purchase order detail: the lines and the total", () => {
     await user.click(within(form).getByRole("button", { name: "Add to order" }));
     await screen.findByText("Added 2.5 kg of Flour to PO-000001.");
     expect(writes()).toEqual([{ url: "/api/purchasing/purchase-orders/" + O1 + "/lines", method: "POST", headers: expect.anything(),
-      body: { productId: FLOUR, quantity: "2.5", unitPrice: "3.10", plannedWarehouseId: "", notes: "" } }]);
+      body: { productId: FLOUR, quantity: "2.5", unitPrice: "3.10", notes: "" } }]);
     expect(router.refresh).toHaveBeenCalled();
   });
 
-  it("sends only the id, the quantity, the price (and optional warehouse and note): never a name, SKU, unit or total", async () => {
+  it("sends only the id, the quantity, the price (and an optional note): never a name, SKU, unit or total", async () => {
     const user = setup();
     await openLookup(user, "BOLT-1");
     const form = await screen.findByRole("form", { name: "Add Steel bolt to PO-000001" });
     await user.type(within(form).getByLabelText(/^Quantity to order/), "50");
     await user.type(within(form).getByLabelText(/^Unit purchase price/), "1.25");
-    await user.selectOptions(within(form).getByLabelText(/Planned warehouse/), W1);
+    expect(within(form).queryByLabelText(/Planned warehouse/)).toBeNull();
     await user.type(within(form).getByLabelText(/Line note/), "pallet");
     await user.click(within(form).getByRole("button", { name: "Add to order" }));
     await screen.findByText(/Added 50 pcs/);
     const body = writes()[0].body;
-    expect(body).toEqual({ productId: BOLT, quantity: "50", unitPrice: "1.25", plannedWarehouseId: W1, notes: "pallet" });
+    expect(body).toEqual({ productId: BOLT, quantity: "50", unitPrice: "1.25", notes: "pallet" });
     expect(JSON.stringify(body)).not.toMatch(/name|sku|unit":|total|organization|tenant/i);
   });
 
@@ -231,7 +230,7 @@ describe("Purchase order detail: the lines and the total", () => {
 describe("Purchase order detail: editing and removing lines", () => {
   it("edits quantity and price with a live preview, validated first, then sends only those two strings", async () => {
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Edit Steel bolt" }));
     const quantity = screen.getByLabelText("Quantity of Steel bolt");
     const price = screen.getByLabelText("Unit price of Steel bolt");
@@ -253,7 +252,7 @@ describe("Purchase order detail: editing and removing lines", () => {
   it("shows the server's refusal of a fraction for a piece count", async () => {
     server["PATCH /api/purchasing/purchase-orders/:id/lines/:id"] = () => json(400, { error: "Quantity must be a whole number: Steel bolt is counted in 'pcs'." });
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Edit Steel bolt" }));
     const quantity = screen.getByLabelText("Quantity of Steel bolt");
     await user.clear(quantity);
@@ -264,7 +263,7 @@ describe("Purchase order detail: editing and removing lines", () => {
 
   it("removes a line only after confirmation", async () => {
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Remove Steel bolt" }));
     expect(writes()).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Yes" }));
@@ -290,7 +289,7 @@ describe("Purchase order detail: editing and removing lines", () => {
 describe("Purchase order detail: placing and cancelling", () => {
   it("asks before placing, says what freezes, and sends one POST on confirmation", async () => {
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Mark as Ordered" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Confirm placing the order" });
     expect(dialog.textContent).toContain("Place PO-000001 with Acme Supplies for 62.50 USD?");
@@ -305,7 +304,7 @@ describe("Purchase order detail: placing and cancelling", () => {
 
   it("'Back' places nothing", async () => {
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Mark as Ordered" }));
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -313,14 +312,14 @@ describe("Purchase order detail: placing and cancelling", () => {
   });
 
   it("cannot be placed while empty", () => {
-    render(<OrderDetail order={order({ lines: [], line_count: 0, total_amount: "0.0000" }) as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order({ lines: [], line_count: 0, total_amount: "0.0000" }) as any} suppliers={[]} />);
     expect((screen.getByRole("button", { name: "Mark as Ordered" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows a refusal (e.g. an archived product) instead of pretending it worked", async () => {
     server["POST /api/purchasing/purchase-orders/:id/order"] = () => json(409, { error: "These products are no longer available (archived or missing): Steel bolt (BOLT-1). Remove them first." });
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Mark as Ordered" }));
     await user.click(screen.getByRole("button", { name: "Place order" }));
     expect((await screen.findByRole("alert")).textContent).toContain("no longer available");
@@ -328,7 +327,7 @@ describe("Purchase order detail: placing and cancelling", () => {
 
   it("cancels only after confirmation", async () => {
     const user = setup();
-    render(<OrderDetail order={order() as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
     await user.click(screen.getByRole("button", { name: "Cancel order" }));
     expect(writes()).toHaveLength(0);
     await user.click(await screen.findByRole("button", { name: "Yes, cancel it" }));
@@ -337,17 +336,17 @@ describe("Purchase order detail: placing and cancelling", () => {
   });
 
   it("an ordered order shows no editing controls but can still be cancelled; a cancelled one has no actions", async () => {
-    const { unmount } = render(<OrderDetail order={order({ status: "ordered", frozen: true, ordered_at: now, ordered_by_email: "a@b.c" }) as any} warehouses={[]} suppliers={[]} />);
+    const { unmount } = render(<OrderDetail order={order({ status: "ordered", frozen: true, ordered_at: now, ordered_by_email: "a@b.c" }) as any} suppliers={[]} />);
     expect(screen.getByText(/Its details, products, quantities and prices are frozen/)).toBeTruthy();
     for (const name of ["Mark as Ordered", "Edit Steel bolt", "Remove Steel bolt", "Edit order details"]) expect(screen.queryByRole("button", { name })).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel order" })).toBeTruthy();
     unmount();
-    render(<OrderDetail order={order({ status: "cancelled", frozen: true, cancelled_at: now, cancelled_by_email: "a@b.c" }) as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order({ status: "cancelled", frozen: true, cancelled_at: now, cancelled_by_email: "a@b.c" }) as any} suppliers={[]} />);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
   it("warns when the supplier is inactive", () => {
-    render(<OrderDetail order={order({ supplier: { id: S1, name: "Dormant Co", code: null, is_active: false } }) as any} warehouses={[]} suppliers={[]} />);
+    render(<OrderDetail order={order({ supplier: { id: S1, name: "Dormant Co", code: null, is_active: false } }) as any} suppliers={[]} />);
     expect(screen.getByText(/inactive supplier/)).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Dormant Co is inactive");
   });

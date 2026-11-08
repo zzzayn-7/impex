@@ -44,9 +44,9 @@ export function checkQuantity(value: unknown): { ok: true; value: string } | { o
 export { QUANTITY_RE, UUID_RE };
 
 
-export type DispatchLineBody = { delivery_list_item_id: string; warehouse_id: string; quantity: string };
+export type DispatchLineBody = { delivery_list_item_id: string; quantity: string };
 
-/** The lines of a dispatch as sent by the browser: only an item id, a warehouse id and an exact quantity string are read. */
+/** The lines of a dispatch as sent by the browser: only an item id and an exact quantity string are read. */
 export function parseDispatchLines(value: unknown): { ok: true; lines: DispatchLineBody[] } | { ok: false; message: string; fieldErrors?: Record<string, string> } {
   if (!Array.isArray(value)) return { ok: false, message: "Send the dispatch lines as a list." };
   if (value.length > 500) return { ok: false, message: "A dispatch can have at most 500 lines." };
@@ -56,11 +56,9 @@ export function parseDispatchLines(value: unknown): { ok: true; lines: DispatchL
     const item = entry as Record<string, unknown>;
     const itemId = checkUuid(item.deliveryListItemId);
     if (!itemId) return { ok: false, message: "That product is not on this delivery list." };
-    const warehouseId = checkUuid(item.warehouseId);
-    if (!warehouseId) return { ok: false, message: "Choose a warehouse for every line.", fieldErrors: { warehouseId: "Choose a warehouse." } };
     const quantity = checkQuantity(item.quantity);
     if (!quantity.ok) return { ok: false, message: quantity.message, fieldErrors: { quantity: quantity.message } };
-    lines.push({ delivery_list_item_id: itemId, warehouse_id: warehouseId, quantity: quantity.value });
+    lines.push({ delivery_list_item_id: itemId, quantity: quantity.value });
   }
   return { ok: true, lines };
 }

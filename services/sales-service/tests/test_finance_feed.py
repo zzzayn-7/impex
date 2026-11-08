@@ -29,7 +29,7 @@ def world(api, depot):
     delivery_list = api.new_list(client["id"])
     api.add(delivery_list["id"], depot["bolt"], 15)
     ready = api.status(delivery_list["id"], "ready").json()
-    dispatch = api.confirmed_dispatch(depot, ready, [("bolt", 10, "main")])
+    dispatch = api.confirmed_dispatch(depot, ready, [("bolt", 10)])
     return {"client": client, "dispatch": dispatch}
 
 

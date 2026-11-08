@@ -15,10 +15,9 @@ def d(value) -> Decimal:
 
 @pytest.fixture
 def depot(inventory, shop):
-    """The shop plus a second ACTIVE warehouse holding 20 bolts."""
-    shelf = inventory.add_warehouse(shop["org"], "SHELF")
-    inventory.set_stock(shop["bolt"], shelf, 20)
-    return {**shop, "shelf": shelf}
+    """The shop, with exactly 40 bolts in stock."""
+    inventory.set_stock(shop["bolt"], 40)
+    return shop
 
 
 @pytest.fixture
@@ -29,16 +28,16 @@ def ready(api, depot):
 
 @pytest.fixture
 def bolt_line(ready, depot):
-    return lambda quantity, warehouse=None: sent(ready, depot["bolt"], quantity, warehouse or depot["main"])
+    return lambda quantity: sent(ready, depot["bolt"], quantity)
 
 
 @pytest.fixture
 def flour_line(ready, depot):
-    return lambda quantity, warehouse=None: sent(ready, depot["flour"], quantity, warehouse or depot["main"])
+    return lambda quantity: sent(ready, depot["flour"], quantity)
 
 
-def stock(inventory, depot, product, warehouse="main") -> Decimal:
-    return inventory.quantity(depot[product], depot[warehouse])
+def stock(inventory, depot, product) -> Decimal:
+    return inventory.quantity(depot[product])
 
 
 # =====================================================================================================
@@ -87,7 +86,7 @@ def test_the_posting_carries_only_ids_quantities_and_units_never_a_price(api, de
     api.confirm(api.draft(ready["id"], [bolt_line(4)])["id"])
     (body,) = seen
     assert set(body) == {"dispatch_number", "delivery_list_number", "lines"} and body["delivery_list_number"] == "DL-000001"
-    assert all(set(l) == {"line_id", "product_id", "warehouse_id", "quantity", "unit"} for l in body["lines"])
+    assert all(set(l) == {"line_id", "product_id", "quantity", "unit"} for l in body["lines"])  # no warehouse, no price
 
 
 # =====================================================================================================
@@ -110,26 +109,28 @@ def test_ten_of_fifteen_then_the_remaining_five(api, depot, inventory, ready, bo
     assert after["status"].startswith("partially") and item_of(after, depot["flour"])["remaining_quantity"] == "2.0000"  # the flour is still to go
     assert item_of(after, depot["bolt"])["remaining_quantity"] == "0.0000" and stock(inventory, depot, "bolt") == 25
 
-    third = api.draft(ready["id"], [sent(after, depot["flour"], 2, depot["main"])])
+    third = api.draft(ready["id"], [sent(after, depot["flour"], 2)])
     assert api.confirm(third["id"]).status_code == 200
     assert api.detail(ready["id"])["status"] == "dispatched"
     assert [r["number"] for r in api.detail(ready["id"])["dispatches"]] == ["DS-000003", "DS-000002", "DS-000001"]  # newest first
 
 
-def test_a_single_item_can_leave_from_two_warehouses_in_one_dispatch(api, depot, inventory, ready, bolt_line):
-    draft = api.draft(ready["id"], [bolt_line(10, depot["main"]), bolt_line(5, depot["shelf"])])
-    assert len(draft["lines"]) == 2
-    assert api.confirm(draft["id"]).status_code == 200
-    assert stock(inventory, depot, "bolt", "main") == 30 and stock(inventory, depot, "bolt", "shelf") == 15
-    assert item_of(api.detail(ready["id"]), depot["bolt"])["dispatched_quantity"] == "15.0000"
+def test_a_dispatch_names_no_warehouse_anywhere(api, depot, inventory, ready, bolt_line):
+    draft = api.draft(ready["id"], [bolt_line(10)])
+    confirmed = api.confirm(draft["id"])
+    assert confirmed.status_code == 200
+    for text_of in (str(draft), confirmed.text, str(api.detail(ready["id"]))):
+        assert "warehouse" not in text_of.lower()
+    assert stock(inventory, depot, "bolt") == 30
+    assert item_of(api.detail(ready["id"]), depot["bolt"])["dispatched_quantity"] == "10.0000"
 
 
 def test_every_line_makes_a_traceable_movement(api, depot, inventory, ready, bolt_line, flour_line):
-    confirmed = api.confirm(api.draft(ready["id"], [bolt_line(15, depot["shelf"]), flour_line(2)])["id"]).json()
+    confirmed = api.confirm(api.draft(ready["id"], [bolt_line(15), flour_line(2)])["id"]).json()
     assert len(inventory.ledger) == 2
     by_product = {m["product_id"]: m for m in inventory.ledger}
-    assert by_product[depot["bolt"]]["source_reference"] == "DS-000001" and by_product[depot["bolt"]]["warehouse_id"] == depot["shelf"]
-    assert by_product[depot["bolt"]]["balance_after"] == "5.0000" and by_product[depot["flour"]]["balance_after"] == "0.5000"
+    assert by_product[depot["bolt"]]["source_reference"] == "DS-000001"
+    assert by_product[depot["bolt"]]["balance_after"] == "25.0000" and by_product[depot["flour"]]["balance_after"] == "0.5000"
     assert {l["inventory_movement_id"] for l in confirmed["lines"]} == {m["id"] for m in inventory.ledger}
 
 
@@ -139,12 +140,6 @@ def test_every_line_makes_a_traceable_movement(api, depot, inventory, ready, bol
 def test_more_than_requested_is_refused_when_saving(api, ready, bolt_line):
     response = api.dispatch_request(ready["id"], [bolt_line(16)])
     assert response.status_code == 409 and response.json()["detail"]["code"] == "over_dispatch" and "at most 15" in response.json()["detail"]["message"]
-
-
-def test_two_lines_of_one_item_are_added_up_against_the_request(api, depot, ready, bolt_line):
-    response = api.dispatch_request(ready["id"], [bolt_line(8, depot["main"]), bolt_line(8, depot["shelf"])])
-    assert response.status_code == 409 and response.json()["detail"]["code"] == "over_dispatch"
-    assert api.dispatch_request(ready["id"], [bolt_line(8, depot["main"]), bolt_line(7, depot["shelf"])]).status_code == 201
 
 
 def test_more_than_remains_is_refused_after_a_partial_dispatch(api, ready, bolt_line):
@@ -221,22 +216,14 @@ def test_confirming_the_same_dispatch_many_times_at_once_deducts_once(api, depot
 # =====================================================================================================
 def test_not_enough_stock_keeps_the_draft_and_deducts_nothing(api, depot, inventory, ready, bolt_line, flour_line):
     big = api.ready_list(depot, items=(("bolt", 50),), client_name="Big")
-    draft = api.draft(big["id"], [sent(big, depot["bolt"], 45, depot["main"])])  # saving is fine: stock may arrive before dispatch
-    assert draft["lines_exceeding_stock"] == 1 and d(draft["lines"][0]["available_in_warehouse"]) == 40
+    draft = api.draft(big["id"], [sent(big, depot["bolt"], 45)])  # saving is fine: stock may arrive before dispatch
+    assert draft["lines_exceeding_stock"] == 1 and d(draft["lines"][0]["available_quantity"]) == 40
     refused = api.confirm(draft["id"])
-    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "insufficient_stock" and "40 pcs of Steel bolt in MAIN" in refused.json()["detail"]["message"]
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "insufficient_stock" and "40 pcs of Steel bolt in stock" in refused.json()["detail"]["message"]
     assert api.get_dispatch(draft["id"])["status"] == "draft" and inventory.postings() == [] and stock(inventory, depot, "bolt") == 40
     assert api.detail(big["id"])["status"] == "ready" and item_of(api.detail(big["id"]), depot["bolt"])["pending_quantity"] == "0.0000"
-    api.put_lines(draft["id"], [sent(big, depot["bolt"], 40, depot["main"])])  # edited down to what is there: now it goes
+    api.put_lines(draft["id"], [sent(big, depot["bolt"], 40)])  # edited down to what is there: now it goes
     assert api.confirm(draft["id"]).status_code == 200 and stock(inventory, depot, "bolt") == 0
-
-
-def test_two_lines_that_together_need_more_than_a_warehouse_holds_are_refused(api, depot, inventory):
-    big = api.ready_list(depot, items=(("bolt", 60),), client_name="Big")
-    draft = api.draft(big["id"], [sent(big, depot["bolt"], 25, depot["main"]), sent(big, depot["bolt"], 25, depot["shelf"])])
-    # 25 from MAIN (40) and 25 from SHELF (20): the shelf cannot give 25
-    refused = api.confirm(draft["id"])
-    assert refused.status_code == 409 and "SHELF" in refused.json()["detail"]["message"] and inventory.postings() == []
 
 
 def test_the_inventory_service_refusing_for_lack_of_stock_returns_the_dispatch_to_draft(api, depot, inventory, ready, bolt_line):
@@ -257,7 +244,7 @@ def test_stock_taken_by_someone_else_between_the_check_and_the_posting_is_refuse
     original = InventoryGateway.post_dispatch
 
     def late(self, key, body):
-        inventory.stock[(depot["bolt"], depot["main"])] = Decimal(3)  # a colleague shipped the stock a moment ago
+        inventory.stock[depot["bolt"]] = Decimal(3)  # a colleague shipped the stock a moment ago
         return original(self, key, body)
 
     monkeypatch.setattr(InventoryGateway, "post_dispatch", late)
@@ -460,16 +447,12 @@ def test_bad_quantities_are_refused(api, ready, bolt_line, quantity):
     assert api.dispatch_request(ready["id"], [line]).status_code == 422
 
 
-def test_a_warehouse_of_nobody_or_somebody_else_is_not_found(api, two_orgs, inventory, ready, bolt_line):
-    theirs = inventory.add_warehouse(two_orgs["beta_id"], "THEIRS")
-    for warehouse in (str(uuid.uuid4()), theirs):
-        response = api.dispatch_request(ready["id"], [bolt_line(1, warehouse)])
-        assert (response.status_code, response.json()["detail"]) == (404, "Warehouse not found.")
+def test_a_line_that_names_a_warehouse_is_refused(api, ready, bolt_line):
+    response = api.dispatch_request(ready["id"], [{**bolt_line(1), "warehouse_id": str(uuid.uuid4())}])
+    assert response.status_code == 422  # there is no warehouse to name any more
 
 
-def test_archived_warehouses_and_products_are_refused(api, depot, inventory, ready, bolt_line):
-    archived = api.dispatch_request(ready["id"], [bolt_line(1, depot["annex"])])  # the ANNEX is archived
-    assert archived.status_code == 409 and "archived" in archived.json()["detail"]
+def test_archived_products_are_refused(api, depot, inventory, ready, bolt_line):
     inventory.products[depot["org"]][depot["bolt"]]["is_active"] = False
     product = api.dispatch_request(ready["id"], [bolt_line(1)])
     assert product.status_code == 409 and "Steel bolt is archived" in product.json()["detail"]
@@ -493,13 +476,13 @@ def test_a_unit_changed_since_listing_is_refused_and_never_converted(api, depot,
 
 def test_an_item_that_is_not_on_the_list_is_refused(api, depot, ready, bolt_line):
     other = api.ready_list(depot, items=(("bolt", 3),), client_name="Other")
-    foreign = sent(other, depot["bolt"], 1, depot["main"])  # the item id of ANOTHER list
+    foreign = sent(other, depot["bolt"], 1)  # the item id of ANOTHER list
     response = api.dispatch_request(ready["id"], [foreign])
     assert response.status_code == 404 and response.json()["detail"] == "That product is not on this delivery list."
     assert api.dispatch_request(ready["id"], [{**bolt_line(1), "delivery_list_item_id": str(uuid.uuid4())}]).json()["detail"] == response.json()["detail"]
 
 
-def test_the_same_item_and_warehouse_twice_is_refused(api, ready, bolt_line):
+def test_the_same_item_twice_is_refused(api, ready, bolt_line):
     response = api.dispatch_request(ready["id"], [bolt_line(1), bolt_line(2)])
     assert response.status_code == 422 and "more than once" in response.json()["detail"]
 
@@ -536,7 +519,7 @@ def test_goods_are_dispatched_only_against_ready_or_partially_dispatched_lists(a
     assert "is cancelled" in api.dispatch_request(cancelled["id"], []).json()["detail"]
 
     done = api.ready_list(depot, items=(("bolt", 2),), client_name="Done")
-    api.confirm(api.draft(done["id"], [sent(done, depot["bolt"], 2, depot["main"])])["id"])
+    api.confirm(api.draft(done["id"], [sent(done, depot["bolt"], 2)])["id"])
     assert "already fully dispatched" in api.dispatch_request(done["id"], []).json()["detail"]
 
 
@@ -570,7 +553,7 @@ def test_cancelling_or_reopening_a_list_cancels_its_unfinished_drafts(api, depot
     assert api.get_dispatch(draft["id"])["status"] == "cancelled" and api.detail(ready["id"])["status"] == "draft"
 
     other = api.ready_list(depot, items=(("bolt", 5),), client_name="Other")
-    pending = api.draft(other["id"], [sent(other, depot["bolt"], 2, depot["main"])])
+    pending = api.draft(other["id"], [sent(other, depot["bolt"], 2)])
     assert api.status(other["id"], "cancel").status_code == 200
     assert api.get_dispatch(pending["id"])["status"] == "cancelled"
 
@@ -626,7 +609,7 @@ def test_the_delivery_list_keeps_its_history_untouched(api, depot, ready, bolt_l
     before = api.detail(ready["id"])
     api.confirm(api.draft(ready["id"], [bolt_line(15)])["id"])
     after = api.detail(ready["id"])
-    keep = ("product_id", "product_sku", "product_name", "quantity", "unit", "planned_warehouse_id", "created_at")
+    keep = ("product_id", "product_sku", "product_name", "quantity", "unit", "created_at")
     assert [{k: i[k] for k in keep} for i in after["items"]] == [{k: i[k] for k in keep} for i in before["items"]]
     assert (after["number"], after["client"]["name"], after["created_at"]) == (before["number"], before["client"]["name"], before["created_at"])
 
@@ -634,10 +617,10 @@ def test_the_delivery_list_keeps_its_history_untouched(api, depot, ready, bolt_l
 def test_numbers_run_per_organization(api, two_orgs, depot, inventory, ready, bolt_line):
     assert [api.draft(ready["id"], [bolt_line(1)])["number"] for _ in range(3)] == ["DS-000001", "DS-000002", "DS-000003"]
     beta = two_orgs["beta"]
-    product, warehouse = inventory.add_product(two_orgs["beta_id"], "B-1", "Beta thing"), inventory.add_warehouse(two_orgs["beta_id"], "BMAIN")
-    inventory.set_stock(product, warehouse, 9)
+    product = inventory.add_product(two_orgs["beta_id"], "B-1", "Beta thing")
+    inventory.set_stock(product, 9)
     theirs = beta.ready_list({"thing": product}, items=(("thing", 4),))
-    assert beta.draft(theirs["id"], [sent(theirs, product, 1, warehouse)])["number"] == "DS-000001"
+    assert beta.draft(theirs["id"], [sent(theirs, product, 1)])["number"] == "DS-000001"
 
 
 def test_a_repeated_creation_returns_the_same_draft(api, ready, bolt_line):
@@ -683,8 +666,8 @@ def test_creation_requires_a_well_formed_key(api, ready):
 # =====================================================================================================
 def test_the_list_filters_and_searches(api, depot, inventory, ready, bolt_line, flour_line):
     other = api.ready_list(depot, items=(("bolt", 9),), client_name="Zenith Ltd")
-    first = api.confirm(api.draft(ready["id"], [bolt_line(5, depot["shelf"])], tracking_reference="TRK-777", dispatch_date="2026-11-02")["id"]).json()
-    second = api.draft(other["id"], [sent(other, depot["bolt"], 2, depot["main"])], dispatch_date="2026-11-03")
+    first = api.confirm(api.draft(ready["id"], [bolt_line(5)], tracking_reference="TRK-777", dispatch_date="2026-11-02")["id"]).json()
+    second = api.draft(other["id"], [sent(other, depot["bolt"], 2)], dispatch_date="2026-11-03")
     cancelled = api.draft(ready["id"], [flour_line(1)], dispatch_date="2026-11-04")
     api.cancel_dispatch(cancelled["id"])
 
@@ -694,7 +677,7 @@ def test_the_list_filters_and_searches(api, depot, inventory, ready, bolt_line, 
     assert ids() == [cancelled["id"], second["id"], first["id"]]  # newest dispatch date first
     assert ids(status="confirmed") == [first["id"]] and ids(status="draft") == [second["id"]] and ids(status="cancelled") == [cancelled["id"]]
     assert ids(delivery_list_id=other["id"]) == [second["id"]] and ids(client_id=other["client"]["id"]) == [second["id"]]
-    assert ids(warehouse_id=depot["shelf"]) == [first["id"]] and ids(product_id=depot["flour"]) == [cancelled["id"]]
+    assert ids(product_id=depot["bolt"]) == [second["id"], first["id"]] and ids(product_id=depot["flour"]) == [cancelled["id"]]
     assert ids(q="TRK-777") == [first["id"]] and ids(q="zenith") == [second["id"]] and ids(q="DS-000002") == [second["id"]] and ids(q="DL-000002") == [second["id"]]
     assert ids(date_from="2026-11-03", date_to="2026-11-03") == [second["id"]]
     page = api.client.get(DISPATCHES, params={"limit": 2, "offset": 2}, headers=api.headers).json()

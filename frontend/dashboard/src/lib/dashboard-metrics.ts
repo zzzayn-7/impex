@@ -94,19 +94,17 @@ export function monthlyTotals(rows: Dated[], months: string[], currency: string)
 }
 
 export type MovementLike = { movement_type: string; created_at: string };
-export type DayActivity = { day: string; added: number; removed: number; transferred: number };
+export type DayActivity = { day: string; added: number; removed: number };
 
 /** How many stock movements of each kind happened on each of `days` (movements, not quantities: units differ, so quantities cannot be added). */
 export function movementActivity(movements: MovementLike[], days: string[], timezone: string): DayActivity[] {
-  const byDay = new Map<string, DayActivity>(days.map((day) => [day, { day, added: 0, removed: 0, transferred: 0 }]));
+  const byDay = new Map<string, DayActivity>(days.map((day) => [day, { day, added: 0, removed: 0 }]));
   for (const m of movements) {
     const day = dayInZone(m.created_at, timezone);
     const bucket = day ? byDay.get(day) : undefined;
     if (!bucket) continue;
     if (m.movement_type === "in" || m.movement_type === "opening") bucket.added += 1;
     else if (m.movement_type === "out") bucket.removed += 1;
-    else if (m.movement_type === "transfer_out") bucket.transferred += 1; // a transfer is one out + one in: counted once
-    // transfer_in is the other half of a transfer already counted
   }
   return days.map((day) => byDay.get(day)!);
 }

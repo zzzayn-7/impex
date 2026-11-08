@@ -77,7 +77,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (inventory) {
     kpis.push(inventory.status === "ok" ? (
       <Kpi key="products" icon="products" accent="blue" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
-        context={inventory.data.warehouses.length === 0 ? "No warehouse yet" : `Across ${inventory.data.warehouses.length} active ${inventory.data.warehouses.length === 1 ? "warehouse" : "warehouses"}`} />
+        context={inventory.data.products === 0 ? "No products yet" : "In your product catalog"} />
     ) : <KpiUnavailable key="products" icon="products" accent="blue" label="Active products" />);
   }
   if (purchasing) {
@@ -153,25 +153,15 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
   if (inventory) {
-    analytics.push(
-      <GlassCard key="warehouses" className="p-5 sm:p-6" aria-label="Stock by warehouse">
-        <CardHeader title="Stock by warehouse" subtitle="Different products held in each active warehouse" />
-        {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.warehouses.length === 0 ? <CardNote>No warehouses yet. Add one to start tracking stock.</CardNote> : (
-          <BarList label="Products held per warehouse" accent="blue" items={[...inventory.data.warehouses].sort((a, b) => b.products - a.products || a.code.localeCompare(b.code)).slice(0, 8)
-            .map((w) => ({ name: w.name, hint: w.code, value: w.products, text: `${w.products} ${w.products === 1 ? "product" : "products"}` }))} />
-        )}
-        {inventory.status === "ok" && inventory.data.warehouses.length > 8 && <Footnote>The 8 warehouses holding the most products are shown.</Footnote>}
-      </GlassCard>
-    );
     const activity = inventory.status === "ok" ? movementActivity(inventory.data.movements, data.days, prefs.timezone) : [];
-    const anyActivity = activity.some((d) => d.added + d.removed + d.transferred > 0);
+    const anyActivity = activity.some((d) => d.added + d.removed > 0);
     const dayLabel = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
     const mk = (name: string, color: string, pick: (d: (typeof activity)[number]) => number): Series => ({ name, color, points: activity.map((d) => ({ label: dayLabel(d.day), value: String(pick(d)), text: `${pick(d)} ${pick(d) === 1 ? "movement" : "movements"}` })) });
     analytics.push(
       <GlassCard key="activity" className="p-5 sm:p-6" aria-label="Inventory movement activity">
-        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.blue }, { name: "Removed", color: SERIES_COLORS.slate }, { name: "Transferred", color: SERIES_COLORS.sage }]} />} />
+        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.blue }, { name: "Removed", color: SERIES_COLORS.slate }]} />} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : !anyActivity ? <CardNote>No stock movements in the last {ACTIVITY_DAYS} days.</CardNote> : (
-          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.blue, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed), mk("Transferred", SERIES_COLORS.sage, (d) => d.transferred)]} />
+          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.blue, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed)]} />
         )}
         {inventory.status === "ok" && inventory.data.movementsTruncated && anyActivity && <Footnote>Based on the latest {inventory.data.movements.length} movements.</Footnote>}
       </GlassCard>
@@ -216,8 +206,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.movements.length === 0 ? <CardNote>No stock movements yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {inventory.data.movements.slice(0, 5).map((m) => row(m.id,
-              <div className="min-w-0"><p className="truncate text-sm font-medium text-ix-text">{m.product_name}</p><p className="truncate text-xs text-ix-muted">{m.warehouse_code} · {formatDate(m.created_at, prefs)}</p></div>,
-              <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{m.movement_type === "out" || m.movement_type === "transfer_out" ? "−" : "+"}{plain(m.quantity, prefs)} {m.product_unit}</p><Pill tone="muted">{m.movement_type.replace("_", " ")}</Pill></div>))}
+              <div className="min-w-0"><p className="truncate text-sm font-medium text-ix-text">{m.product_name}</p><p className="truncate text-xs text-ix-muted">{formatDate(m.created_at, prefs)}</p></div>,
+              <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{m.movement_type === "out" ? "−" : "+"}{plain(m.quantity, prefs)} {m.product_unit}</p><Pill tone="muted">{m.movement_type.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
       </GlassCard>

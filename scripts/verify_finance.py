@@ -207,14 +207,8 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(who, code, name):
-        _, data, _, _ = tenant(who, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(data).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
-
-    def stock_in(who, pid, wid, quantity):
-        return tenant(who, "POST", "/api/stock/in", {"product_id": pid, "warehouse_id": wid, "quantity": quantity}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})[0]
+    def stock_in(who, pid, quantity):
+        return tenant(who, "POST", "/api/stock/in", {"product_id": pid, "quantity": quantity}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})[0]
 
     def new_client(who, name):
         _, data, _, _ = tenant(who, "POST", "/api/sales/clients", {"name": name})
@@ -222,14 +216,14 @@ def main() -> int:
         created.add("clients", body.get("id"))
         return body
 
-    def confirmed_dispatch(who, client_id, product_id, qty, warehouse_id):
+    def confirmed_dispatch(who, client_id, product_id, qty):
         _, data, _, _ = tenant(who, "POST", "/api/sales/delivery-lists", {"clientId": client_id})
         made = jbody(data).get("list", {})
         tenant(who, "POST", f"/api/sales/delivery-lists/{made['id']}/items", {"productId": product_id, "quantity": qty})
         tenant(who, "POST", f"/api/sales/delivery-lists/{made['id']}/ready")
         delivery_list = jbody(tenant(who, "GET", f"/api/sales/delivery-lists/{made['id']}")[1]).get("list", {})
         item = next(i for i in delivery_list["items"] if i["product_id"] == product_id)
-        _, data, _, _ = tenant(who, "POST", "/api/sales/dispatches", {"deliveryListId": delivery_list["id"], "lines": [{"deliveryListItemId": item["id"], "warehouseId": warehouse_id, "quantity": qty}]}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})
+        _, data, _, _ = tenant(who, "POST", "/api/sales/dispatches", {"deliveryListId": delivery_list["id"], "lines": [{"deliveryListItemId": item["id"], "quantity": qty}]}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})
         dispatch = jbody(data).get("dispatch", {})
         tenant(who, "POST", f"/api/sales/dispatches/{dispatch['id']}/confirm")
         return jbody(tenant(who, "GET", f"/api/sales/dispatches/{dispatch['id']}")[1]).get("dispatch", {})
@@ -277,7 +271,7 @@ def main() -> int:
 
     def inventory_snapshot(org_key):
         o = org_ids[org_key]
-        return psql("impex_inventory", f"SELECT (SELECT coalesce(string_agg(product_id || ':' || warehouse_id || ':' || quantity::text, ',' ORDER BY product_id, warehouse_id), '') FROM stock_balances WHERE organization_id = '{o}') || '/' || (SELECT count(*) FROM stock_movements WHERE organization_id = '{o}')")
+        return psql("impex_inventory", f"SELECT (SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{o}') || '/' || (SELECT count(*) FROM stock_movements WHERE organization_id = '{o}')")
 
     # ------------------------------------------------------------------------------------------------------------------------------
     try:
@@ -303,11 +297,10 @@ def main() -> int:
 
         # Records that exist BEFORE Finance is switched on (the cut-over: they must never be back-filled).
         print("\n== 0. Sales activity before Finance is switched on")
-        warehouse_a = warehouse("a1", "MAIN", "Main depot")
         bolt_a, flour_a = product("a1", "FIN-BOLT", "Finance bolt"), product("a1", "FIN-FLOUR", "Finance flour", "kg")
-        check("Inventory works for A (warehouse, products, stock)", all(x.get("id") for x in (warehouse_a, bolt_a, flour_a)) and stock_in("a1", bolt_a["id"], warehouse_a["id"], "200") == 201 and stock_in("a1", flour_a["id"], warehouse_a["id"], "50") == 201)
+        check("Inventory works for A (products, stock)", all(x.get("id") for x in (bolt_a, flour_a)) and stock_in("a1", bolt_a["id"], "200") == 201 and stock_in("a1", flour_a["id"], "50") == 201)
         client_a = new_client("a1", "Acme Buyer Ltd")
-        d_old = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "5", warehouse_a["id"])
+        d_old = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "5")
         old_invoice = invoice("a1", client_a["id"], d_old, bolt_a["id"], "5", "10.00")
         check("an invoice is issued BEFORE Finance exists for A (Sales works on its own)", old_invoice.get("status") == "issued" and old_invoice.get("total") == "50.0000", old_invoice.get("status"))
         time.sleep(1.5)
@@ -460,7 +453,7 @@ def main() -> int:
         check("an expense's audit history records who did what", int(psql("impex_finance", f"SELECT count(*) FROM finance_events WHERE entity_id = '{x1['id']}' AND actor_email = '{emails['a1']}'")) == 3)
 
         print("\n== 7. invoices, payments and voids from Sales become entries - once")
-        d1 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "20", warehouse_a["id"])
+        d1 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "20")
         inv1 = invoice("a1", client_a["id"], d1, bolt_a["id"], "20", "10.00", discountAmount="20.00", taxRate="10", taxLabel="VAT")
         check("A1 issues an invoice in Sales (subtotal 200, discount 20, tax 18)", inv1.get("status") == "issued" and inv1.get("total") == "198.0000" and inv1.get("tax_total") == "18.0000", (inv1.get("status"), inv1.get("total")))
         s, run = sync_now("a1")
@@ -486,19 +479,19 @@ def main() -> int:
         rev_id = next((p["id"] for p in jbody(tenant("a1", "GET", f"/api/sales/invoices/{inv1['id']}")[1]).get("invoice", {}).get("payments", []) if p["kind"] == "reversal"), None)
         e_prev = entry("a1", fin_entry_for("a", f"payment-reversed:{rev_id}") or "")
         check("reversing the payment in Sales posts the opposite entry", s in (200, 201) and lines_of(e_prev) == [("1050", "0.0000", "80.0000"), ("1100", "80.0000", "0.0000")], (s, lines_of(e_prev)))
-        d2 = confirmed_dispatch("a1", client_a["id"], flour_a["id"], "4", warehouse_a["id"])
+        d2 = confirmed_dispatch("a1", client_a["id"], flour_a["id"], "4")
         inv2 = invoice("a1", client_a["id"], d2, flour_a["id"], "4", "2.50", currency="EUR")
         sync_now("a1")
         e_eur = entry("a1", fin_entry_for("a", f"invoice-issued:{inv2['id']}") or "")
         check("an invoice in another currency is posted in ITS currency (EUR), with no conversion", e_eur.get("currency_code") == "EUR" and lines_of(e_eur) == [("1100", "10.0000", "0.0000"), ("4000", "0.0000", "10.0000")], (e_eur.get("currency_code"), lines_of(e_eur)))
         check("voiding that invoice in Sales posts a mirror reversal of its entry, and the original stays", tapi("a1", "POST", f"/api/sales/invoices/{inv2['id']}/void", {"reason": "client cancelled"})[0] == 200 and (sync_now("a1") or True)
               and (fin_entry_for("a", f"invoice-voided:{inv2['id']}") is not None) and entry("a1", fin_entry_for("a", f"invoice-issued:{inv2['id']}")).get("reversed_by_entry_id") == fin_entry_for("a", f"invoice-voided:{inv2['id']}"))
-        draft_dispatch = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "1", warehouse_a["id"])
+        draft_dispatch = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "1")
         draft_inv = invoice("a1", client_a["id"], draft_dispatch, bolt_a["id"], "1", "3.00", issue=False)
         before_count = count_entries("a")
         sync_now("a1")
         check("a DRAFT invoice posts nothing", draft_inv.get("status") == "draft" and count_entries("a") == before_count)
-        d7 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2", warehouse_a["id"])
+        d7 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2")
         inv7 = invoice("a1", client_a["id"], d7, bolt_a["id"], "2", "7.00")
         snapshots = (sales_snapshot("a"), purchasing_snapshot("a"), inventory_snapshot("a"))
         posted_before = count_entries("a")
@@ -525,7 +518,7 @@ def main() -> int:
         sync_now("a1")
         check("a purchase order alone creates no entry and no supplier liability", count_entries("a") == count_before and count_entries("a", "AND source_type = 'purchasing'") == 0)
         line = next(l for l in order["lines"] if l["product_id"] == bolt_a["id"])
-        _, data, _, _ = tenant("a1", "POST", "/api/purchasing/goods-receipts", {"purchaseOrderId": order["id"], "lines": [{"purchaseOrderLineId": line["id"], "acceptedQuantity": "7", "rejectedQuantity": "3", "warehouseId": warehouse_a["id"]}]}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})
+        _, data, _, _ = tenant("a1", "POST", "/api/purchasing/goods-receipts", {"purchaseOrderId": order["id"], "lines": [{"purchaseOrderLineId": line["id"], "acceptedQuantity": "7", "rejectedQuantity": "3"}]}, {"Idempotency-Key": f"fc-{uuid.uuid4()}"})
         receipt = jbody(data).get("receipt", {})
         created.add("goods_receipts", receipt.get("id"))
         sync_now("a1")
@@ -541,14 +534,14 @@ def main() -> int:
         check("Purchasing's own records were not changed by Finance", purchasing_snapshot("a") != "")
 
         print("\n== 9. the background worker does this by itself")
-        d3 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2", warehouse_a["id"])
+        d3 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2")
         inv3 = invoice("a1", client_a["id"], d3, bolt_a["id"], "2", "6.00")
         posted = wait_until(lambda: fin_entry_for("a", f"invoice-issued:{inv3['id']}") is not None, 60, 1)
         check("without anybody pressing 'Sync now', the invoice is posted within a minute (the worker runs every few seconds)", posted)
 
         if not args.skip_outage:
             print("\n== 10. outages are survived: nothing is lost, nothing is posted twice")
-            d4 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "3", warehouse_a["id"])
+            d4 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "3")
             docker("compose", "stop", "sales-service")
             try:
                 s, run = sync_now("a1")
@@ -568,7 +561,7 @@ def main() -> int:
             check("when Sales is back the missed invoice is posted - exactly once", count_entries("a", f"AND source_key = 'invoice-issued:{inv4['id']}'") == 1)
             ov = fin("a1", "GET", "/overview")[1]
             check("and the overview is healthy again", {x["source"]: x["status"] for x in ov["sync"]["sources"]}["sales"] == "ok" and {x["source"]: x["consecutive_failures"] for x in ov["sync"]["sources"]}["sales"] == 0)
-            d5 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2", warehouse_a["id"])
+            d5 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "2")
             docker("compose", "stop", "finance-service")
             try:
                 inv5 = invoice("a1", client_a["id"], d5, bolt_a["id"], "2", "5.00")
@@ -624,7 +617,7 @@ def main() -> int:
         n_before = count_entries("a")
         check("the Super Admin switches Finance off for A", finance_module("a", False)[0] == 200)
         check("A's pages, portal API and the service itself refuse (module_disabled)", "data-module-denied" in tpage("a1", "/finance")[1] and tapi("a1", "GET", "/api/finance/accounts")[0] == 403 and fin("a1", "GET", "/accounts")[0] == 403)
-        d6 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "1", warehouse_a["id"])
+        d6 = confirmed_dispatch("a1", client_a["id"], bolt_a["id"], "1")
         inv6 = invoice("a1", client_a["id"], d6, bolt_a["id"], "1", "9.00")
         time.sleep(20)
         check("an invoice issued while Finance is off is not posted (the worker skips organizations without Finance)", fin_entry_for("a", f"invoice-issued:{inv6['id']}") is None and count_entries("a") == n_before)
@@ -682,7 +675,6 @@ def main() -> int:
                 "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
                 "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
                 "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-                "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
                 "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             })
         left["users"] = delete_exact(psql, "impex_auth", "users", created.get("users"))

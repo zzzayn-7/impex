@@ -55,7 +55,6 @@ def list_goods_receipts(
     purchase_order_id: Optional[uuid.UUID] = None,
     supplier_id: Optional[uuid.UUID] = None,
     status_filter: Optional[Literal["draft", "posting", "confirmed", "cancelled"]] = Query(default=None, alias="status"),
-    warehouse_id: Optional[uuid.UUID] = None,
     product_id: Optional[uuid.UUID] = None,
     q: Optional[str] = Query(default=None, max_length=100, description="Search receipt number, order number, supplier reference or supplier name"),
     date_from: Optional[date] = None,
@@ -76,13 +75,13 @@ def list_goods_receipts(
         filters.append(GoodsReceipt.received_date >= date_from)
     if date_to:
         filters.append(GoodsReceipt.received_date <= date_to)
-    for column, value in ((GoodsReceiptLine.warehouse_id, warehouse_id), (GoodsReceiptLine.product_id, product_id)):
-        if value:
-            filters.append(
-                exists().where(
-                    GoodsReceiptLine.organization_id == GoodsReceipt.organization_id, GoodsReceiptLine.goods_receipt_id == GoodsReceipt.id, column == value
-                )
+    if product_id:
+        filters.append(
+            exists().where(
+                GoodsReceiptLine.organization_id == GoodsReceipt.organization_id, GoodsReceiptLine.goods_receipt_id == GoodsReceipt.id,
+                GoodsReceiptLine.product_id == product_id,
             )
+        )
     if q and q.strip():
         filters.append(receipts.search_filter(like_pattern(q.strip())))
     order_join = (PurchaseOrder.id == GoodsReceipt.purchase_order_id) & (PurchaseOrder.organization_id == GoodsReceipt.organization_id)

@@ -74,7 +74,7 @@ const fresh = () => {
       } as Record<string, any>,
       billable: [{
         dispatch_line_id: A_DLINE, dispatch_id: A_DISPATCH, dispatch_number: "DS-000001", dispatch_date: "2026-11-07", delivery_list: { id: A_LIST, number: "DL-000001", status: "partially_dispatched" },
-        product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: "Alpha steel bolt", unit: "pcs", warehouse_code: "MAIN", dispatched_quantity: "10.0000", invoiced_quantity: "0.0000",
+        product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: "Alpha steel bolt", unit: "pcs", dispatched_quantity: "10.0000", invoiced_quantity: "0.0000",
         in_drafts_quantity: "0.0000", remaining_quantity: "10.0000",
       }],
       account: {

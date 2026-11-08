@@ -15,13 +15,12 @@ def world(two_orgs, inventory):
     data = {}
     for who in ("alpha", "beta"):
         org = two_orgs[who]
-        wid = inventory.add_warehouse(org.org_id, "MAIN")
         pid = inventory.add_product(org.org_id, "SHARED-SKU", f"{who} gadget", "pcs")
-        inventory.set_stock(pid, wid, 7 if who == "alpha" else 99)
+        inventory.set_stock(pid, 7 if who == "alpha" else 99)
         client = org.new_client("Acme Ltd", contact_person=f"{who} contact")
         created = org.new_list(client["id"], external_reference=f"{who}-PO")
         item = org.add(created["id"], pid, 3).json()["item"]
-        data[who] = {"client": client, "list": created, "item": item, "product": pid, "warehouse": wid}
+        data[who] = {"client": client, "list": created, "item": item, "product": pid}
     return data
 
 
@@ -93,12 +92,12 @@ def test_a_product_of_the_other_organization_cannot_be_put_on_my_list(two_orgs, 
     assert snapshot(session_factory) == before
 
 
-def test_a_warehouse_of_the_other_organization_cannot_be_planned(two_orgs, world):
+def test_a_warehouse_cannot_be_planned_at_all(two_orgs, world):
     alpha = two_orgs["alpha"]
     other = alpha.new_client("Other")
     fresh = alpha.new_list(other["id"])
-    response = alpha.add(fresh["id"], world["alpha"]["product"], 1, planned_warehouse_id=world["beta"]["warehouse"])
-    assert response.status_code == 404 and response.json()["detail"] == "Warehouse not found."
+    response = alpha.add(fresh["id"], world["alpha"]["product"], 1, planned_warehouse_id=str(uuid.uuid4()))
+    assert response.status_code == 422
 
 
 def test_the_same_sku_and_client_name_resolve_to_each_organizations_own_data(two_orgs, world):
@@ -106,7 +105,7 @@ def test_the_same_sku_and_client_name_resolve_to_each_organizations_own_data(two
         org = two_orgs[who]
         detail = org.detail(world[who]["list"]["id"])
         assert detail["client"]["name"] == "Acme Ltd" and detail["items"][0]["product_name"] == f"{who} gadget"
-        assert detail["items"][0]["stock"]["available_quantity"] == ("7" if who == "alpha" else "99")
+        assert detail["items"][0]["stock"]["total_quantity"] == ("7" if who == "alpha" else "99")
 
 
 def test_the_organization_comes_from_the_token_never_from_the_request(two_orgs, world):

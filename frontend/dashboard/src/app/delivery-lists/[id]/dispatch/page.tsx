@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { listWarehouseChoices, loadStockSummary } from "@/lib/inventory";
+import { loadStockSummary } from "@/lib/inventory";
 import { getDeliveryList, getDispatch } from "@/lib/sales";
 import { STATUS_LABELS } from "@/lib/sales-browser";
 import { UUID_RE } from "@/lib/stock-validation";
@@ -54,16 +54,15 @@ export default async function PrepareDispatchPage({ params, searchParams }: { pa
     );
   }
 
-  const [warehouses, stock] = await Promise.all([listWarehouseChoices(token, "active"), loadStockSummary(token, list.items.map((i) => i.product_id))]);
+  const stock = await loadStockSummary(token, list.items.map((i) => i.product_id));
   return (
     <div className="space-y-5">
       {back}
       <div>
         <h2 className="text-xl font-semibold text-white">Prepare dispatch · <span className="font-mono">{list.number}</span></h2>
-        <p className="text-xs text-slate-400">For {list.client.name}. Choose what leaves, from which warehouse, review the available stock, then confirm to deduct it.</p>
+        <p className="text-xs text-slate-400">For {list.client.name}. Choose what leaves, review the stock on hand, then confirm to deduct it.</p>
       </div>
-      {warehouses.length === 0 && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">You have no active warehouse. Create one in Warehouses before dispatching goods.</p>}
-      <DispatchForm key={draft?.id ?? "new"} list={list} warehouses={warehouses} stock={stock} draft={draft} />
+      <DispatchForm key={draft?.id ?? "new"} list={list} stock={stock} draft={draft} />
     </div>
   );
 }

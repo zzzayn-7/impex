@@ -53,12 +53,12 @@ def make_dispatch(engine, world, number="DS-000001"):
     return dispatch
 
 
-def add_line(engine, world, dispatch, index=0, quantity="3", warehouse=None, unit="pcs", product=None, item=None):
+def add_line(engine, world, dispatch, index=0, quantity="3", unit="pcs", product=None, item=None):
     line = uuid.uuid4()
     run(engine,
-        "INSERT INTO dispatch_lines (id, organization_id, dispatch_id, delivery_list_item_id, product_id, product_sku, product_name, unit, warehouse_id, warehouse_code, quantity) "
-        "VALUES (:id, :o, :d, :i, :p, 'SKU', 'Thing', :unit, :w, 'MAIN', :q)",
-        id=line, o=world["org"], d=dispatch, i=item or world["items"][index], p=product or world["products"][index], unit=unit, w=warehouse or uuid.uuid4(), q=Decimal(quantity))
+        "INSERT INTO dispatch_lines (id, organization_id, dispatch_id, delivery_list_item_id, product_id, product_sku, product_name, unit, quantity) "
+        "VALUES (:id, :o, :d, :i, :p, 'SKU', 'Thing', :unit, :q)",
+        id=line, o=world["org"], d=dispatch, i=item or world["items"][index], p=product or world["products"][index], unit=unit, q=Decimal(quantity))
     return line
 
 
@@ -224,8 +224,8 @@ def test_dispatches_are_never_deleted(engine):
 def test_a_dispatch_line_must_be_an_item_of_the_dispatchs_list_with_the_same_product_and_unit(engine):
     w, other = make_world(engine), make_world(engine, number="DL-000002")
     d = make_dispatch(engine, w)
-    insert = ("INSERT INTO dispatch_lines (organization_id, dispatch_id, delivery_list_item_id, product_id, product_sku, product_name, unit, warehouse_id, quantity) "
-              "VALUES (:o, :d, :i, :p, 'S', 'N', :u, gen_random_uuid(), 1)")
+    insert = ("INSERT INTO dispatch_lines (organization_id, dispatch_id, delivery_list_item_id, product_id, product_sku, product_name, unit, quantity) "
+              "VALUES (:o, :d, :i, :p, 'S', 'N', :u, 1)")
     assert "not on the delivery list" in refused(engine, insert, o=w["org"], d=d, i=other["items"][0], p=other["products"][0], u="pcs")
     assert "product and the unit" in refused(engine, insert, o=w["org"], d=d, i=w["items"][0], p=uuid.uuid4(), u="pcs")
     assert "product and the unit" in refused(engine, insert, o=w["org"], d=d, i=w["items"][0], p=w["products"][0], u="kg")
@@ -237,11 +237,10 @@ def test_quantity_and_uniqueness_rules_on_a_line(engine):
     for bad in ("0", "-1"):
         with pytest.raises(DBAPIError):
             add_line(engine, w, d, quantity=bad)
-    warehouse = uuid.uuid4()
-    add_line(engine, w, d, 0, "1", warehouse=warehouse)
+    add_line(engine, w, d, 0, "1")
     with pytest.raises(DBAPIError):
-        add_line(engine, w, d, 0, "1", warehouse=warehouse)  # the same item from the same warehouse twice
-    add_line(engine, w, d, 0, "1")  # another warehouse: fine
+        add_line(engine, w, d, 0, "1")  # the same item twice on one dispatch
+    add_line(engine, w, d, 1, "1")  # another item: fine
 
 
 def test_nothing_can_be_confirmed_without_lines(engine):
@@ -255,11 +254,6 @@ def test_more_than_requested_can_never_be_dispatched(engine):
     too_much = make_dispatch(engine, w)
     add_line(engine, w, too_much, 0, "10.0001")
     assert "exceed" in refused(engine, "UPDATE dispatches SET status = 'posting', posting_started_at = now() WHERE id = :id", id=too_much)
-
-    split = make_dispatch(engine, w, "DS-000002")
-    add_line(engine, w, split, 0, "6")
-    add_line(engine, w, split, 0, "6")  # two warehouses: the lines of ONE item are added up
-    assert "exceed" in refused(engine, "UPDATE dispatches SET status = 'posting', posting_started_at = now() WHERE id = :id", id=split)
 
     first, second = make_dispatch(engine, w, "DS-000003"), make_dispatch(engine, w, "DS-000004")
     add_line(engine, w, first, 0, "6")
@@ -345,7 +339,7 @@ def test_a_confirmed_dispatch_can_never_be_changed_or_deleted(engine):
     ):
         assert "never" in refused(engine, sql, id=d), sql
     for sql in (
-        "UPDATE dispatch_lines SET quantity = 99 WHERE id = :l", "UPDATE dispatch_lines SET warehouse_id = gen_random_uuid() WHERE id = :l",
+        "UPDATE dispatch_lines SET quantity = 99 WHERE id = :l",
         "UPDATE dispatch_lines SET inventory_movement_id = gen_random_uuid() WHERE id = :l", "DELETE FROM dispatch_lines WHERE id = :l",
     ):
         assert "confirmed" in refused(engine, sql, l=line), sql

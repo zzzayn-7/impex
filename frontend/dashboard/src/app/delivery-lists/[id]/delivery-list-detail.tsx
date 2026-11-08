@@ -121,7 +121,7 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
                   <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Quantity</th>
-                  <th className="px-3 py-3 font-semibold text-right">Available now</th><th className="px-3 py-3 font-semibold">Planned from</th>
+                  <th className="px-3 py-3 font-semibold text-right">In stock now</th>
                   {!draft && <th className="px-3 py-3 font-semibold">Dispatch progress</th>}{draft && <th className="px-3 py-3 font-semibold">Actions</th>}
                 </tr>
               </thead>
@@ -152,12 +152,11 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
                     <td className="px-3 py-3 text-right font-mono text-xs">
                       {item.stock ? (
                         <span className={item.stock.exceeds_available ? "text-amber-300" : "text-emerald-400"}>
-                          {qty(item.stock.available_quantity)} {item.unit}
+                          {qty(item.stock.total_quantity)} {item.unit}
                           {item.stock.exceeds_available && <span className="block text-[11px]">short by {qty(item.stock.shortfall)}</span>}
                         </span>
                       ) : <span className="text-slate-600">—</span>}
                     </td>
-                    <td className="px-3 py-3 text-xs">{item.planned_warehouse_code ?? <span className="text-slate-600">—</span>}</td>
                     {!draft && (
                       <td className="px-3 py-3 text-xs" data-testid={`progress-${item.product_sku}`}>
                         <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label={`Dispatched ${item.product_name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent(item.dispatched_quantity ?? "0", item.quantity)}>

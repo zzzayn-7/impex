@@ -60,28 +60,6 @@ class Product(TenantOwnedMixin, Base):
     )
 
 
-class Warehouse(TenantOwnedMixin, Base):
-    """A place where an organization keeps stock. Archived (never deleted) once it has been used."""
-
-    __tablename__ = "warehouses"
-    __table_args__ = (
-        UniqueConstraint("organization_id", "code", name="uq_warehouses_organization_id_code"),
-        UniqueConstraint("organization_id", "id", name="uq_warehouses_organization_id_id"),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
-    )
-    code: Mapped[str] = mapped_column(String(32), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-
 class StockOperation(TenantOwnedMixin, Base):
     """One stock-changing REQUEST, identified by its Idempotency-Key. A retry finds this row and replays the result."""
 
@@ -89,7 +67,7 @@ class StockOperation(TenantOwnedMixin, Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "idempotency_key", name="uq_stock_operations_organization_id_idempotency_key"),
         UniqueConstraint("organization_id", "id", name="uq_stock_operations_organization_id_id"),
-        CheckConstraint("kind IN ('opening', 'in', 'out', 'transfer', 'receipt', 'dispatch')", name="kind_valid"),
+        CheckConstraint("kind IN ('opening', 'in', 'out', 'receipt', 'dispatch')", name="kind_valid"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -103,25 +81,21 @@ class StockOperation(TenantOwnedMixin, Base):
 
 
 class StockBalance(TenantOwnedMixin, Base):
-    """How much of a product is in a warehouse. Never negative (CHECK), changed only together with a movement."""
+    """How much of a product the organization has in stock. Never negative (CHECK), changed only together with a movement."""
 
     __tablename__ = "stock_balances"
     __table_args__ = (
-        UniqueConstraint("organization_id", "product_id", "warehouse_id", name="uq_stock_balances_organization_id_product_id_warehouse_id"),
-        # Same-organization guarantee: the product and the warehouse must belong to this row's organization.
+        UniqueConstraint("organization_id", "product_id", name="uq_stock_balances_organization_id_product_id"),
+        # Same-organization guarantee: the product must belong to this row's organization.
         ForeignKeyConstraint(["organization_id", "product_id"], ["products.organization_id", "products.id"],
                              name="fk_stock_balances_product_same_organization", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["organization_id", "warehouse_id"], ["warehouses.organization_id", "warehouses.id"],
-                             name="fk_stock_balances_warehouse_same_organization", ondelete="RESTRICT"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
-        Index("ix_stock_balances_organization_id_warehouse_id", "organization_id", "warehouse_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
     )
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -131,22 +105,18 @@ class StockBalance(TenantOwnedMixin, Base):
 class StockMovement(TenantOwnedMixin, Base):
     """The append-only stock ledger. Rows are only ever inserted: a database trigger rejects UPDATE and DELETE.
 
-    `quantity` is always positive; the direction comes from `movement_type`. A transfer is two rows
-    (transfer_out and transfer_in) sharing a transfer_id, written in one transaction.
+    `quantity` is always positive; the direction comes from `movement_type` (opening and in add, out subtracts).
     """
 
     __tablename__ = "stock_movements"
     __table_args__ = (
         ForeignKeyConstraint(["organization_id", "product_id"], ["products.organization_id", "products.id"],
                              name="fk_stock_movements_product_same_organization", ondelete="RESTRICT"),
-        ForeignKeyConstraint(["organization_id", "warehouse_id"], ["warehouses.organization_id", "warehouses.id"],
-                             name="fk_stock_movements_warehouse_same_organization", ondelete="RESTRICT"),
         ForeignKeyConstraint(["organization_id", "operation_id"], ["stock_operations.organization_id", "stock_operations.id"],
                              name="fk_stock_movements_operation_same_organization", ondelete="RESTRICT"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("balance_after >= 0", name="balance_after_non_negative"),
-        CheckConstraint("movement_type IN ('opening', 'in', 'out', 'transfer_out', 'transfer_in')", name="movement_type_valid"),
-        CheckConstraint("(movement_type IN ('transfer_out', 'transfer_in')) = (transfer_id IS NOT NULL)", name="transfer_link_matches_type"),
+        CheckConstraint("movement_type IN ('opening', 'in', 'out')", name="movement_type_valid"),
         # where a movement came from, when another service caused it (a goods receipt line); all three or none
         CheckConstraint(
             "(source_type IS NULL AND source_reference IS NULL AND source_line_id IS NULL) OR "
@@ -159,7 +129,6 @@ class StockMovement(TenantOwnedMixin, Base):
               postgresql_where=text("source_line_id IS NOT NULL")),
         Index("ix_stock_movements_organization_id_created_at", "organization_id", "created_at"),
         Index("ix_stock_movements_organization_id_product_id_created_at", "organization_id", "product_id", "created_at"),
-        Index("ix_stock_movements_organization_id_warehouse_id_created_at", "organization_id", "warehouse_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -167,12 +136,10 @@ class StockMovement(TenantOwnedMixin, Base):
     )
     operation_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     movement_type: Mapped[str] = mapped_column(String(20), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    balance_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)  # the warehouse balance right after this movement
+    balance_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)  # the product's stock right after this movement
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    transfer_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)  # snapshot: survives account changes
     source_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # 'goods_receipt', 'client_dispatch' or None

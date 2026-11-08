@@ -38,14 +38,12 @@ def register(api, product, value, kind="manufacturer"):
 
 @pytest.fixture
 def shop(api):
-    """A bolt (pieces) in two warehouses, one of them archived, and flour (kg) in one."""
+    """A bolt (pieces) with 50 in stock, and flour (kg) with 2.5."""
     bolt, flour = api.product(sku="BOLT-1", name="Steel bolt", unit="pcs"), api.product(sku="FLOUR", name="Flour", unit="kg")
-    main, annex = api.warehouse("MAIN", "Main depot"), api.warehouse("ANNEX", "Annex")
-    api.add(bolt, main, 40)
-    api.add(bolt, annex, 10)
-    api.add(flour, main, "2.5")
-    api.client.post(f"/api/v1/inventory/warehouses/{annex['id']}/archive", headers=api.headers)
-    return {"bolt": bolt, "flour": flour, "main": main, "annex": annex}
+    api.add(bolt, 40)
+    api.add(bolt, 10)
+    api.add(flour, "2.5")
+    return {"bolt": bolt, "flour": flour}
 
 
 # --- finding the product -------------------------------------------------------------------------------------
@@ -83,8 +81,7 @@ def test_the_result_carries_product_details_and_current_stock(api, shop):
     assert (product["name"], product["unit"], product["unit_allows_fractions"], product["unit_locked"]) == ("Steel bolt", "pcs", False, True)
     assert "organization_id" not in str(body)
     assert stock["total_quantity"] == "50.0000"
-    assert stock["available_quantity"] == "40.0000"  # the archived warehouse's 10 is not available
-    assert {(l["warehouse_code"], l["quantity"], l["warehouse_active"]) for l in stock["lines"]} == {("MAIN", "40.0000", True), ("ANNEX", "10.0000", False)}
+    assert "warehouse" not in str(body).lower() and "lines" not in stock and "available_quantity" not in stock
     flour = resolve(api, "FLOUR").json()
     assert flour["product"]["unit_allows_fractions"] is True and flour["stock"]["total_quantity"] == "2.5000"
 
@@ -92,7 +89,7 @@ def test_the_result_carries_product_details_and_current_stock(api, shop):
 def test_a_product_with_no_stock_resolves_with_zero(api):
     api.product(sku="NEW", name="Brand new")
     stock = resolve(api, "NEW").json()["stock"]
-    assert stock["total_quantity"] == "0" and stock["available_quantity"] == "0" and stock["lines"] == []
+    assert stock["total_quantity"] == "0"
 
 
 # --- unknown, invalid, retired, archived, ambiguous ---------------------------------------------------------------
@@ -150,7 +147,7 @@ def test_an_archived_product_is_returned_flagged_not_hidden(api, shop):
     assert body["product"]["is_active"] is False and body["stock"]["is_active"] is False
     assert body["stock"]["total_quantity"] == "50.0000"  # still reports what is there
     # ...and stock cannot be changed for it (the existing rule)
-    refused = api.change("in", product_id=shop["bolt"]["id"], warehouse_id=shop["main"]["id"], quantity="1")
+    refused = api.change("in", product_id=shop["bolt"]["id"], quantity="1")
     assert refused.status_code == 409 and "archived" in refused.json()["detail"]
 
 
@@ -204,7 +201,7 @@ def test_the_org_id_is_not_an_input(api, shop, two_orgs):
 # --- scan -> stock operation uses the existing, idempotent stock API ------------------------------------------------
 def test_a_scanned_product_can_be_stocked_through_the_existing_api_and_is_audited(api, shop):
     scanned = resolve(api, generate(api, shop["bolt"])).json()
-    body = dict(product_id=scanned["product"]["id"], warehouse_id=shop["main"]["id"], quantity="5", reason="Scanned delivery")
+    body = dict(product_id=scanned["product"]["id"], quantity="5", reason="Scanned delivery")
     first = api.change("in", key="scan-op-key-0001", **body)
     again = api.change("in", key="scan-op-key-0001", **body)  # double tap / retry
     assert (first.status_code, again.status_code, again.json()["replayed"]) == (201, 200, True)
@@ -215,8 +212,8 @@ def test_a_scanned_product_can_be_stocked_through_the_existing_api_and_is_audite
 
 def test_the_scan_result_enforces_the_quantity_rules_on_the_next_step(api, shop):
     scanned = resolve(api, "BOLT-1").json()["product"]
-    fraction = api.change("in", product_id=scanned["id"], warehouse_id=shop["main"]["id"], quantity="1.5")
-    too_much = api.change("out", product_id=scanned["id"], warehouse_id=shop["main"]["id"], quantity="41")
+    fraction = api.change("in", product_id=scanned["id"], quantity="1.5")
+    too_much = api.change("out", product_id=scanned["id"], quantity="51")
     assert (fraction.status_code, too_much.status_code) == (422, 409)
     assert resolve(api, "BOLT-1").json()["stock"]["total_quantity"] == "50.0000"
 
@@ -230,10 +227,9 @@ def world(two_orgs):
         org = two_orgs[who]
         product = org.product(sku="SHARED-SKU", name=f"{who} gadget", category=f"{who}-cat")
         other = org.product(sku=f"{who.upper()}-ONLY", name=f"{who} exclusive")
-        warehouse = org.warehouse("MAIN", f"{who} depot")
-        org.add(product, warehouse, 7 if who == "alpha" else 99)
+        org.add(product, 7 if who == "alpha" else 99)
         register(org, product, "SHARED-EAN-13")
-        data[who] = {"product": product, "other": other, "warehouse": warehouse, "label": generate(org, product), "other_label": generate(org, other)}
+        data[who] = {"product": product, "other": other, "label": generate(org, product), "other_label": generate(org, other)}
     return data
 
 

@@ -124,7 +124,7 @@ stores organization data must follow the rules and use the helpers described in
 ## 🗺️ Roadmap & Planned Services
 
 - **`frontend/dashboard`**: Tenant-facing analytics, inventory tracking, and order placement.
-- **`services/inventory-service`**: Multi-warehouse stock tracking, SKU management, barcodes, and customs batch tracking.
+- **`services/inventory-service`**: Stock tracking (one stock figure per product), SKU management and barcodes.
 - **`services/sales-service`**: Clients, delivery lists, dispatches, sales invoices and client payments are built (see [`services/sales-service/README.md`](services/sales-service/README.md)). Quotes, orders, returns and refunds are planned.
 - **`services/finance-service`**: the foundation is built — chart of accounts, double-entry journal, expenses and automatic postings from Sales and Purchasing (see [`docs/finance.md`](docs/finance.md)). Financial statements and analytics (Step 21B), bank integration, exchange rates and tax compliance are planned.
 

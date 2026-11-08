@@ -156,14 +156,8 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(key, code, name):
-        _, text, _, _ = portal(key, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(text).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
-
-    def stock_in(key, pid, wid, quantity):
-        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "warehouse_id": wid, "quantity": quantity}, {"Idempotency-Key": f"inv-{uuid.uuid4()}"})[0]
+    def stock_in(key, pid, quantity):
+        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "quantity": quantity}, {"Idempotency-Key": f"inv-{uuid.uuid4()}"})[0]
 
     def new_client(key, name):
         _, text, _, _ = portal(key, "POST", "/api/sales/clients", {"name": name})
@@ -183,9 +177,9 @@ def main() -> int:
         return list_detail(key, made["id"])
 
     def dispatch(key, delivery_list, lines, do_confirm=True):
-        """lines: (product_id, quantity, warehouse_id). Returns the dispatch (confirmed unless do_confirm is False)."""
+        """lines: (product_id, quantity). Returns the dispatch (confirmed unless do_confirm is False)."""
         items = {i["product_id"]: i["id"] for i in delivery_list["items"]}
-        body = [{"deliveryListItemId": items[p], "warehouseId": w, "quantity": q} for p, q, w in lines]
+        body = [{"deliveryListItemId": items[p], "quantity": q} for p, q in lines]
         _, text, _, _ = portal(key, "POST", "/api/sales/dispatches", {"deliveryListId": delivery_list["id"], "lines": body}, {"Idempotency-Key": f"inv-{uuid.uuid4()}"})
         made = jbody(text).get("dispatch", {})
         if do_confirm:
@@ -225,7 +219,7 @@ def main() -> int:
         return next((l["remaining_quantity"] for l in billable(key, client_id)[1] if l["product_id"] == product_id and l["dispatch_number"] == dispatch_number), None)
 
     def inventory_state(org):
-        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || warehouse_id || ':' || quantity::text, ',' ORDER BY product_id, warehouse_id), '') FROM stock_balances WHERE organization_id = '{org}'")
+        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{org}'")
         movements = psql("impex_inventory", f"SELECT count(*) || '/' || coalesce(max(created_at)::text, '') FROM stock_movements WHERE organization_id = '{org}'")
         operations = psql("impex_inventory", f"SELECT count(*) FROM stock_operations WHERE organization_id = '{org}'")
         prices = psql("impex_inventory", f"SELECT coalesce(string_agg(sku || ':' || cost_price::text || ':' || selling_price::text || ':' || unit || ':' || is_active::text, ',' ORDER BY sku), '') FROM products WHERE organization_id = '{org}'")
@@ -236,8 +230,8 @@ def main() -> int:
         return psql("impex_sales", f"SELECT coalesce(string_agg(d.id || ':' || d.status || ':' || coalesce(l.s::text, ''), ',' ORDER BY d.id), '') FROM dispatches d LEFT JOIN (SELECT dispatch_id, sum(quantity) AS s FROM dispatch_lines GROUP BY dispatch_id) l ON l.dispatch_id = d.id WHERE d.organization_id = '{org}'") + "|" + \
             psql("impex_sales", f"SELECT coalesce(string_agg(id || ':' || status, ',' ORDER BY id), '') FROM delivery_lists WHERE organization_id = '{org}'")
 
-    def quantity(product_id, warehouse_id):
-        return Decimal(psql("impex_inventory", f"SELECT coalesce((SELECT quantity FROM stock_balances WHERE product_id = '{product_id}' AND warehouse_id = '{warehouse_id}'), 0)") or "0")
+    def quantity(product_id):
+        return Decimal(psql("impex_inventory", f"SELECT coalesce((SELECT quantity FROM stock_balances WHERE product_id = '{product_id}'), 0)") or "0")
 
     try:
         print("== setup: two organizations, one administrator each (no emails involved)")
@@ -267,26 +261,25 @@ def main() -> int:
             mark_setup_complete(psql, org_ids[key])  # this script tests other features: skip the first-time wizard for its throwaway organization (verify_onboarding.py tests the wizard)
 
         a_bolt, a_flour, b_bolt = product("a", "INV-BOLT", "INVA steel bolt", "pcs"), product("a", "INV-FLOUR", "INVA flour", "kg"), product("b", "INV-BOLT", "INVB silk scarf", "pcs")
-        a_main, b_main = warehouse("a", "MAIN", "INVA main depot"), warehouse("b", "MAIN", "INVB main depot")
-        check("products and warehouses created (the same SKU 'INV-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, b_bolt, a_main, b_main)))
-        stock_in("a", a_bolt["id"], a_main["id"], "100")
-        stock_in("a", a_flour["id"], a_main["id"], "50")
-        stock_in("b", b_bolt["id"], b_main["id"], "50")
+        check("products created (the same SKU 'INV-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, b_bolt)))
+        stock_in("a", a_bolt["id"], "100")
+        stock_in("a", a_flour["id"], "50")
+        stock_in("b", b_bolt["id"], "50")
         acme, zenith, beta_client = new_client("a", "INV Acme Ltd"), new_client("a", "INV Zenith Ltd"), new_client("b", "INV Beta Client")
         dl_acme = ready_list("a", acme["id"], [(a_bolt["id"], "20"), (a_flour["id"], "4")])
         dl_zenith = ready_list("a", zenith["id"], [(a_bolt["id"], "8")])
         dl_beta = ready_list("b", beta_client["id"], [(b_bolt["id"], "20")])
-        d1 = dispatch("a", dl_acme, [(a_bolt["id"], "10", a_main["id"]), (a_flour["id"], "2.5", a_main["id"])])
-        d2 = dispatch("a", dl_acme, [(a_bolt["id"], "5", a_main["id"])])
-        d5 = dispatch("a", dl_acme, [(a_bolt["id"], "5", a_main["id"])])  # kept aside for the outage checks
-        d_draft = dispatch("a", dl_acme, [(a_flour["id"], "1", a_main["id"])], do_confirm=False)  # a dispatch that is NOT confirmed
-        d3 = dispatch("a", dl_zenith, [(a_bolt["id"], "8", a_main["id"])])
-        b_d1 = dispatch("b", dl_beta, [(b_bolt["id"], "20", b_main["id"])])
+        d1 = dispatch("a", dl_acme, [(a_bolt["id"], "10"), (a_flour["id"], "2.5")])
+        d2 = dispatch("a", dl_acme, [(a_bolt["id"], "5")])
+        d5 = dispatch("a", dl_acme, [(a_bolt["id"], "5")])  # kept aside for the outage checks
+        d_draft = dispatch("a", dl_acme, [(a_flour["id"], "1")], do_confirm=False)  # a dispatch that is NOT confirmed
+        d3 = dispatch("a", dl_zenith, [(a_bolt["id"], "8")])
+        b_d1 = dispatch("b", dl_beta, [(b_bolt["id"], "20")])
         check("confirmed dispatches exist: A has 3 for Acme (10+2.5 kg, 5, 5) and one for Zenith (8), plus a DRAFT one; B has one of 20",
               all(x.get("status") == "confirmed" for x in (d1, d2, d5, d3, b_d1)) and d_draft.get("status") == "draft", [x.get("status") for x in (d1, d2, d5, d_draft, d3, b_d1)])
         inventory_before = {k: inventory_state(org_ids[k]) for k in ("a", "b")}
         sales_before = {k: sales_state(org_ids[k]) for k in ("a", "b")}
-        stock_a_bolt, stock_a_flour = quantity(a_bolt["id"], a_main["id"]), quantity(a_flour["id"], a_main["id"])
+        stock_a_bolt, stock_a_flour = quantity(a_bolt["id"]), quantity(a_flour["id"])
         check("starting stock after the dispatches: bolts 100-10-5-5-8 = 72, flour 50-2.5 = 47.5 (the draft dispatch deducted nothing)", stock_a_bolt == Decimal("72") and stock_a_flour == Decimal("47.5"), (stock_a_bolt, stock_a_flour))
 
         print("\n== 1. what can be billed: only CONFIRMED dispatches of THIS client")
@@ -630,7 +623,7 @@ def main() -> int:
                 wait_until(SALES, "/health")
             s, current = get("a", spare["id"])
             check("after it is back the invoice is exactly as left: paid 3.00 of 10.00", s == 200 and (current["paid_total"], current["outstanding"], current["status"]) == ("3.0000", "7.0000", "partially_paid"), (s, current))
-            check("the outage changed no stock", quantity(a_bolt["id"], a_main["id"]) == stock_a_bolt and quantity(a_flour["id"], a_main["id"]) == stock_a_flour)
+            check("the outage changed no stock", quantity(a_bolt["id"]) == stock_a_bolt and quantity(a_flour["id"]) == stock_a_flour)
         else:
             print("\n(skipped: outage checks - run with --with-outage)")
     finally:
@@ -654,7 +647,6 @@ def main() -> int:
             "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
             "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
             "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-            "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
             "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             "organizations": delete_exact(psql, "impex_organizations", "organizations", orgs),
             "users": delete_exact(psql, "impex_auth", "users", created.get("users")),

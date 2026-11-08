@@ -125,105 +125,19 @@ class ProductList(BaseModel):
 
 
 # =====================================================================================================
-# Warehouses
-# =====================================================================================================
-CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
-
-
-class WarehouseFields(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    @field_validator("code", check_fields=False)
-    @classmethod
-    def _normalize_code(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        value = value.upper()  # "main" and "MAIN" are the same warehouse code
-        if not CODE_RE.match(value):
-            raise ValueError("Code may contain only letters, digits and . _ - (max 32 characters)")
-        return value
-
-    @field_validator("address", check_fields=False)
-    @classmethod
-    def _blank_address_to_none(cls, value: Optional[str]) -> Optional[str]:
-        return None if value is None or value == "" else value
-
-
-class WarehouseCreate(WarehouseFields):
-    code: str = Field(min_length=1, max_length=32)
-    name: str = Field(min_length=1, max_length=255)
-    address: Optional[str] = Field(default=None, max_length=500)
-
-
-class WarehouseUpdate(WarehouseFields):
-    """Partial update: only the fields that are sent change."""
-
-    code: Optional[str] = Field(default=None, min_length=1, max_length=32)
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    address: Optional[str] = Field(default=None, max_length=500)
-
-    @model_validator(mode="after")
-    def _at_least_one_and_no_nulls(self):
-        if not self.model_fields_set:
-            raise ValueError("Provide at least one field to change.")
-        for field in ("code", "name"):
-            if field in self.model_fields_set and getattr(self, field) is None:
-                raise ValueError(f"{field} cannot be empty")
-        return self
-
-
-class WarehouseResponse(BaseModel):
-    """A warehouse as the tenant sees it. No organization_id is exposed."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    code: str
-    name: str
-    address: Optional[str]
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-    products_in_stock: int = 0  # how many products currently have stock here (archive/restore hint)
-
-
-class WarehouseList(BaseModel):
-    items: List[WarehouseResponse]
-    total: int
-    limit: int
-    offset: int
-
-
-# =====================================================================================================
 # Stock
 # =====================================================================================================
 # Exact decimals again: at most 14 digits before and 4 after the point, strictly positive.
 Quantity = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=4)]
-MovementType = Literal["opening", "in", "out", "transfer_out", "transfer_in"]
+MovementType = Literal["opening", "in", "out"]
 
 
 class StockChange(BaseModel):
-    """Opening balance, stock-in or stock-out of one product in one warehouse. No organization field exists."""
+    """Opening balance, stock-in or stock-out of one product. No organization field exists."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     product_id: uuid.UUID
-    warehouse_id: uuid.UUID
-    quantity: Quantity
-    reason: Optional[str] = Field(default=None, max_length=255)
-
-    @field_validator("reason")
-    @classmethod
-    def _blank_reason_to_none(cls, value: Optional[str]) -> Optional[str]:
-        return None if value == "" else value
-
-
-class StockTransfer(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    product_id: uuid.UUID
-    from_warehouse_id: uuid.UUID
-    to_warehouse_id: uuid.UUID
     quantity: Quantity
     reason: Optional[str] = Field(default=None, max_length=255)
 
@@ -241,14 +155,10 @@ class MovementResponse(BaseModel):
     product_name: str
     product_unit: str
     unit_allows_fractions: bool
-    warehouse_id: uuid.UUID
-    warehouse_code: str
-    warehouse_name: str
     movement_type: MovementType
     quantity: Decimal
     balance_after: Decimal
     reason: str
-    transfer_id: Optional[uuid.UUID]
     created_by_email: str
     source_type: Optional[str] = None
     source_reference: Optional[str] = None
@@ -264,17 +174,9 @@ class MovementList(BaseModel):
 
 class StockOperationResult(BaseModel):
     operation_id: uuid.UUID
-    kind: Literal["opening", "in", "out", "transfer"]
+    kind: Literal["opening", "in", "out"]
     replayed: bool  # true when this was a retry of an earlier request with the same Idempotency-Key
     movements: List[MovementResponse]
-
-
-class StockLine(BaseModel):
-    warehouse_id: uuid.UUID
-    warehouse_code: str
-    warehouse_name: str
-    warehouse_active: bool
-    quantity: Decimal
 
 
 class StockProduct(BaseModel):
@@ -285,9 +187,7 @@ class StockProduct(BaseModel):
     unit: str
     unit_allows_fractions: bool
     is_active: bool
-    total_quantity: Decimal  # across every warehouse that holds it
-    available_quantity: Decimal  # only warehouses that are active
-    lines: List[StockLine]
+    total_quantity: Decimal  # what is in stock now
 
 
 class StockOverview(BaseModel):
@@ -369,14 +269,13 @@ class ScanResult(BaseModel):
 # Goods-receipt posting (Step 16B): stock-in for goods received against a purchase order of another service
 # =====================================================================================================
 class ReceiptLine(BaseModel):
-    """One accepted quantity of one product into one warehouse. `unit` is the unit the buyer ordered in: the posting is refused
+    """One accepted quantity of one product. `unit` is the unit the buyer ordered in: the posting is refused
     if the product's current unit differs, so a quantity is never silently reinterpreted."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     line_id: uuid.UUID  # the receipt line in the calling service: a line can be posted only once, ever
     product_id: uuid.UUID
-    warehouse_id: uuid.UUID
     quantity: Quantity
     unit: str = Field(min_length=1, max_length=20)
 
@@ -400,7 +299,6 @@ class ReceiptMovement(BaseModel):
     id: uuid.UUID
     line_id: uuid.UUID
     product_id: uuid.UUID
-    warehouse_id: uuid.UUID
     quantity: Decimal
     balance_after: Decimal
 
@@ -416,7 +314,7 @@ class ReceiptPosting(BaseModel):
 # Client-dispatch posting (Step 17A): stock-out for goods dispatched against a delivery list of the Sales Service
 # =====================================================================================================
 class DispatchLine(ReceiptLine):
-    """One quantity of one product leaving one warehouse. `line_id` is the dispatch line in the Sales Service: it can be posted
+    """One quantity of one product leaving stock. `line_id` is the dispatch line in the Sales Service: it can be posted
     only once, ever. `unit` must equal the product's current unit (a quantity is never reinterpreted)."""
 
 

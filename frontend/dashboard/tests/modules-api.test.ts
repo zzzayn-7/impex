@@ -32,7 +32,7 @@ const api = (path: string, extra: Record<string, string> = {}) =>
   new NextRequest(`http://localhost:3001${path}`, { method: "POST", headers: { cookie: `impex_tenant_session=${TOKEN}`, ...extra } });
 const passes = (res: Response) => res.headers.get("x-middleware-next") === "1";
 
-const INVENTORY = ["/api/products", "/api/products/abc/archive", "/api/warehouses", "/api/warehouses/x", "/api/stock/in", "/api/stock/transfer", "/api/scan/resolve"];
+const INVENTORY = ["/api/products", "/api/products/abc/archive", "/api/stock/in", "/api/scan/resolve"];
 const PURCHASING = ["/api/purchasing/suppliers", "/api/purchasing/purchase-orders/x/lines", "/api/purchasing/goods-receipts/x/confirm"];
 const SALES = ["/api/sales/clients", "/api/sales/delivery-lists/x/items", "/api/sales/dispatches/x/confirm", "/api/sales/invoices", "/api/sales/invoices/x/payments"];
 const FINANCE = ["/api/finance/accounts", "/api/finance/accounts/x", "/api/finance/journal-entries", "/api/finance/journal-entries/x/post", "/api/finance/expenses", "/api/finance/expenses/x/reverse", "/api/finance/sync/run", "/api/finance/sync/events/x/retry"];
@@ -46,7 +46,7 @@ describe("the module registry of the portal", () => {
     expect(moduleForApi("/api/financeX/accounts")).toBeNull();
     for (const path of ["/api/support/tickets", "/api/auth/login", "/api/auth/logout", "/api/setup/company", "/api/organization/logo", "/api/productsX", "/api/salesforce"]) expect(moduleForApi(path), path).toBeNull();
     expect(Object.keys(MODULE_PAGES)).toEqual(MODULE_KEYS);
-    expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Products", "Warehouses", "Stock", "Scan Product", "Movements"]);
+    expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Products", "Stock", "Scan Product", "Movements"]);
     expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Goods Receipts"]);
     expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Delivery Lists", "Dispatches", "Invoices"]);
     expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Financial Overview", "Accounts", "Expenses", "Journal Entries"]);

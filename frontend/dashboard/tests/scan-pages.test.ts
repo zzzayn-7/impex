@@ -42,14 +42,13 @@ const label = (p: ReturnType<typeof product>, code: string) => ({
   barcode_svg: `<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="9"/></svg>`,
 });
 
-type Org = { products: Record<string, ReturnType<typeof product>>; identifiers: Record<string, any[]>; labels: Record<string, any>; warehouses: any[] };
+type Org = { products: Record<string, ReturnType<typeof product>>; identifiers: Record<string, any[]>; labels: Record<string, any> };
 const alpha: Org = (() => {
   const p = product(ALPHA_PRODUCT, "ALPHA-1", "Alpha steel bolt");
   return {
     products: { [p.id]: p },
     identifiers: { [p.id]: [identifier(p.id, "generated", "IMX-ALPHACODE234"), identifier(p.id, "supplier", "ACME-ALPHA-77", { label: "Acme Alpha Ltd" })] },
     labels: { [p.id]: label(p, "IMX-ALPHACODE234") },
-    warehouses: [{ id: "w1", code: "AMAIN", name: "Alpha main", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 1 }],
   };
 })();
 const beta: Org = (() => {
@@ -58,7 +57,6 @@ const beta: Org = (() => {
     products: { [p.id]: p },
     identifiers: { [p.id]: [identifier(p.id, "generated", "IMX-BETACODE5678")] },
     labels: { [p.id]: label(p, "IMX-BETACODE5678") },
-    warehouses: [{ id: "w2", code: "BMAIN", name: "Beta main", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 0 }],
   };
 })();
 
@@ -81,7 +79,6 @@ function stubWorld(options: { status?: number; orgs?: Record<string, Org> } = {}
       const org = orgs[token];
       if (!org) return json(401, {});
       const path = new URL(url).pathname.replace("/api/v1/inventory", "");
-      if (path === "/warehouses") return json(200, { items: org.warehouses, total: org.warehouses.length, limit: 200, offset: 0 });
       const match = path.match(/^\/products\/([^/]+)(\/identifiers|\/label)?$/);
       if (match) {
         const [, id, tail] = match;
@@ -114,13 +111,12 @@ describe("Scan Product page", () => {
     }
   });
 
-  it("does not start the camera or load anything but the organization's own warehouses", async () => {
+  it("does not start the camera and loads nothing from the services when the page opens", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await ScanPage({ searchParams: {} }));
     expect(html).not.toContain("Start camera"); // the camera panel does not even exist until the user asks for it
-    expect(inventoryCalls().map((c) => new URL(c.url).pathname)).toEqual(["/api/v1/inventory/warehouses"]);
-    expect(inventoryCalls()[0].headers.Authorization).toBe("Bearer token-alpha");
+    expect(inventoryCalls()).toHaveLength(0); // the products are looked up only when something is scanned
     expect(inventoryCalls().every((c) => !/organization|tenant|org_id/i.test(c.url))).toBe(true);
   });
 
@@ -142,7 +138,7 @@ describe("Scan Product page", () => {
     const html = renderToStaticMarkup(await ScanLayout({ children: "PAGE" }));
     expect(html).toContain("PAGE");
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Scan Product");
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements"]) expect(html).toContain(`href="${href}"`);
   });
 });
 
@@ -191,7 +187,7 @@ describe("Product codes & labels page", () => {
 
   it("only reads: viewing the page never generates a code, and a product without one shows the Generate button", async () => {
     const bare = product(ALPHA_PRODUCT, "ALPHA-1", "Alpha steel bolt");
-    stubWorld({ orgs: { "token-alpha": { products: { [bare.id]: bare }, identifiers: { [bare.id]: [] }, labels: {}, warehouses: [] } } });
+    stubWorld({ orgs: { "token-alpha": { products: { [bare.id]: bare }, identifiers: { [bare.id]: [] }, labels: {} } } });
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(ALPHA_PRODUCT);
     expect(html).toContain("Generate QR code &amp; barcode");

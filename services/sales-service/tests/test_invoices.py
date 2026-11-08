@@ -15,9 +15,8 @@ def d(value) -> Decimal:
 
 @pytest.fixture
 def depot(inventory, shop):
-    shelf = inventory.add_warehouse(shop["org"], "SHELF")
-    inventory.set_stock(shop["bolt"], shelf, 20)
-    return {**shop, "shelf": shelf}
+    inventory.set_stock(shop["bolt"], 60)
+    return shop
 
 
 @pytest.fixture
@@ -28,7 +27,7 @@ def world(api, depot):
     api.add(delivery_list["id"], depot["bolt"], 15)
     api.add(delivery_list["id"], depot["flour"], 2)
     ready = api.status(delivery_list["id"], "ready").json()
-    dispatch = api.confirmed_dispatch(depot, ready, [("bolt", 10, "main"), ("flour", 2, "main")])
+    dispatch = api.confirmed_dispatch(depot, ready, [("bolt", 10), ("flour", 2)])
     return {"client": client, "list": ready, "dispatch": dispatch}
 
 
@@ -163,7 +162,7 @@ def test_drafts_show_up_as_informational_only(api, depot, world):
 
 def test_one_invoice_can_bill_several_dispatches_of_one_list(api, depot, world):
     client = world["client"]["id"]
-    second = api.confirmed_dispatch(depot, api.detail(world["list"]["id"]), [("bolt", 5, "shelf")])
+    second = api.confirmed_dispatch(depot, api.detail(world["list"]["id"]), [("bolt", 5)])
     invoice = api.issued_invoice(client, [bill(world["dispatch"], depot["bolt"], 10, "2"), bill(second, depot["bolt"], 5, "2")])
     assert invoice["delivery_list"]["number"] == "DL-000001" and len(invoice["lines"]) == 2
     assert sorted(a["dispatch_number"] for l in invoice["lines"] for a in l["allocations"]) == ["DS-000001", "DS-000002"]
@@ -175,14 +174,14 @@ def test_one_invoice_can_bill_two_delivery_lists_of_the_same_client(api, depot, 
     other_list = api.new_list(client)
     api.add(other_list["id"], depot["bolt"], 3)
     other_ready = api.status(other_list["id"], "ready").json()
-    other = api.confirmed_dispatch(depot, other_ready, [("bolt", 3, "main")])
+    other = api.confirmed_dispatch(depot, other_ready, [("bolt", 3)])
     invoice = api.draft_invoice(client, [bill(world["dispatch"], depot["bolt"], 10, "2"), bill(other, depot["bolt"], 3, "2")])
     assert invoice["delivery_list"] is None and len(invoice["lines"]) == 2
 
 
 def test_only_confirmed_dispatches_of_this_client_can_be_billed(api, depot, world):
     client = world["client"]["id"]
-    draft_dispatch = api.draft(world["list"]["id"], [sent(api.detail(world["list"]["id"]), depot["bolt"], 2, depot["main"])])
+    draft_dispatch = api.draft(world["list"]["id"], [sent(api.detail(world["list"]["id"]), depot["bolt"], 2)])
     not_confirmed = {"dispatch_line_id": draft_dispatch["lines"][0]["id"], "quantity": "1", "unit_price": "2"}
     assert api.invoice_request(client, [not_confirmed]).status_code == 404  # a draft dispatch has not left stock yet
     other_client = api.new_client("Other Ltd")
@@ -513,7 +512,7 @@ def test_the_list_filters_and_searches(api, depot, world):
     other_client = api.new_client("Zenith Ltd")
     other_list = api.new_list(other_client["id"])
     api.add(other_list["id"], depot["bolt"], 4)
-    other_dispatch = api.confirmed_dispatch(depot, api.status(other_list["id"], "ready").json(), [("bolt", 4, "main")])
+    other_dispatch = api.confirmed_dispatch(depot, api.status(other_list["id"], "ready").json(), [("bolt", 4)])
     unpaid = api.issued_invoice(client, [bill(world["dispatch"], depot["bolt"], 4, "2")], invoice_date="2025-01-10", due_date="2999-01-01")
     partial = api.issued_invoice(client, [bill(world["dispatch"], depot["bolt"], 4, "2")], invoice_date="2025-01-11", due_date="2999-01-01")
     api.pay(partial["id"], "3")
@@ -578,7 +577,7 @@ def test_names_with_markup_cannot_break_the_pdf(api, depot, world):
     client = api.new_client("A & B <Traders> \"Ltd\"")
     delivery_list = api.new_list(client["id"])
     api.add(delivery_list["id"], depot["bolt"], 2)
-    dispatch = api.confirmed_dispatch(depot, api.status(delivery_list["id"], "ready").json(), [("bolt", 2, "main")])
+    dispatch = api.confirmed_dispatch(depot, api.status(delivery_list["id"], "ready").json(), [("bolt", 2)])
     issued = api.issued_invoice(client["id"], [bill(dispatch, depot["bolt"], 2, "2")], notes="<b>bold</b> & more")
     assert api.client.get(f"{INVOICES}/{issued['id']}/pdf", headers=api.headers).status_code == 200
 

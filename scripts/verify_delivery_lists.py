@@ -132,14 +132,8 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(key, code, name):
-        _, text, _, _ = portal(key, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(text).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
-
-    def stock_in(key, pid, wid, quantity):
-        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "warehouse_id": wid, "quantity": quantity}, {"Idempotency-Key": f"dl-{uuid.uuid4()}"})[0]
+    def stock_in(key, pid, quantity):
+        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "quantity": quantity}, {"Idempotency-Key": f"dl-{uuid.uuid4()}"})[0]
 
     def new_client(key, name, **extra):
         status, text, _, _ = portal(key, "POST", "/api/sales/clients", {"name": name, **extra})
@@ -165,7 +159,7 @@ def main() -> int:
 
     def inventory_state(org):
         """Every balance and every movement of the organization, as the Inventory database holds them."""
-        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || warehouse_id || ':' || quantity::text, ',' ORDER BY product_id, warehouse_id), '') FROM stock_balances WHERE organization_id = '{org}'")
+        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{org}'")
         movements = psql("impex_inventory", f"SELECT count(*) || '/' || coalesce(max(created_at)::text, '') FROM stock_movements WHERE organization_id = '{org}'")
         operations = psql("impex_inventory", f"SELECT count(*) FROM stock_operations WHERE organization_id = '{org}'")
         return balances, movements, operations
@@ -203,19 +197,16 @@ def main() -> int:
         # the SAME sku in both organizations, different products
         a_bolt, a_flour, a_old = product("a", "DL-BOLT", "DLA steel bolt", "pcs"), product("a", "DL-FLOUR", "DLA flour", "kg"), product("a", "DL-OLD", "DLA old widget", "pcs")
         b_bolt = product("b", "DL-BOLT", "DLB silk scarf", "pcs")
-        a_main, a_annex, b_main = warehouse("a", "MAIN", "DLA main depot"), warehouse("a", "ANNEX", "DLA annex"), warehouse("b", "MAIN", "DLB main depot")
-        check("products and warehouses created (same SKU 'DL-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_old, b_bolt, a_main, a_annex, b_main)))
-        stock_in("a", a_bolt["id"], a_main["id"], "40")
-        stock_in("a", a_bolt["id"], a_annex["id"], "10")
-        stock_in("a", a_flour["id"], a_main["id"], "2.5")
-        stock_in("b", b_bolt["id"], b_main["id"], "99")
-        portal("a", "POST", f"/api/warehouses/{a_annex['id']}/archive")  # 10 bolts are on hand but not available
+        check("products created (same SKU 'DL-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_old, b_bolt)))
+        stock_in("a", a_bolt["id"], "50")
+        stock_in("a", a_flour["id"], "2.5")
+        stock_in("b", b_bolt["id"], "99")
         portal("a", "POST", f"/api/products/{a_old['id']}/archive")
         _, text, _, _ = portal("a", "POST", f"/api/products/{a_bolt['id']}/identifiers/generate")
         bolt_label = jbody(text)["identifier"]["value"]
         created.add("product_identifiers", jbody(text)["identifier"]["id"])
         inventory_before = {k: inventory_state(org_ids[k]) for k in ("a", "b")}
-        check("starting stock recorded (A: three balances - 40 + 10 bolts, 2.5 kg flour; B: 99)", len(inventory_before["a"][0].split(",")) == 3 and inventory_before["b"][0].endswith(":99.0000"), inventory_before)
+        check("starting stock recorded (A: two balances - 50 bolts, 2.5 kg flour; B: 99)", len(inventory_before["a"][0].split(",")) == 2 and inventory_before["b"][0].endswith(":99.0000"), inventory_before)
 
         print("\n== 1. client directory")
         s, body = new_client("a", "Acme Ltd", contactPerson="Jane Doe", email="Jane@Acme.example", phone="555-0100", address="1 Main St")
@@ -277,7 +268,7 @@ def main() -> int:
         item = body.get("item", {})
         check("the scanned bolt is added with the typed quantity (201)", s == 201 and item.get("quantity") == "12.0000" and body.get("item_count") == 1, (s, body))
         check("name, SKU and unit come from the Inventory Service", (item.get("product_name"), item.get("product_sku"), item.get("unit")) == ("DLA steel bolt", "DL-BOLT", "pcs"), item)
-        check("current stock is shown: 40 available (the archived warehouse's 10 are not), 50 total", item["stock"]["available_quantity"] == "40.0000" and item["stock"]["total_quantity"] == "50.0000", item.get("stock"))
+        check("current stock is shown: 50 in stock, and no warehouse anywhere", item["stock"]["total_quantity"] == "50.0000" and "available_quantity" not in item["stock"] and "planned_warehouse_code" not in item, item.get("stock"))
         s, body = add("a", l1["id"], a_flour["id"], "1.5")
         flour_item = body.get("item", {})
         check("a second product (kg, decimals) goes onto the same client list (201)", s == 201 and flour_item.get("quantity") == "1.5000" and body.get("item_count") == 2, (s, body))
@@ -299,11 +290,8 @@ def main() -> int:
         s, body = add("a", l2["id"], a_old["id"], "1")
         check("an archived product is refused (409, says so)", s == 409 and "archived" in body.get("error", ""), (s, body))
         s, body = add("a", l2["id"], a_bolt["id"], "5", plannedWarehouseId=str(uuid.uuid4()))
-        check("an unknown planned warehouse is refused (404)", s == 404, (s, body))
-        s, body = add("a", l2["id"], a_bolt["id"], "5", plannedWarehouseId=a_annex["id"])
-        check("an archived planned warehouse is refused (409)", s == 409, (s, body))
-        s, body = add("a", l2["id"], a_bolt["id"], "5", plannedWarehouseId=a_main["id"])
-        check("a planned warehouse is accepted and shown (201)", s == 201 and body["item"]["planned_warehouse_code"] == "MAIN", (s, body))
+        check("a planned warehouse sent by the browser is dropped: nothing is stored or shown (201)", s == 201 and "planned_warehouse_id" not in body["item"]
+              and psql("impex_sales", f"SELECT count(*) FROM information_schema.columns WHERE table_name = 'delivery_list_items' AND column_name LIKE '%warehouse%'") == "0", (s, body))
 
         print("\n== 5. the browser cannot dictate product details or stock")
         s, body = add("a", l3["id"], a_bolt["id"], "2", productName="HACKED", productSku="EVIL", unit="kg", available_quantity="999999", organization_id=org_ids["b"])
@@ -330,7 +318,7 @@ def main() -> int:
         check("an increase of zero is refused (400)", s == 400)
         s, text, _, _ = portal("a", "PATCH", f"/api/sales/delivery-lists/{l1['id']}/items/{item['id']}", {"quantity": "100"})
         s, d = detail("a", l1["id"])
-        check("asking for more than is available is allowed but flagged (100 > 40: short by 60)", d["items"][0]["stock"]["exceeds_available"] is True and d["items"][0]["stock"]["shortfall"] == "60.0000" and d["items_exceeding_stock"] == 1, d["items"][0].get("stock"))
+        check("asking for more than is available is allowed but flagged (100 > 50: short by 50)", d["items"][0]["stock"]["exceeds_available"] is True and d["items"][0]["stock"]["shortfall"] == "50.0000" and d["items_exceeding_stock"] == 1, d["items"][0].get("stock"))
         s, text, _, _ = portal("a", "PATCH", f"/api/sales/delivery-lists/{l1['id']}/items/{item['id']}", {"quantity": "12"})
         s, text, _, _ = portal("a", "DELETE", f"/api/sales/delivery-lists/{l1['id']}/items/{flour_item['id']}")
         s2, d = detail("a", l1["id"])
@@ -363,7 +351,7 @@ def main() -> int:
         s, text, _, _ = portal("a", "GET", "/api/sales/delivery-lists?status=cancelled")
         check("lists can be filtered by status", [l["number"] for l in jbody(text)["items"]] == ["DL-000002"])
         status, html, _ = page("a", f"/delivery-lists/{l1['id']}")
-        check("the list page shows items, availability and the 'not reserved' notice", status == 200 and all(x in html for x in ("DL-000001", "DLA steel bolt", "Available now", "Stock is not reserved", "Reopen as draft")), status)
+        check("the list page shows items, availability and the 'not reserved' notice", status == 200 and all(x in html for x in ("DL-000001", "DLA steel bolt", "In stock now", "Stock is not reserved", "Reopen as draft")), status)
 
         print("\n== 8. THE rule: inventory is untouched by all of it")
         after = {k: inventory_state(org_ids[k]) for k in ("a", "b")}
@@ -419,11 +407,9 @@ def main() -> int:
         check("B cannot put A's product on B's own list (404, same as an unknown product)", s == 404 and "Product not found" in body.get("error", ""), (s, body))
         s, body = add("b", b_list["id"], b_bolt["id"], "7")
         check("B adds B's own product with the same SKU (201)", s == 201 and body["item"]["product_name"] == "DLB silk scarf", (s, body))
-        check("B sees B's own stock (99), never A's", body["item"]["stock"]["available_quantity"] == "99.0000", body["item"]["stock"])
+        check("B sees B's own stock (99), never A's", body["item"]["stock"]["total_quantity"] == "99.0000", body["item"]["stock"])
         s, d = detail("b", b_list["id"])
         check("B's list contains nothing of A's", "DLA" not in json.dumps(d) and "Acme Ltd" in json.dumps(d))
-        s, body = add("b", b_list["id"], b_bolt["id"], "1", plannedWarehouseId=a_main["id"])
-        check("B cannot plan A's warehouse (404 'Warehouse not found')", s == 404 and "Warehouse not found" in body.get("error", ""), (s, body))
         s, text, _, _ = call(SALES, "GET", f"/api/v1/sales/delivery-lists?organization_id={org_ids['a']}", headers={**bearer(tokens["b"]), "X-Organization-Id": org_ids["a"]})
         check("a query parameter and header naming A change nothing for B", all("DLA" not in json.dumps(i) and i["id"] != l1["id"] for i in jbody(text).get("items", [])) and s == 200)
         s, text, _, _ = call(SALES, "POST", "/api/v1/sales/clients", {"name": "Sneaky", "organization_id": org_ids["a"]}, bearer(tokens["b"]))
@@ -514,7 +500,6 @@ def main() -> int:
             "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
             "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
             "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-            "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
             "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             "organizations": delete_exact(psql, "impex_organizations", "organizations", orgs),
             "users": delete_exact(psql, "impex_auth", "users", created.get("users")),

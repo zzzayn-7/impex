@@ -125,12 +125,6 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(key, code, name):
-        status, text, _, _ = portal(key, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(text).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
-
     def stock(key, action, body, idem=None):
         status, text, _, _ = portal(key, "POST", f"/api/stock/{action}", body, {"Idempotency-Key": idem or f"scan-{uuid.uuid4()}"})
         return status, jbody(text)
@@ -153,7 +147,7 @@ def main() -> int:
 
     def counts(org):
         return {t: psql("impex_inventory", f"SELECT count(*) FROM {t} WHERE organization_id = '{org}'") for t in
-                ("stock_movements", "stock_balances", "stock_operations", "warehouses", "product_identifiers")}
+                ("stock_movements", "stock_balances", "stock_operations", "product_identifiers")}
 
     try:
         print("== setup: two organizations, one administrator each (no emails involved)")
@@ -186,8 +180,7 @@ def main() -> int:
         # Both organizations use the SAME sku and the SAME manufacturer barcode for different products.
         a_bolt, a_flour, a_nut = product("a", "SC-BOLT", "ScanA steel bolt", "pcs"), product("a", "SC-FLOUR", "ScanA flour", "kg"), product("a", "SC-NUT", "ScanA nut", "pcs")
         b_bolt = product("b", "SC-BOLT", "ScanB silk scarf", "pcs")
-        a_main, a_annex, b_main = warehouse("a", "MAIN", "ScanA main depot"), warehouse("a", "ANNEX", "ScanA annex"), warehouse("b", "MAIN", "ScanB main depot")
-        check("products and warehouses created (same SKU 'SC-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_nut, b_bolt, a_main, a_annex, b_main)))
+        check("products created (same SKU 'SC-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_nut, b_bolt)))
         a_bolt_sku_before = (a_bolt["id"], a_bolt["sku"])
 
         print("\n== 1. QR / Code 128 codes for existing products")
@@ -226,19 +219,17 @@ def main() -> int:
         check("A registers a barcode for the flour (201)", s == 201, (s, r))
 
         print("\n== 3. scan lookup through the portal (read-only)")
-        s, _ = stock("a", "in", {"product_id": a_bolt["id"], "warehouse_id": a_main["id"], "quantity": "40", "reason": "Scan check delivery"})
-        stock("a", "in", {"product_id": a_bolt["id"], "warehouse_id": a_annex["id"], "quantity": "10"})
-        stock("a", "in", {"product_id": a_flour["id"], "warehouse_id": a_main["id"], "quantity": "2.5"})
-        portal("a", "POST", f"/api/warehouses/{a_annex['id']}/archive")
+        s, _ = stock("a", "in", {"product_id": a_bolt["id"], "quantity": "40", "reason": "Scan check delivery"})
+        stock("a", "in", {"product_id": a_bolt["id"], "quantity": "10"})
+        stock("a", "in", {"product_id": a_flour["id"], "quantity": "2.5"})
         check("stock was recorded for A's products", s == 201)
         for code, how in ((code_a, "the Impex label code (QR / Code 128 text)"), ("5901234-EAN", "the supplier barcode"), ("sc-bolt", "the SKU in lower case"), (code_a + "%0D%0A", "the label code with the scanner's Enter")):
             s, body = resolve("a", code)
             check(f"A scans {how} -> its bolt (200)", s == 200 and body.get("product", {}).get("id") == a_bolt["id"], (s, body))
         s, body = resolve("a", code_a)
         stock_info = body["stock"]
-        check("the result carries unit, stock per warehouse, total and available", body["product"]["unit"] == "pcs" and body["product"]["unit_allows_fractions"] is False
-              and stock_info["total_quantity"] == "50.0000" and stock_info["available_quantity"] == "40.0000"
-              and {(l["warehouse_code"], l["quantity"]) for l in stock_info["lines"]} == {("MAIN", "40.0000"), ("ANNEX", "10.0000")}, body)
+        check("the result carries unit and the stock on hand - and nothing about warehouses", body["product"]["unit"] == "pcs" and body["product"]["unit_allows_fractions"] is False
+              and stock_info["total_quantity"] == "50.0000" and "lines" not in stock_info and "available_quantity" not in stock_info and "warehouse" not in json.dumps(body).lower(), body)
         check("...and no organization id", "organization_id" not in json.dumps(body))
         s, body = resolve("a", "FLOUR-EAN-1")
         check("a kg product reports that decimals are allowed", s == 200 and body["product"]["unit_allows_fractions"] is True and body["stock"]["total_quantity"] == "2.5000", (s, body))
@@ -289,19 +280,19 @@ def main() -> int:
             for c in (code_a, "SC-BOLT", "5901234-EAN", "NO-SUCH-CODE"):
                 resolve("a", c)
         check("20 scans later: no movement, balance or operation was created", counts(org_ids["a"]) == before, (before, counts(org_ids["a"])))
-        body = {"product_id": a_bolt["id"], "warehouse_id": a_main["id"], "quantity": "5", "reason": "Scanned receipt"}
+        body = {"product_id": a_bolt["id"], "quantity": "5", "reason": "Scanned receipt"}
         s1, r1 = stock("a", "in", body, "scan-flow-key-0001")
         s2, r2 = stock("a", "in", body, "scan-flow-key-0001")
         check("a stock-in after a scan, double-tapped, applies once (201 then 200 replay)", (s1, s2) == (201, 200) and r2["operation"]["replayed"], (s1, s2))
-        check("...stock is 45 in MAIN, with the movement attributed to the administrator",
-              psql("impex_inventory", f"SELECT quantity::text FROM stock_balances WHERE warehouse_id = '{a_main['id']}' AND product_id = '{a_bolt['id']}'") == "45.0000"
+        check("...stock is 55, with the movement attributed to the administrator",
+              psql("impex_inventory", f"SELECT quantity::text FROM stock_balances WHERE product_id = '{a_bolt['id']}'") == "55.0000"
               and psql("impex_inventory", f"SELECT created_by_email FROM stock_movements WHERE product_id = '{a_bolt['id']}' AND reason = 'Scanned receipt'") == emails["a"])
-        s, r = stock("a", "out", {"product_id": a_bolt["id"], "warehouse_id": a_main["id"], "quantity": "46"})
+        s, r = stock("a", "out", {"product_id": a_bolt["id"], "quantity": "56"})
         check("removing more than is there is refused (409) - never negative", s == 409 and "Insufficient stock" in r.get("error", ""), (s, r))
-        s, r = stock("a", "in", {"product_id": a_bolt["id"], "warehouse_id": a_main["id"], "quantity": "1.5"})
+        s, r = stock("a", "in", {"product_id": a_bolt["id"], "quantity": "1.5"})
         check("a fraction of a piece is refused (400)", s == 400 and "whole number" in r.get("error", ""), (s, r))
-        s, r = stock("a", "transfer", {"product_id": a_bolt["id"], "from_warehouse_id": a_main["id"], "to_warehouse_id": a_annex["id"], "quantity": "1"})
-        check("an archived warehouse still refuses transfers (409)", s == 409, (s, r))
+        s, r = stock("a", "transfer", {"product_id": a_bolt["id"], "quantity": "1"})
+        check("there is no transfer any more (404)", s == 404, (s, r))
         s, body = resolve("a", code_a)
         check("the next scan shows the new quantities", body["stock"]["total_quantity"] == "55.0000", body.get("stock"))
         check("the history is intact and unchanged by scanning", psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE product_id = '{a_bolt['id']}'") == "3")
@@ -424,12 +415,11 @@ def main() -> int:
             "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
             "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
             "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-            "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
             "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             "organizations": delete_exact(psql, "impex_organizations", "organizations", orgs),
             "users": delete_exact(psql, "impex_auth", "users", created.get("users")),
         }
-        print(f"deleted rows belonging to {len(orgs)} organizations, {len(created.get('warehouses'))} warehouses, {len(created.get('products'))} products, {len(created.get('users'))} users")
+        print(f"deleted rows belonging to {len(orgs)} organizations, {len(created.get('products'))} products, {len(created.get('users'))} users")
         print("of those ids, rows still present -> " + ", ".join(f"{k}: {v}" for k, v in left.items()))
 
     print(f"\n{sum(results)}/{len(results)} checks passed")

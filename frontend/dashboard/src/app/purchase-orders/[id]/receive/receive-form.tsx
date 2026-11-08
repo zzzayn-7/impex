@@ -8,20 +8,20 @@ import CameraScanner from "@/app/scan/camera-scanner";
 import { RECEIPT_NOTICE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE, validateReceivedQuantity } from "@/lib/purchasing-browser";
 import { api, exceeds, jsonBody, qty } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
-import { newIdempotencyKey, type Warehouse } from "@/lib/stock-validation";
+import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, ReceiptDetail } from "@/lib/purchasing";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500 disabled:opacity-40";
 
-type Row = { accepted: string; rejected: string; warehouseId: string; notes: string };
+type Row = { accepted: string; rejected: string; notes: string };
 type Stage = "edit" | "review" | "pending" | "done";
 
 const remainingOf = (line: OrderLine) => line.remaining_quantity ?? line.quantity;
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Receive goods against a purchase order: prepare, review, then explicitly confirm. Nothing here changes stock until "Confirm". */
-export default function ReceiveForm({ order, warehouses, draft }: { order: PurchaseOrderDetail; warehouses: Warehouse[]; draft: ReceiptDetail | null }) {
+export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDetail; draft: ReceiptDetail | null }) {
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey()); // one key per page: a double click or a retry returns the same draft
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -35,10 +35,6 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
   const savedHeader = useRef(header);
 
   const lines = order.lines;
-  const defaultWarehouse = (line: OrderLine) => {
-    const planned = warehouses.find((w) => w.id === line.planned_warehouse_id);
-    return (planned ?? warehouses[0])?.id ?? "";
-  };
   const [rows, setRows] = useState<Record<string, Row>>(() => {
     const initial: Record<string, Row> = {};
     for (const line of lines) {
@@ -46,7 +42,6 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
       initial[line.id] = {
         accepted: saved ? qty(saved.accepted_quantity).replace(/,/g, "") : "",
         rejected: saved && saved.rejected_quantity !== "0.0000" ? qty(saved.rejected_quantity).replace(/,/g, "") : "",
-        warehouseId: saved?.warehouse_id ?? defaultWarehouse(line),
         notes: saved?.notes ?? "",
       };
     }
@@ -104,8 +99,7 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
       const acceptedPositive = accepted !== "" && /[1-9]/.test(accepted), rejectedPositive = rejected !== "" && /[1-9]/.test(rejected);
       if (!acceptedPositive && !rejectedPositive) continue;
       any = true;
-      if (acceptedPositive && !row.warehouseId) errors[line.id] = `Choose the warehouse that receives ${line.product_name}.`;
-      else if (acceptedPositive && exceeds(accepted, remainingOf(line))) {
+      if (acceptedPositive && exceeds(accepted, remainingOf(line))) {
         errors[line.id] = `Only ${qty(remainingOf(line))} ${line.unit} of ${line.product_name} can still be received.`;
       }
     }
@@ -122,7 +116,6 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
         purchaseOrderLineId: line.id,
         acceptedQuantity: row.accepted.trim() || "0",
         rejectedQuantity: row.rejected.trim() || "0",
-        ...(/[1-9]/.test(row.accepted) ? { warehouseId: row.warehouseId } : {}),
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
       })),
   });
@@ -229,7 +222,7 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
         <p className="text-xs text-slate-400">Received on {receipt.received_date}{receipt.supplier_reference ? ` · supplier reference ${receipt.supplier_reference}` : ""} · against {order.number} from {order.supplier.name}</p>
         <ReviewTable receipt={receipt} />
         <p role="note" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">
-          Nothing has been added to your stock yet. Confirming adds the <strong>accepted</strong> quantities to the chosen warehouses. A rejected quantity is only recorded. A confirmed receipt cannot be changed afterwards.
+          Nothing has been added to your stock yet. Confirming adds the <strong>accepted</strong> quantities to your stock. A rejected quantity is only recorded. A confirmed receipt cannot be changed afterwards.
         </p>
         {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
@@ -287,7 +280,6 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
                 <th className="px-3 py-3 font-semibold text-right">Remaining</th>
                 <th className="px-3 py-3 font-semibold">Accepted now</th>
                 <th className="px-3 py-3 font-semibold">Rejected now</th>
-                <th className="px-3 py-3 font-semibold">Warehouse</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -314,13 +306,6 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
                       <input aria-label={`Rejected quantity of ${line.product_name}`} value={row.rejected} disabled={done} inputMode="decimal"
                         onChange={(e) => set(line.id, { rejected: e.target.value })} className={cellInput} placeholder="0" />
                     </td>
-                    <td className="px-3 py-3 w-40">
-                      <select aria-label={`Warehouse for ${line.product_name}`} value={row.warehouseId} disabled={done} onChange={(e) => set(line.id, { warehouseId: e.target.value })}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500 disabled:opacity-40">
-                        {warehouses.length === 0 && <option value="">No active warehouse</option>}
-                        {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
-                      </select>
-                    </td>
                   </tr>
                 );
               })}
@@ -332,7 +317,7 @@ export default function ReceiveForm({ order, warehouses, draft }: { order: Purch
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href={`/purchase-orders/${order.id}`} className="text-sm text-indigo-300 hover:text-indigo-200">← Back to {order.number}</Link>
-        <button type="button" onClick={review} disabled={busy || warehouses.length === 0} className="min-h-11 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+        <button type="button" onClick={review} disabled={busy} className="min-h-11 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
           {busy ? "Saving the draft…" : "Review receipt"}
         </button>
       </div>
@@ -345,13 +330,12 @@ function ReviewTable({ receipt }: { receipt: ReceiptDetail }) {
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm text-slate-300">
         <thead className="border-b border-slate-800 text-xs uppercase text-slate-400">
-          <tr><th className="px-3 py-2 font-semibold">Product</th><th className="px-3 py-2 font-semibold">Warehouse</th><th className="px-3 py-2 font-semibold text-right">Accepted (to stock)</th><th className="px-3 py-2 font-semibold text-right">Rejected (not stock)</th></tr>
+          <tr><th className="px-3 py-2 font-semibold">Product</th><th className="px-3 py-2 font-semibold text-right">Accepted (to stock)</th><th className="px-3 py-2 font-semibold text-right">Rejected (not stock)</th></tr>
         </thead>
         <tbody className="divide-y divide-slate-800/60">
           {receipt.lines.map((l) => (
             <tr key={l.id}>
               <td className="px-3 py-2"><span className="font-medium text-white">{l.product_name}</span> <span className="font-mono text-xs text-indigo-300">{l.product_sku}</span></td>
-              <td className="px-3 py-2">{l.warehouse_code ?? <span className="text-slate-600">—</span>}</td>
               <td className="px-3 py-2 text-right font-mono text-white">{qty(l.accepted_quantity)} <span className="text-xs text-slate-400">{l.unit}</span></td>
               <td className="px-3 py-2 text-right font-mono">{qty(l.rejected_quantity)}</td>
             </tr>

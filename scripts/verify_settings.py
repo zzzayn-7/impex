@@ -161,7 +161,7 @@ def main() -> int:
         return invoices, payments, dispatches
 
     def inventory_state(org):
-        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || warehouse_id || ':' || quantity::text, ',' ORDER BY product_id, warehouse_id), '') FROM stock_balances WHERE organization_id = '{org}'")
+        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{org}'")
         movements = psql("impex_inventory", f"SELECT count(*) || '/' || coalesce(string_agg(quantity::text || ':' || created_at::text, ',' ORDER BY created_at, id), '') FROM stock_movements WHERE organization_id = '{org}'")
         products = psql("impex_inventory", f"SELECT coalesce(string_agg(sku || ':' || unit || ':' || cost_price::text || ':' || selling_price::text || ':' || currency_code, ',' ORDER BY sku), '') FROM products WHERE organization_id = '{org}'")
         return balances, movements, products
@@ -282,15 +282,14 @@ def main() -> int:
 
         print("\n== 5. business preferences are defaults and presentation, never conversions")
         client_a = make("a1", "/api/sales/clients", {"name": "Acme Settings Ltd"}, "client", "clients", idem=False)
-        main_a = make("a1", "/api/warehouses", {"code": "MAIN", "name": "Main depot"}, "warehouse", "warehouses", idem=False)
         bolt_a = make("a1", "/api/products", {"sku": "SET-BOLT", "name": "Settings bolt", "category": "Settings check", "unit": "pcs", "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"}, "product", "products", idem=False)
-        tenant("a1", "POST", "/api/stock/in", {"product_id": bolt_a["id"], "warehouse_id": main_a["id"], "quantity": "100"}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
+        tenant("a1", "POST", "/api/stock/in", {"product_id": bolt_a["id"], "quantity": "100"}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
         made = jbody(tenant("a1", "POST", "/api/sales/delivery-lists", {"clientId": client_a["id"]})[1]).get("list", {})
         tenant("a1", "POST", f"/api/sales/delivery-lists/{made['id']}/items", {"productId": bolt_a["id"], "quantity": "20"})
         tenant("a1", "POST", f"/api/sales/delivery-lists/{made['id']}/ready")
         dlist = jbody(tenant("a1", "GET", f"/api/sales/delivery-lists/{made['id']}")[1]).get("list", {})
         item = next(i for i in dlist["items"] if i["product_id"] == bolt_a["id"])
-        dispatch = make("a1", "/api/sales/dispatches", {"deliveryListId": dlist["id"], "lines": [{"deliveryListItemId": item["id"], "warehouseId": main_a["id"], "quantity": "10"}]}, "dispatch", "dispatches")
+        dispatch = make("a1", "/api/sales/dispatches", {"deliveryListId": dlist["id"], "lines": [{"deliveryListItemId": item["id"], "quantity": "10"}]}, "dispatch", "dispatches")
         tenant("a1", "POST", f"/api/sales/dispatches/{dispatch['id']}/confirm")
         dispatch_doc = jbody(tenant("a1", "GET", f"/api/sales/dispatches/{dispatch['id']}")[1]).get("dispatch", {})
         line = next(l for l in dispatch_doc.get("lines", []) if l["product_id"] == bolt_a["id"])
@@ -433,12 +432,12 @@ def main() -> int:
         s, body = svc("c1", ORG, "GET", "/api/v1/tenant/settings")
         check("the Settings API refuses it too (403 setup_required)", s == 403 and body["detail"]["code"] == "setup_required", (s, body))
         check("Help & Support and the setup itself stay open", page("c1", "/support")[0] == 200 and page("c1", "/setup")[0] == 200 and svc("c1", SUPPORT, "GET", "/api/v1/support/tickets")[0] == 200)
-        for label, port, method, path, body in (("Inventory (list)", INVENTORY, "GET", "/api/v1/inventory/products", None), ("Inventory (create a warehouse)", INVENTORY, "POST", "/api/v1/inventory/warehouses", {"code": "X", "name": "X"}),
+        for label, port, method, path, body in (("Inventory (list)", INVENTORY, "GET", "/api/v1/inventory/products", None), ("Inventory (record stock)", INVENTORY, "POST", "/api/v1/inventory/stock/in", {"product_id": "00000000-0000-4000-8000-000000000000", "quantity": "1"}),
                                                 ("Sales (list)", SALES, "GET", "/api/v1/sales/clients", None), ("Sales (create a client)", SALES, "POST", "/api/v1/sales/clients", {"name": "Sneaky"}),
                                                 ("Purchasing (list)", PURCHASING, "GET", "/api/v1/purchasing/suppliers", None), ("Purchasing (create a supplier)", PURCHASING, "POST", "/api/v1/purchasing/suppliers", {"name": "Sneaky"})):
             s, resp = svc("c1", port, method, path, body)
             check(f"{label}: called DIRECTLY by an administrator who has not finished setup: 403 setup_required", s == 403 and resp["detail"]["code"] == "setup_required", (s, resp))
-        check("nothing was created by those attempts", psql("impex_sales", f"SELECT count(*) FROM clients WHERE organization_id = '{org_ids['c']}'") == "0" and psql("impex_purchasing", f"SELECT count(*) FROM suppliers WHERE organization_id = '{org_ids['c']}'") == "0" and psql("impex_inventory", f"SELECT count(*) FROM warehouses WHERE organization_id = '{org_ids['c']}'") == "0")
+        check("nothing was created by those attempts", psql("impex_sales", f"SELECT count(*) FROM clients WHERE organization_id = '{org_ids['c']}'") == "0" and psql("impex_purchasing", f"SELECT count(*) FROM suppliers WHERE organization_id = '{org_ids['c']}'") == "0" and psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE organization_id = '{org_ids['c']}'") == "0")
         # a configured organization whose NEW administrator has not confirmed their profile
         psql("impex_auth", f"UPDATE users SET profile_setup_completed_at = NULL WHERE id = '{user_ids['a2']}'")
         s, resp = svc("a2", INVENTORY, "GET", "/api/v1/inventory/products")
@@ -528,7 +527,7 @@ def main() -> int:
         for table, ledger in (("invoice_payments", True), ("invoice_allocations", True), ("invoice_lines", True), ("invoice_requests", False), ("invoices", True), ("invoice_counters", False), ("dispatch_lines", True), ("dispatch_requests", False), ("dispatches", True), ("dispatch_counters", False),
                               ("delivery_list_items", True), ("delivery_lists", False), ("delivery_list_counters", False), ("clients", False)):
             left[table] = delete_exact(psql, "impex_sales", table, orgs, "organization_id", ledger=ledger)
-        for table, ledger in (("stock_movements", True), ("stock_balances", False), ("stock_operations", False), ("warehouses", False), ("products", False)):
+        for table, ledger in (("stock_movements", True), ("stock_balances", False), ("stock_operations", False), ("products", False)):
             left[table] = delete_exact(psql, "impex_inventory", table, orgs, "organization_id", ledger=ledger)
         left["organizations"] = delete_exact(psql, "impex_organizations", "organizations", orgs)
         left["users"] = delete_exact(psql, "impex_auth", "users", users)

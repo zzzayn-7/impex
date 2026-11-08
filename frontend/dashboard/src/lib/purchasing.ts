@@ -79,8 +79,6 @@ export type OrderLine = {
   quantity: string;
   unit_price: string;
   line_total: string;
-  planned_warehouse_id: string | null;
-  planned_warehouse_code: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -122,8 +120,6 @@ export type ReceiptLine = {
   received_elsewhere_quantity: string;
   pending_elsewhere_quantity: string;
   receivable_quantity: string;
-  warehouse_id: string | null;
-  warehouse_code: string | null;
   accepted_quantity: string;
   rejected_quantity: string;
   notes: string | null;
@@ -189,13 +185,12 @@ export async function getPurchaseOrder(token: string, id: string): Promise<{ ok:
   return { ok: true, order: result.data };
 }
 
-export type ReceiptFilters = { q: string; status: ReceiptStatus | ""; supplierId: string; warehouseId: string; dateFrom: string; dateTo: string; page: number };
+export type ReceiptFilters = { q: string; status: ReceiptStatus | ""; supplierId: string; dateFrom: string; dateTo: string; page: number };
 export function listGoodsReceipts(token: string, filters: ReceiptFilters) {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
   if (filters.supplierId) params.set("supplier_id", filters.supplierId);
-  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
   return getPaged<ReceiptSummary>("/api/v1/purchasing/goods-receipts", params, token);
@@ -219,7 +214,7 @@ export type PurchasingFailure = {
 const FIELD_NAMES: Record<string, string> = {
   supplier_id: "supplierId", supplier_reference: "supplierReference", currency_code: "currencyCode", order_date: "orderDate",
   expected_delivery_date: "expectedDeliveryDate", unit_price: "unitPrice", product_id: "productId", contact_person: "contactPerson",
-  received_date: "receivedDate", accepted_quantity: "acceptedQuantity", rejected_quantity: "rejectedQuantity", warehouse_id: "warehouseId",
+  received_date: "receivedDate", accepted_quantity: "acceptedQuantity", rejected_quantity: "rejectedQuantity",
   purchase_order_line_id: "purchaseOrderLineId", purchase_order_id: "purchaseOrderId",
   country_code: "countryCode", tax_identifier: "taxIdentifier",
 };

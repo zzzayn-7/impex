@@ -1,7 +1,7 @@
 # Inventory Service
 
-FastAPI + PostgreSQL (`impex_inventory`), port **8002**. It provides the **Product Catalog**, **Warehouses**,
-**Stock Management** (balances per product and warehouse, plus an append-only movement ledger) and **scannable
+FastAPI + PostgreSQL (`impex_inventory`), port **8002**. It provides the **Product Catalog**,
+**Stock Management** (one balance per product, plus an append-only movement ledger) and **scannable
 product codes** (QR / Code 128 labels, supplier barcodes, scan lookup; see [`docs/scanning.md`](../../docs/scanning.md)).
 Purchasing, sales and invoicing are intentionally not built yet.
 
@@ -19,14 +19,9 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `PATCH /products/{id}` | update (only the fields sent) |
 | `POST /products/{id}/archive` / `restore` | archive (soft delete) / restore |
 | `GET /categories` | the organization's own categories |
-| `POST /warehouses` | create a warehouse (`code` unique per organization, upper-cased; optional `address`) |
-| `GET /warehouses?q=&status=active\|archived\|all` | list / search (each shows `products_in_stock`) |
-| `GET /warehouses/{id}` / `PATCH /warehouses/{id}` | view / edit code, name, address |
-| `POST /warehouses/{id}/archive` / `restore` | archive / restore. **There is no delete**: a warehouse may hold stock and has history |
-| `GET /stock?q=&category=&warehouse_id=&in_stock_only=&status=` | overview: per product the total and the quantity in each warehouse |
-| `GET /stock/movements?product_id=&warehouse_id=&type=` | the ledger, newest first (read-only) |
-| `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product in one warehouse |
-| `POST /stock/transfer` | move stock between two warehouses (one outgoing + one incoming movement, one transaction) |
+| `GET /stock?q=&category=&in_stock_only=&status=` | overview: per product the quantity in stock |
+| `GET /stock/movements?product_id=&type=` | the ledger, newest first (read-only) |
+| `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product |
 | `POST /products/{id}/identifiers/generate` | give the product its Impex label code (QR + Code 128); repeating returns the same code |
 | `GET /products/{id}/identifiers` | the product's codes (label code first) |
 | `POST /products/{id}/identifiers` | register a manufacturer / supplier barcode (`kind`, `value`, optional `label`) |
@@ -62,19 +57,25 @@ Interactive docs: http://localhost:8002/docs
 
 | Guarantee | Enforced by |
 | :--- | :--- |
-| a balance never goes negative | `CHECK (quantity >= 0)` **and** the balance row is locked (`SELECT ... FOR UPDATE`, in a fixed order, so opposite transfers cannot deadlock) while it is read and changed |
+| a balance never goes negative | `CHECK (quantity >= 0)` **and** the balance row is locked (`SELECT ... FOR UPDATE`, in a fixed order, so two postings touching the same goods cannot deadlock) while it is read and changed |
 | every change is in the ledger | the movement row is written in the same transaction as the balance |
 | the ledger is append-only | a PostgreSQL trigger rejects `UPDATE` and `DELETE` on `stock_movements`; the API has no such routes |
-| a transfer is atomic | both balances and both movements commit together or not at all |
 | a retry applies once | unique `(organization_id, idempotency_key)` on `stock_operations` + a fingerprint of the request |
-| organizations never mix | every query is tenant-scoped, and composite foreign keys `(organization_id, id)` tie a balance/movement, its product and its warehouse to the **same** organization inside the database |
+| organizations never mix | every query is tenant-scoped, and composite foreign keys `(organization_id, id)` tie a balance/movement and its product to the **same** organization inside the database |
 | exact quantities | `NUMERIC(18,4)`, JSON strings, never floats |
 | pieces are whole | units that are not known measurable ones (`kg`, `g`, `l`, `ml`, `m`, `cm`, `tonne`, ...) accept whole numbers only; the service reports it as `unit_allows_fractions` |
-| history is kept | a warehouse is archived, never deleted; archived warehouses and products refuse new stock changes but keep their stock and history |
+| history is kept | a product is archived, never deleted; archived products refuse new stock changes but keep their stock and history |
 
-Movement types: `opening`, `in`, `out`, `transfer_out`, `transfer_in`. Each records product, warehouse, quantity, the
-balance afterwards, a reason, the authenticated user (id and email) and the time. An opening balance is only possible
-before any other movement of that product in that warehouse; later corrections are ordinary stock in/out movements.
+Movement types: `opening`, `in`, `out`. Each records product, quantity, the product's stock afterwards (`balance_after`),
+a reason, the authenticated user (id and email) and the time. An opening balance is only possible before any other
+movement of that product; later corrections are ordinary stock in/out movements.
+
+**Warehouses were removed (migration `0007`).** The business keeps a single location, so there is no warehouse table, no
+warehouse column and no transfer. The migration is destructive and irreversible: in one transaction it deletes the
+(net-zero) transfer movements, adds up the stock held in different warehouses into one balance per product, recomputes
+`balance_after` as the product's running total for the affected products, checks that every product's stock is exactly
+what it was and that the ledger still adds up (otherwise it aborts and changes nothing), and then drops the warehouse
+structures. Back up `impex_inventory` before upgrading; the only way back is to restore that backup.
 
 > Maintenance only: deleting ledger rows is possible solely inside a transaction that sets
 > `app.allow_ledger_maintenance = 'on'` (the verification scripts use it to remove their own throwaway data by exact id).
@@ -85,8 +86,8 @@ before any other movement of that product in that warehouse; later corrections a
 ```powershell
 # 1. create the database ONCE on an existing Postgres volume (safe to repeat; fresh installs get it automatically)
 Get-Content database/add-inventory-database.sql | docker exec -i impex-postgres sh -c 'psql -U $POSTGRES_USER -d postgres'
-# 2. create / upgrade the tables (additive; 0002 adds warehouses and stock, 0003 adds product codes and the unit lock;
-#    existing products, warehouses, balances and movements are untouched)
+# 2. create / upgrade the tables (0002 adds stock, 0003 adds product codes and the unit lock; 0007 REMOVES warehouses and
+#    transfers - destructive and irreversible, so take a pg_dump of impex_inventory first)
 docker compose run --rm --no-deps inventory-service alembic upgrade head
 # 3. start the service
 docker compose up -d inventory-service
@@ -97,10 +98,11 @@ docker compose up -d inventory-service
 ```powershell
 docker compose run --rm --no-deps inventory-service sh -c "pip install -q -r requirements-dev.txt && python -m pytest -v"
 python scripts/verify_product_isolation.py        # live end-to-end check of the catalog through the Organization Portal
-python scripts/verify_stock_management.py         # live end-to-end check of warehouses, stock, movements and isolation
+python scripts/verify_stock_management.py         # live end-to-end check of stock, movements and isolation
 python scripts/verify_scanning.py                 # live end-to-end check of codes, labels, scan lookup and the unit lock
 ```
 
 The tests include simultaneous removals against a stock that fits only three (never overdrawn), duplicate requests with
-one key, opposite transfers at the same time (no deadlock, nothing lost), a transfer that fails half-way (nothing
-remains), and two-organization isolation for warehouses, balances and movements, including the database-level refusals.
+one key, simultaneous additions (nothing lost), a change that fails half-way (nothing remains), the warehouse-removal
+migration on data that really had several warehouses and a transfer, and two-organization isolation for balances and
+movements, including the database-level refusals.

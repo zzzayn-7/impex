@@ -126,7 +126,7 @@ describe("the current page is highlighted, nested routes included", () => {
 describe("each part of the portal has its own decorative accent", () => {
   const section = (key: keyof typeof PAGE_META) => /data-section="([a-z]+)"/.exec(shell(key))?.[1];
   it("Inventory powder blue, Purchasing pale butter, Sales sea-glass mint; the rest keep the foundation's sea-glass", () => {
-    for (const key of ["products", "warehouses", "stock", "scan", "movements"] as const) expect(section(key), key).toBe("inventory");
+    for (const key of ["products", "stock", "scan", "movements"] as const) expect(section(key), key).toBe("inventory");
     for (const key of ["suppliers", "purchasing", "receipts"] as const) expect(section(key), key).toBe("purchasing");
     for (const key of ["clients", "deliveries", "dispatches", "invoices"] as const) expect(section(key), key).toBe("sales");
     for (const key of ["dashboard", "finance", "support", "settings"] as const) expect(section(key), key).toBeUndefined();

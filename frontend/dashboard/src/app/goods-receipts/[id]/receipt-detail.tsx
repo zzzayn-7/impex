@@ -111,7 +111,7 @@ export default function ReceiptDetailView({ receipt: initial }: { receipt: Recei
             <table className="w-full text-left text-sm text-slate-300">
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
-                  <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Ordered</th><th className="px-3 py-3 font-semibold">Warehouse</th>
+                  <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Ordered</th>
                   <th className="px-3 py-3 font-semibold text-right">Accepted</th>{hasRejected && <th className="px-3 py-3 font-semibold text-right">Rejected</th>}<th className="px-3 py-3 font-semibold">Stock movement</th>
                 </tr>
               </thead>
@@ -120,7 +120,6 @@ export default function ReceiptDetailView({ receipt: initial }: { receipt: Recei
                   <tr key={l.id} className="align-top hover:bg-slate-800/30">
                     <td className="px-3 py-3"><div className="font-medium text-white">{l.product_name}</div><div className="font-mono text-xs text-indigo-300">{l.product_sku}</div>{l.notes && <div className="mt-1 text-xs text-slate-500">{l.notes}</div>}</td>
                     <td className="px-3 py-3 text-right font-mono">{qty(l.ordered_quantity)} <span className="text-xs text-slate-400">{l.unit}</span></td>
-                    <td className="px-3 py-3 text-xs">{l.warehouse_code ?? <span className="text-slate-600">—</span>}</td>
                     <td className="px-3 py-3 text-right font-mono font-semibold text-white">{qty(l.accepted_quantity)} <span className="text-xs font-normal text-slate-400">{l.unit}</span></td>
                     {hasRejected && <td className="px-3 py-3 text-right font-mono">{qty(l.rejected_quantity)}</td>}
                     <td className="px-3 py-3 text-xs">

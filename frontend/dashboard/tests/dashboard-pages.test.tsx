@@ -37,12 +37,12 @@ const order = (number: string, status: string, total: string, extra: Record<stri
   notes: null, line_count: 1, total_amount: total, created_by_email: "a@b.c", ordered_at: now, ordered_by_email: "a@b.c", cancelled_at: null, cancelled_by_email: null, created_at: now, updated_at: now, ...extra,
 });
 const movement = (type: string, name = "Steel bolt") => ({
-  id: crypto.randomUUID(), operation_id: crypto.randomUUID(), product_id: "p", product_sku: "BOLT", product_name: name, product_unit: "pcs", unit_allows_fractions: false, warehouse_id: "w", warehouse_code: "MAIN",
-  warehouse_name: "Main depot", movement_type: type, quantity: "10.0000", balance_after: "10.0000", reason: "x", transfer_id: null, created_by_email: "a@b.c", created_at: now,
+  id: crypto.randomUUID(), operation_id: crypto.randomUUID(), product_id: "p", product_sku: "BOLT", product_name: name, product_unit: "pcs", unit_allows_fractions: false,
+  movement_type: type, quantity: "10.0000", balance_after: "10.0000", reason: "x", created_by_email: "a@b.c", created_at: now,
 });
 
 type World = {
-  products: number; warehouses: { id: string; code: string; name: string; products_in_stock: number }[]; movements: any[];
+  products: number; movements: any[];
   ordered: any[]; partial: any[]; poWindow: any[]; invWindow: any[]; issued: any[]; partiallyPaid: any[]; finance: any; totals?: Record<string, number>;
 };
 
@@ -55,8 +55,7 @@ const alphaWorld = (): World => {
   const voided = invoice("INV-X", "void", "8888.0000");
   return {
     products: 12,
-    warehouses: [{ id: "w1", code: "MAIN", name: "Main depot", products_in_stock: 9 }, { id: "w2", code: "ANNEX", name: "Annex store", products_in_stock: 3 }],
-    movements: [movement("in"), movement("out", "Flour"), movement("transfer_out"), movement("transfer_in")],
+    movements: [movement("in"), movement("out", "Flour"), movement("opening")],
     ordered: [order("PO-000002", "ordered", "100.0000"), order("PO-000003", "ordered", "50.0000", { currency_code: "EUR", expected_delivery_date: FUTURE })],
     partial: [order("PO-000001", "partially_received", "25.5000")],
     poWindow: [order("PO-000002", "ordered", "100.0000"), order("PO-000001", "partially_received", "25.5000", { order_date: earlier }), order("PO-DRAFT", "draft", "7777.0000"), order("PO-CANCELLED", "cancelled", "6666.0000")],
@@ -70,7 +69,7 @@ const alphaWorld = (): World => {
   };
 };
 
-const emptyWorld = (): World => ({ products: 0, warehouses: [], movements: [], ordered: [], partial: [], poWindow: [], invWindow: [], issued: [], partiallyPaid: [], finance: { ...alphaWorld().finance, posted_entries: 0, draft_entries: 0, posted_expenses: 0, totals_by_currency: [], sync: { sources: [], pending: 0, failed: 0, skipped: 0, posted: 0 } } });
+const emptyWorld = (): World => ({ products: 0, movements: [], ordered: [], partial: [], poWindow: [], invWindow: [], issued: [], partiallyPaid: [], finance: { ...alphaWorld().finance, posted_entries: 0, draft_entries: 0, posted_expenses: 0, totals_by_currency: [], sync: { sources: [], pending: 0, failed: 0, skipped: 0, posted: 0 } } });
 
 let worlds: Record<string, World> = {};
 let orgBody: Record<string, any> = {};
@@ -100,7 +99,6 @@ function stubBackend() {
     const page = (items: any[], total = items.length) => json(200, { items, total, limit: Number(p.get("limit")), offset: Number(p.get("offset")) });
     const path = target.pathname.replace(`/api/v1/${service}`, "");
     if (path === "/stock") return page([], world.products);
-    if (path === "/warehouses") return page(world.warehouses);
     if (path === "/stock/movements") return page(world.movements, world.totals?.movements ?? world.movements.length);
     if (path === "/purchase-orders") return p.get("status") === "ordered" ? page(world.ordered, world.totals?.ordered) : p.get("status") === "partially_received" ? page(world.partial) : page(world.poWindow, world.totals?.poWindow);
     if (path === "/invoices") return p.get("status") === "issued" ? page(world.issued) : p.get("status") === "partially_paid" ? page(world.partiallyPaid) : page(world.invWindow.slice(Number(p.get("offset"))), world.totals?.invWindow);
@@ -145,7 +143,8 @@ describe("the dashboard shows real figures", () => {
   it("the four key figures come from the services' records", async () => {
     const t = text(await render());
     expect(t).toContain("Active products 12");
-    expect(t).toContain("Across 2 active warehouses");
+    expect(t).toContain("In your product catalog");
+    expect(t.toLowerCase()).not.toContain("warehouse");
     expect(t).toContain("Open purchase orders 3");
     expect(t).toContain("125.50 USD on order");
     expect(t).toContain("50.00 EUR on order"); // a second currency on its own line
@@ -168,10 +167,7 @@ describe("the dashboard shows real figures", () => {
     expect(t).toContain("Sales & purchasing trend");
     expect(t).toContain("Also in EUR: shown in its own currency elsewhere, never added to USD.");
     expect(html).toContain('aria-label="Stock movements per day, last 14 days"');
-    expect(t).toContain("9 products");
-    expect(t).toContain("3 products");
-    expect(t).toContain("Main depot");
-    expect(t).toContain("Annex store");
+    expect(t).not.toContain("Stock by warehouse");
     for (const n of ["INV-000002", "INV-000001", "INV-000003", "PO-000002", "PO-000001", "PO-000003", "Steel bolt", "Flour"]) expect(t, n).toContain(n);
     expect(t).toContain("Paid so far 30.00 USD");
     expect(t).toContain("Overdue 100.00 USD");
@@ -218,14 +214,14 @@ describe("an empty organization", () => {
   it("shows calm empty states, not invented numbers", async () => {
     const t = text(await render());
     expect(t).toContain("Active products 0");
-    expect(t).toContain("No warehouse yet");
+    expect(t).toContain("No products yet");
     expect(t).toContain("Open purchase orders 0");
     expect(t).toContain("Nothing waiting to be received");
     expect(t).toContain("Invoiced this month 0.00 USD");
     expect(t).toContain("No invoices issued yet");
     expect(t).toContain("Outstanding receivables 0.00 USD");
     expect(t).toContain("No unpaid invoices");
-    for (const empty of ["No invoices or purchase orders in the last 6 months yet.", "No open invoices.", "No warehouses yet.", "No stock movements in the last 14 days.", "No invoices yet.", "No purchase orders waiting to be received.", "No stock movements yet."]) expect(t, empty).toContain(empty);
+    for (const empty of ["No invoices or purchase orders in the last 6 months yet.", "No open invoices.", "No stock movements in the last 14 days.", "No invoices yet.", "No purchase orders waiting to be received.", "No stock movements yet."]) expect(t, empty).toContain(empty);
   });
 });
 
@@ -239,7 +235,7 @@ describe("modules that are not enabled", () => {
     const t = text(html);
     for (const hidden of ["Open purchase orders", "Invoiced this month", "Outstanding receivables", "Recent invoices", "Collections", "Finance snapshot", "Sales & purchasing trend"]) expect(t, hidden).not.toContain(hidden);
     for (const href of ["/invoices", "/clients", "/suppliers", "/purchase-orders", "/finance", "/finance/expenses/new", "/invoices/new"]) expect(html, href).not.toContain(`href="${href}"`);
-    for (const shown of ["Active products", "Stock by warehouse", "Inventory activity", "Recent stock movements"]) expect(t, shown).toContain(shown);
+    for (const shown of ["Active products", "Inventory activity", "Recent stock movements"]) expect(t, shown).toContain(shown);
     expect(html).toContain('data-nav-group="inventory"');
     expect(html).not.toContain('data-nav-group="sales"');
   });
@@ -271,7 +267,7 @@ describe("modules that are not enabled", () => {
 
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices",
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices",
       "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
     for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
   });
@@ -366,7 +362,7 @@ describe("when something is wrong", () => {
     worlds["token-alpha"].totals = { invWindow: 5000, poWindow: 5000, movements: 5000 };
     const t = text(await render());
     expect(t).toContain("Based on the latest records in this period (the list limit was reached).");
-    expect(t).toContain("Based on the latest 4 movements.");
+    expect(t).toContain("Based on the latest 3 movements.");
   });
 });
 

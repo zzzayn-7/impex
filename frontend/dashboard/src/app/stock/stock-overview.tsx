@@ -5,32 +5,28 @@ import { useRouter } from "next/navigation";
 
 import type { PagedResult, StockFilters } from "@/lib/inventory";
 import type { Product } from "@/lib/product-validation";
-import { ACTION_LABELS, StockAction, StockProduct, Warehouse, formatQuantity } from "@/lib/stock-validation";
+import { ACTION_LABELS, StockAction, StockProduct, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "./stock-form";
 
 type Props = {
   list: PagedResult<StockProduct>;
   filters: StockFilters;
   products: Product[]; // active products, for the form
-  warehouses: Warehouse[]; // every warehouse (the form offers only the active ones)
 };
 
 type Panel = { action: StockAction; productId?: string } | null;
 
-export default function StockOverview({ list, filters, products, warehouses }: Props) {
+export default function StockOverview({ list, filters, products }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<Panel>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.q);
 
-  const activeWarehouses = warehouses.filter((w) => w.is_active);
-
   function navigate(next: Partial<StockFilters>) {
     const merged = { ...filters, page: 1, ...next };
     const params = new URLSearchParams();
     if (merged.q) params.set("q", merged.q);
-    if (merged.warehouseId) params.set("warehouse", merged.warehouseId);
     if (merged.inStockOnly) params.set("inStock", "1");
     if (merged.status !== "active") params.set("status", merged.status);
     if (merged.page > 1) params.set("page", String(merged.page));
@@ -44,22 +40,22 @@ export default function StockOverview({ list, filters, products, warehouses }: P
     startTransition(() => router.refresh()); // re-read the balances from the database
   }
 
-  const filtered = Boolean(filters.q || filters.warehouseId || filters.inStockOnly || filters.status !== "active");
+  const filtered = Boolean(filters.q || filters.inStockOnly || filters.status !== "active");
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.items.length : 0;
   const open = (action: StockAction, productId?: string) => { setMessage(null); setPanel({ action, productId }); };
-  const noSetup = products.length === 0 || activeWarehouses.length === 0;
+  const noSetup = products.length === 0;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">Stock</h2>
-          <p className="text-xs text-slate-400">What you hold, and where. Quantities come from the stock ledger and cannot go below zero.</p>
+          <p className="text-xs text-slate-400">What you hold. Quantities come from the stock ledger and cannot go below zero.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(["in", "out", "transfer", "opening"] as StockAction[]).map((action) => (
+          {(["in", "out", "opening"] as StockAction[]).map((action) => (
             <button
               key={action}
               type="button"
@@ -77,11 +73,7 @@ export default function StockOverview({ list, filters, products, warehouses }: P
 
       {noSetup && (
         <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
-          {products.length === 0 && activeWarehouses.length === 0
-            ? "Create a product and a warehouse first, then you can record stock here."
-            : products.length === 0
-              ? "Create a product first, then you can record stock here."
-              : "Create a warehouse first, then you can record stock here."}
+          Create a product first, then you can record stock here.
         </p>
       )}
 
@@ -98,7 +90,6 @@ export default function StockOverview({ list, filters, products, warehouses }: P
           initialAction={panel.action}
           initialProductId={panel.productId}
           products={products}
-          warehouses={activeWarehouses}
           onDone={done}
           onCancel={() => setPanel(null)}
         />
@@ -120,17 +111,6 @@ export default function StockOverview({ list, filters, products, warehouses }: P
             </label>
             <button type="submit" className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Search</button>
           </form>
-          <label className="text-xs font-medium text-slate-400">
-            Warehouse
-            <select
-              value={filters.warehouseId}
-              onChange={(e) => navigate({ warehouseId: e.target.value })}
-              className="mt-1.5 block rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            >
-              <option value="">All warehouses</option>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}{w.is_active ? "" : " (archived)"}</option>)}
-            </select>
-          </label>
           <label className="flex items-center gap-2 pb-2 text-xs font-medium text-slate-400">
             <input type="checkbox" checked={filters.inStockOnly} onChange={(e) => navigate({ inStockOnly: e.target.checked })} className="h-4 w-4 rounded border-slate-700 bg-slate-950" />
             In stock only
@@ -148,7 +128,7 @@ export default function StockOverview({ list, filters, products, warehouses }: P
             </select>
           </label>
           {filtered && (
-            <button type="button" onClick={() => { setSearch(""); navigate({ q: "", warehouseId: "", inStockOnly: false, status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
+            <button type="button" onClick={() => { setSearch(""); navigate({ q: "", inStockOnly: false, status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
               Clear filters
             </button>
           )}
@@ -174,8 +154,7 @@ export default function StockOverview({ list, filters, products, warehouses }: P
                   <tr>
                     <th className="px-4 py-3 font-semibold">Product</th>
                     <th className="px-4 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold text-right">Total</th>
-                    <th className="px-4 py-3 font-semibold">By warehouse</th>
+                    <th className="px-4 py-3 font-semibold text-right">In stock</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -189,29 +168,13 @@ export default function StockOverview({ list, filters, products, warehouses }: P
                       <td className="px-4 py-3 text-xs">{item.category}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
                         <span className="text-sm font-semibold text-white">{formatQuantity(item.total_quantity)}</span> <span className="text-slate-400">{item.unit}</span>
-                        {item.available_quantity !== item.total_quantity && (
-                          <div className="text-[11px] text-slate-500">{formatQuantity(item.available_quantity)} in active warehouses</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {item.lines.length === 0 ? (
-                          <span className="text-xs text-slate-600">No stock yet</span>
-                        ) : (
-                          <ul className="flex flex-wrap gap-1.5">
-                            {item.lines.map((line) => (
-                              <li key={line.warehouse_id} title={line.warehouse_name} className={`rounded-md border px-2 py-0.5 font-mono text-xs ${line.warehouse_active ? "border-slate-700 bg-slate-900 text-slate-200" : "border-slate-700/60 bg-slate-900/40 text-slate-500"}`}>
-                                {line.warehouse_code}: <span className="font-semibold">{formatQuantity(line.quantity)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
                       </td>
                       <td className="px-4 py-3">
                         {item.is_active && !noSetup ? (
                           <div className="flex gap-1.5">
-                            {(["in", "out", "transfer"] as StockAction[]).map((action) => (
+                            {(["in", "out"] as StockAction[]).map((action) => (
                               <button key={action} type="button" onClick={() => open(action, item.product_id)} aria-label={`${ACTION_LABELS[action].title}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
-                                {action === "in" ? "Add" : action === "out" ? "Remove" : "Transfer"}
+                                {action === "in" ? "Add" : "Remove"}
                               </button>
                             ))}
                           </div>

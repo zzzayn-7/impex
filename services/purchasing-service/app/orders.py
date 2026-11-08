@@ -275,20 +275,6 @@ def require_active_product(info: ProductInfo) -> None:
         raise conflict(f"{info.name} is archived and cannot be ordered. Restore it in Products first.")
 
 
-def check_warehouse(gateway: InventoryGateway, warehouse_id: Optional[uuid.UUID]) -> Optional[dict]:
-    if warehouse_id is None:
-        return None
-    try:
-        warehouse = gateway.warehouse(warehouse_id)
-    except InventoryUnavailable:
-        raise unavailable_error()
-    if warehouse is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found.")
-    if not warehouse["is_active"]:
-        raise conflict(f"Warehouse {warehouse['code']} is archived. Choose an active warehouse.")
-    return warehouse
-
-
 # --- line operations -------------------------------------------------------------------------------------------------------------------------------
 def find_line(db: Session, tenant: TenantContext, order_id: uuid.UUID, line_id: uuid.UUID) -> PurchaseOrderLine:
     line = get_scoped(db, PurchaseOrderLine, tenant, line_id)
@@ -318,7 +304,6 @@ def add_line(db: Session, tenant: TenantContext, gateway: InventoryGateway, orde
     require_active_product(info)
     check_quantity(info, payload.quantity)
     total = line_total(payload.quantity, payload.unit_price)
-    warehouse = check_warehouse(gateway, payload.planned_warehouse_id)
 
     order = get_order_or_404(db, tenant, order_id, lock=True)  # serializes concurrent edits of the same order
     require_draft(order)
@@ -331,8 +316,7 @@ def add_line(db: Session, tenant: TenantContext, gateway: InventoryGateway, orde
         raise conflict(f"An order can have at most {MAX_LINES} lines.")
     line = PurchaseOrderLine(
         organization_id=tenant.organization_id, purchase_order_id=order_id, product_id=info.id, product_sku=info.sku, product_name=info.name,
-        unit=info.unit, quantity=payload.quantity, unit_price=payload.unit_price, line_total=total,
-        planned_warehouse_id=warehouse["id"] if warehouse else None, planned_warehouse_code=warehouse["code"] if warehouse else None, notes=payload.notes,
+        unit=info.unit, quantity=payload.quantity, unit_price=payload.unit_price, line_total=total, notes=payload.notes,
     )
     db.add(line)
     try:
@@ -357,10 +341,6 @@ def update_line(db: Session, tenant: TenantContext, gateway: InventoryGateway, o
         info = fetch_product(gateway, line.product_id)
         require_active_product(info)
         check_quantity(info, quantity)
-    if "planned_warehouse_id" in changes:
-        warehouse = check_warehouse(gateway, changes["planned_warehouse_id"])
-        line.planned_warehouse_id = warehouse["id"] if warehouse else None
-        line.planned_warehouse_code = warehouse["code"] if warehouse else None
     if "notes" in changes:
         line.notes = changes["notes"]
     line.quantity, line.unit_price, line.line_total = quantity, unit_price, line_total(quantity, unit_price)

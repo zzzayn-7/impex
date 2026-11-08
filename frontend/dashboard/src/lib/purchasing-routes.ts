@@ -28,9 +28,9 @@ export function checkReceivedQuantity(value: unknown, label: string): { ok: true
   return QUANTITY_RE.test(trimmed) ? { ok: true, value: trimmed } : { ok: false, message: `Use a number with at most 4 decimals for the ${label} quantity.` };
 }
 
-export type ReceiptLineBody = { purchase_order_line_id: string; accepted_quantity: string; rejected_quantity: string; warehouse_id?: string; notes?: string };
+export type ReceiptLineBody = { purchase_order_line_id: string; accepted_quantity: string; rejected_quantity: string; notes?: string };
 
-/** The lines of a goods receipt as sent by the browser: only ids, quantities (exact strings), a warehouse and a note are read. */
+/** The lines of a goods receipt as sent by the browser: only ids, quantities (exact strings) and a note are read. */
 export function parseReceiptLines(value: unknown): { ok: true; lines: ReceiptLineBody[] } | { ok: false; message: string; fieldErrors?: Record<string, string> } {
   if (!Array.isArray(value)) return { ok: false, message: "Send the receipt lines as a list." };
   if (value.length > 500) return { ok: false, message: "A receipt can have at most 500 lines." };
@@ -44,17 +44,11 @@ export function parseReceiptLines(value: unknown): { ok: true; lines: ReceiptLin
     if (!accepted.ok) return { ok: false, message: accepted.message, fieldErrors: { acceptedQuantity: accepted.message } };
     const rejected = checkReceivedQuantity(item.rejectedQuantity, "rejected");
     if (!rejected.ok) return { ok: false, message: rejected.message, fieldErrors: { rejectedQuantity: rejected.message } };
-    let warehouseId: string | undefined;
-    if (item.warehouseId !== undefined && item.warehouseId !== null && item.warehouseId !== "") {
-      const valid = checkUuid(item.warehouseId);
-      if (!valid) return { ok: false, message: "Choose a valid warehouse.", fieldErrors: { warehouseId: "Choose a valid warehouse." } };
-      warehouseId = valid;
-    }
     const notes = text(item.notes) ?? "";
     if (notes.length > 500) return { ok: false, message: "Use 500 characters or fewer for a line note." };
     lines.push({
       purchase_order_line_id: lineId, accepted_quantity: accepted.value, rejected_quantity: rejected.value,
-      ...(warehouseId ? { warehouse_id: warehouseId } : {}), ...(notes ? { notes } : {}),
+      ...(notes ? { notes } : {}),
     });
   }
   return { ok: true, lines };

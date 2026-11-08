@@ -67,15 +67,15 @@ describe("series", () => {
     expect(monthlyTotals(rows, ["2026-10"], "GBP")).toEqual(["0.0000"]);
   });
 
-  it("stock movements are counted per day in the organization's zone; a transfer counts once", () => {
+  it("stock movements are counted per day in the organization's zone", () => {
     const days = ["2026-11-06", "2026-11-07"];
     const movements = [
       { movement_type: "in", created_at: "2026-11-07T10:00:00+00:00" }, { movement_type: "opening", created_at: "2026-11-07T11:00:00+00:00" },
-      { movement_type: "out", created_at: "2026-11-07T12:00:00+00:00" }, { movement_type: "transfer_out", created_at: "2026-11-06T09:00:00+00:00" },
-      { movement_type: "transfer_in", created_at: "2026-11-06T09:00:00+00:00" }, { movement_type: "in", created_at: "2026-10-01T09:00:00+00:00" },
+      { movement_type: "out", created_at: "2026-11-07T12:00:00+00:00" }, { movement_type: "out", created_at: "2026-11-06T09:00:00+00:00" },
+      { movement_type: "in", created_at: "2026-10-01T09:00:00+00:00" },
     ];
-    expect(movementActivity(movements, days, "UTC")).toEqual([{ day: "2026-11-06", added: 0, removed: 0, transferred: 1 }, { day: "2026-11-07", added: 2, removed: 1, transferred: 0 }]);
-    expect(movementActivity([{ movement_type: "in", created_at: "2026-11-07T23:30:00+00:00" }], days, "Asia/Karachi")).toEqual([{ day: "2026-11-06", added: 0, removed: 0, transferred: 0 }, { day: "2026-11-07", added: 0, removed: 0, transferred: 0 }]); // (that is 8 Nov there)
+    expect(movementActivity(movements, days, "UTC")).toEqual([{ day: "2026-11-06", added: 0, removed: 1 }, { day: "2026-11-07", added: 2, removed: 1 }]);
+    expect(movementActivity([{ movement_type: "in", created_at: "2026-11-07T23:30:00+00:00" }], days, "Asia/Karachi")).toEqual([{ day: "2026-11-06", added: 0, removed: 0 }, { day: "2026-11-07", added: 0, removed: 0 }]); // (that is 8 Nov there)
   });
 
   it("plot positions come from the exact strings and never leak into what is written", () => {
@@ -109,7 +109,7 @@ describe("the sidebar lists exactly what the organization can use", () => {
   it("groups each enabled module with its pages, in a fixed order", () => {
     expect(labels(["finance", "sales", "inventory", "purchasing"])).toEqual([
       ["main", ["Dashboard"]],
-      ["inventory", ["Products", "Warehouses", "Stock", "Scan Product", "Movements"]],
+      ["inventory", ["Products", "Stock", "Scan Product", "Movements"]],
       ["purchasing", ["Suppliers", "Purchase Orders", "Goods Receipts"]],
       ["sales", ["Clients", "Delivery Lists", "Dispatches", "Invoices"]],
       ["finance", ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]],

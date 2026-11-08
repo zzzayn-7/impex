@@ -40,7 +40,7 @@ const detail = (s: ReturnType<typeof summary>, productName: string, extra: Recor
   ...s,
   lines: [{
     id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: productName, unit: "pcs", quantity: "50.0000", unit_price: "1.2500", line_total: "62.5000",
-    planned_warehouse_id: null, planned_warehouse_code: "MAIN", notes: null, created_at: now, updated_at: now,
+    notes: null, created_at: now, updated_at: now,
   }],
   frozen: s.status !== "draft",
   stock_notice: "A purchase order does not change your stock. Placing an order does not add the goods to inventory; they are added only when they are received (a later step).",
@@ -258,7 +258,7 @@ describe("Purchase order detail page", () => {
     for (const absent of ["Mark as Ordered", "Find a product", "Edit order details"]) expect(html, absent).not.toContain(absent);
     expect(html).not.toMatch(/aria-label="Remove /);
     expect(html).not.toMatch(/aria-label="Edit Alpha/);
-    // pickers are only needed while editing: no warehouse / supplier requests
+    // pickers are only needed while editing: no supplier requests
     expect(calls.filter((c) => c.url.includes("/api/v1/inventory/"))).toHaveLength(0);
   });
 
@@ -293,6 +293,6 @@ describe("navigation and layouts", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (layout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe(label);
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders"]) expect(html).toContain(`href="${href}"`);
   });
 });

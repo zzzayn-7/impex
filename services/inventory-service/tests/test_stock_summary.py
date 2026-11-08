@@ -14,17 +14,16 @@ def summary(api, *ids, headers=None):
 
 def test_returns_details_and_stock_for_the_requested_products_only(api):
     bolt, flour, other = api.product(sku="BOLT", name="Bolt", unit="pcs"), api.product(sku="FLOUR", name="Flour", unit="kg"), api.product(sku="OTHER", name="Other")
-    main, annex = api.warehouse("MAIN"), api.warehouse("ANNEX")
-    api.add(bolt, main, 40)
-    api.add(bolt, annex, 10)
-    api.add(flour, main, "2.5")
-    api.client.post(f"/api/v1/inventory/warehouses/{annex['id']}/archive", headers=api.headers)
+    api.add(bolt, 40)
+    api.add(bolt, 10)
+    api.add(flour, "2.5")
 
     response = summary(api, bolt["id"], flour["id"])
     assert response.status_code == 200
     items = {i["sku"]: i for i in response.json()["items"]}
     assert set(items) == {"BOLT", "FLOUR"}
-    assert (items["BOLT"]["total_quantity"], items["BOLT"]["available_quantity"], items["BOLT"]["unit"]) == ("50.0000", "40.0000", "pcs")
+    assert (items["BOLT"]["total_quantity"], items["BOLT"]["unit"]) == ("50.0000", "pcs")
+    assert items["FLOUR"]["total_quantity"] == "2.5000" and "warehouse" not in response.text and "lines" not in items["BOLT"]
     assert items["BOLT"]["unit_allows_fractions"] is False and items["FLOUR"]["unit_allows_fractions"] is True
     assert items["BOLT"]["is_active"] is True and "organization_id" not in response.text
 
@@ -55,8 +54,8 @@ def test_it_changes_nothing(api, session_factory):
 
     from app.models import StockMovement
 
-    product, wh = api.product(sku="P"), api.warehouse("W")
-    api.add(product, wh, 3)
+    product = api.product(sku="P")
+    api.add(product, 3)
     for _ in range(3):
         summary(api, product["id"])
     with session_factory() as db:

@@ -22,7 +22,7 @@ const now = "2026-11-07T10:00:00+00:00";
 const modulesState = (enabled: Record<string, boolean> = { inventory: true, purchasing: false, sales: true, finance: false }) => ({
   organization_id: ORG, organization_name: "Alpha Trading GmbH", revision: 7,
   modules: [
-    { key: "inventory", name: "Inventory", description: "Products, warehouses and stock.", features: ["Products", "Warehouses", "Stock", "Scanning", "Movements"], requires: [], available: true, enabled: enabled.inventory, effective: enabled.inventory, updated_at: now, updated_by_name: "Sam Super" },
+    { key: "inventory", name: "Inventory", description: "Products and stock.", features: ["Products", "Stock", "Scanning", "Movements"], requires: [], available: true, enabled: enabled.inventory, effective: enabled.inventory, updated_at: now, updated_by_name: "Sam Super" },
     { key: "purchasing", name: "Purchasing", description: "Buying.", features: ["Suppliers", "Purchase Orders", "Goods Receipts"], requires: ["inventory"], available: true, enabled: enabled.purchasing, effective: enabled.purchasing, updated_at: null, updated_by_name: null },
     { key: "sales", name: "Sales", description: "Selling.", features: ["Clients", "Delivery Lists", "Dispatches", "Invoices and Payments"], requires: ["inventory"], available: true, enabled: enabled.sales, effective: enabled.sales, updated_at: now, updated_by_name: "Sam Super" },
     { key: "finance", name: "Finance", description: "Planned.", features: ["Accounting"], requires: [], available: false, enabled: false, effective: false, updated_at: null, updated_by_name: null },
@@ -77,7 +77,7 @@ describe("the module page", () => {
     stub();
     const html = await render(ModulesPage({ params: { id: ORG } }));
     for (const expected of ["Module management", "Alpha Trading GmbH", "Inventory", "Purchasing", "Sales", "Finance", "Planned: not available yet", "Requires Inventory", "Last changed by Sam Super",
-      "Products, Warehouses, Stock, Scanning, Movements", "Suppliers, Purchase Orders, Goods Receipts", "Clients, Delivery Lists, Dispatches, Invoices and Payments",
+      "Products, Stock, Scanning, Movements", "Suppliers, Purchase Orders, Goods Receipts", "Clients, Delivery Lists, Dispatches, Invoices and Payments",
       "Always available", "Help &amp; Support", "Authentication", "History", "Approved in SUP-000123", "Kept when modules were introduced", "Review changes"]) {
       expect(html, expected).toContain(expected);
     }

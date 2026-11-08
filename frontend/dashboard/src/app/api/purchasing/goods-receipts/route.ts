@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams();
   const status = p.get("status");
   if (status && STATUSES.includes(status)) params.set("status", status);
-  for (const [name, upstream] of [["purchaseOrderId", "purchase_order_id"], ["supplierId", "supplier_id"], ["warehouseId", "warehouse_id"], ["productId", "product_id"]] as const) {
+  for (const [name, upstream] of [["purchaseOrderId", "purchase_order_id"], ["supplierId", "supplier_id"], ["productId", "product_id"]] as const) {
     const value = p.get(name);
     if (value) {
       if (!checkUuid(value)) return fail("Not found.", 404);
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 //
 // The browser sends an Idempotency-Key with every create (generated once per page), so a double click or a retry returns the same
 // draft instead of a second one. Only the order id, the date, the supplier's reference, a note and the lines (order-line id,
-// accepted / rejected quantity as exact strings, warehouse, note) are read from the browser. Product, SKU, name and unit come from
+// accepted / rejected quantity as exact strings, note) are read from the browser. Product, SKU, name and unit come from
 // the order; the number, status, owner and organization are decided by the Purchasing Service.
 export async function POST(req: NextRequest) {
   const token = sessionToken(req);

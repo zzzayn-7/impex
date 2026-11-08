@@ -197,7 +197,6 @@ class LineCreate(BaseModel):
     product_id: uuid.UUID
     quantity: Quantity
     unit_price: UnitPrice
-    planned_warehouse_id: Optional[uuid.UUID] = None
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("notes")
@@ -211,7 +210,6 @@ class LineUpdate(BaseModel):
 
     quantity: Optional[Quantity] = None
     unit_price: Optional[UnitPrice] = None
-    planned_warehouse_id: Optional[uuid.UUID] = None  # send null to clear it
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("notes")
@@ -240,8 +238,6 @@ class LineResponse(BaseModel):
     quantity: Decimal
     unit_price: Decimal
     line_total: Decimal
-    planned_warehouse_id: Optional[uuid.UUID]
-    planned_warehouse_code: Optional[str]
     notes: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -337,7 +333,6 @@ class ReceiptLineInput(BaseModel):
     purchase_order_line_id: uuid.UUID
     accepted_quantity: ReceivedQuantity = Decimal("0")  # added to stock when the receipt is confirmed
     rejected_quantity: ReceivedQuantity = Decimal("0")  # informational only: never added to stock
-    warehouse_id: Optional[uuid.UUID] = None  # required when something is accepted
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("notes")
@@ -402,8 +397,6 @@ class ReceiptLineResponse(BaseModel):
     received_elsewhere_quantity: Decimal  # confirmed on OTHER receipts of the order
     pending_elsewhere_quantity: Decimal  # being posted on other receipts (reserved)
     receivable_quantity: Decimal  # the most this receipt may accept: ordered - received elsewhere - pending elsewhere
-    warehouse_id: Optional[uuid.UUID]
-    warehouse_code: Optional[str]
     accepted_quantity: Decimal
     rejected_quantity: Decimal
     notes: Optional[str]

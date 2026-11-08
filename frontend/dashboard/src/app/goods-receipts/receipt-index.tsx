@@ -6,11 +6,10 @@ import { useRouter } from "next/navigation";
 
 import { RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE } from "@/lib/purchasing-browser";
 import type { Paged, ReceiptFilters, ReceiptStatus, ReceiptSummary, Supplier } from "@/lib/purchasing";
-import type { Warehouse } from "@/lib/stock-validation";
 
 const selectClass = "mt-1.5 block max-w-[14rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
 
-export default function ReceiptIndex({ list, filters, suppliers, warehouses }: { list: Paged<ReceiptSummary>; filters: ReceiptFilters; suppliers: Supplier[]; warehouses: Warehouse[] }) {
+export default function ReceiptIndex({ list, filters, suppliers }: { list: Paged<ReceiptSummary>; filters: ReceiptFilters; suppliers: Supplier[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);
@@ -21,7 +20,6 @@ export default function ReceiptIndex({ list, filters, suppliers, warehouses }: {
     if (merged.q) params.set("q", merged.q);
     if (merged.status) params.set("status", merged.status);
     if (merged.supplierId) params.set("supplier", merged.supplierId);
-    if (merged.warehouseId) params.set("warehouse", merged.warehouseId);
     if (merged.dateFrom) params.set("from", merged.dateFrom);
     if (merged.dateTo) params.set("to", merged.dateTo);
     if (merged.page > 1) params.set("page", String(merged.page));
@@ -29,7 +27,7 @@ export default function ReceiptIndex({ list, filters, suppliers, warehouses }: {
     startTransition(() => router.push(query ? `/goods-receipts?${query}` : "/goods-receipts"));
   }
 
-  const filtered = Boolean(filters.q || filters.status || filters.supplierId || filters.warehouseId || filters.dateFrom || filters.dateTo);
+  const filtered = Boolean(filters.q || filters.status || filters.supplierId || filters.dateFrom || filters.dateTo);
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.items.length : 0;
@@ -66,13 +64,6 @@ export default function ReceiptIndex({ list, filters, suppliers, warehouses }: {
             </select>
           </label>
           <label className="text-xs font-medium text-slate-400">
-            Warehouse
-            <select value={filters.warehouseId} onChange={(e) => navigate({ warehouseId: e.target.value })} className={selectClass}>
-              <option value="">All warehouses</option>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code}{w.is_active ? "" : " (archived)"}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-slate-400">
             From
             <input type="date" value={filters.dateFrom} onChange={(e) => navigate({ dateFrom: e.target.value })} className={selectClass} />
           </label>
@@ -80,7 +71,7 @@ export default function ReceiptIndex({ list, filters, suppliers, warehouses }: {
             To
             <input type="date" value={filters.dateTo} onChange={(e) => navigate({ dateTo: e.target.value })} className={selectClass} />
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", supplierId: "", warehouseId: "", dateFrom: "", dateTo: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
+          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", supplierId: "", dateFrom: "", dateTo: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

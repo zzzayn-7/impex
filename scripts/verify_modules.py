@@ -237,17 +237,11 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(who, code, name):
-        _, data, _, _ = tenant(who, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(data).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
+    def stock_in(who, pid, quantity):
+        return tenant(who, "POST", "/api/stock/in", {"product_id": pid, "quantity": quantity}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})[0]
 
-    def stock_in(who, pid, wid, quantity):
-        return tenant(who, "POST", "/api/stock/in", {"product_id": pid, "warehouse_id": wid, "quantity": quantity}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})[0]
-
-    def quantity(pid, wid):
-        return Decimal(psql("impex_inventory", f"SELECT coalesce((SELECT quantity FROM stock_balances WHERE product_id = '{pid}' AND warehouse_id = '{wid}'), 0)") or "0")
+    def quantity(pid):
+        return Decimal(psql("impex_inventory", f"SELECT coalesce((SELECT quantity FROM stock_balances WHERE product_id = '{pid}'), 0)") or "0")
 
     def new_client(who, name):
         _, data, _, _ = tenant(who, "POST", "/api/sales/clients", {"name": name})
@@ -263,9 +257,9 @@ def main() -> int:
         tenant(who, "POST", f"/api/sales/delivery-lists/{made['id']}/ready")
         return jbody(tenant(who, "GET", f"/api/sales/delivery-lists/{made['id']}")[1]).get("list", {})
 
-    def draft_dispatch(who, delivery_list, product_id, qty, warehouse_id):
+    def draft_dispatch(who, delivery_list, product_id, qty):
         item = next(i for i in delivery_list["items"] if i["product_id"] == product_id)
-        line = {"deliveryListItemId": item["id"], "warehouseId": warehouse_id, "quantity": qty}
+        line = {"deliveryListItemId": item["id"], "quantity": qty}
         status, data, _, _ = tenant(who, "POST", "/api/sales/dispatches", {"deliveryListId": delivery_list["id"], "lines": [line]}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         body = jbody(data).get("dispatch", {})
         created.add("dispatches", body.get("id"))
@@ -284,9 +278,9 @@ def main() -> int:
         tenant(who, "POST", f"/api/purchasing/purchase-orders/{order['id']}/order")
         return jbody(tenant(who, "GET", f"/api/purchasing/purchase-orders/{order['id']}")[1]).get("order", {})
 
-    def draft_receipt(who, order, product_id, accepted, warehouse_id):
+    def draft_receipt(who, order, product_id, accepted):
         line = next(l for l in order["lines"] if l["product_id"] == product_id)
-        body = {"purchaseOrderId": order["id"], "lines": [{"purchaseOrderLineId": line["id"], "acceptedQuantity": accepted, "rejectedQuantity": "0", "warehouseId": warehouse_id}]}
+        body = {"purchaseOrderId": order["id"], "lines": [{"purchaseOrderLineId": line["id"], "acceptedQuantity": accepted, "rejectedQuantity": "0"}]}
         status, data, _, _ = tenant(who, "POST", "/api/purchasing/goods-receipts", body, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         receipt = jbody(data).get("receipt", {})
         created.add("goods_receipts", receipt.get("id"))
@@ -333,7 +327,7 @@ def main() -> int:
         s, html, loc = tpage("a1", "/")
         check("the dashboard lists the Inventory module and no other", s == 200 and 'data-module="inventory"' in html and 'data-module="sales"' not in html and 'data-module="purchasing"' not in html, s)
         check("the menu has Inventory's pages, Dashboard and Help & Support; no Purchasing or Sales page is listed",
-              all(f'href="{h}"' in html for h in ("/products", "/warehouses", "/stock", "/scan", "/movements", "/support")) and not any(f'href="{h}"' in html for h in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices")))
+              all(f'href="{h}"' in html for h in ("/products", "/stock", "/scan", "/movements", "/support")) and not any(f'href="{h}"' in html for h in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices")))
         check("an Inventory page opens normally", tpage("a1", "/products")[0] == 200 and denied_marker not in tpage("a1", "/products")[1])
         for path in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
             s, html, loc = tpage("a1", path)
@@ -353,9 +347,8 @@ def main() -> int:
         check("...also for a write, whatever the body, header or query says", s == 403, (s, body))
         s, body = svc("a1", INVENTORY, "GET", "/api/v1/inventory/products")
         check("the Inventory Service serves A1 (200)", s == 200, (s, body))
-        main_a = warehouse("a1", "MAIN", "Main depot")
         bolt_a = product("a1", "MOD-BOLT", "Module bolt")
-        check("Inventory works end to end through the portal (warehouse, product, stock)", bool(main_a.get("id")) and bool(bolt_a.get("id")) and stock_in("a1", bolt_a["id"], main_a["id"], "100") == 201 and quantity(bolt_a["id"], main_a["id"]) == 100)
+        check("Inventory works end to end through the portal (product, stock)", bool(bolt_a.get("id")) and stock_in("a1", bolt_a["id"], "100") == 201 and quantity(bolt_a["id"]) == 100)
 
         print("\n== 3. Help & Support is always open, and a request never changes a module")
         rev_before, hist_before = revision("a"), len(history("a"))
@@ -429,14 +422,13 @@ def main() -> int:
         check("Help & Support is therefore still open", tapi("a1", "GET", "/api/support/tickets")[0] == 200)
 
         print("\n== 7. operations in progress are never stranded")
-        shelf = warehouse("a1", "SHELF", "Shelf room")
-        stock_in("a1", bolt_a["id"], shelf["id"], "50")
+        stock_in("a1", bolt_a["id"], "50")
         dl1 = ready_list("a1", client_a["id"], [(bolt_a["id"], "15")])
-        posting = draft_dispatch("a1", dl1, bolt_a["id"], "15", main_a["id"])
-        other = draft_dispatch("a1", dl1, bolt_a["id"], "1", shelf["id"])
+        posting = draft_dispatch("a1", dl1, bolt_a["id"], "15")
+        other = draft_dispatch("a1", dl1, bolt_a["id"], "1")
         check("a dispatch draft exists, plus a second draft", bool(posting.get("id")) and bool(other.get("id")) and posting.get("status") == "draft")
         psql("impex_sales", f"UPDATE dispatches SET status = 'posting', posting_started_at = now(), posting_attempts = 1 WHERE id = '{posting['id']}'")
-        stock_before = quantity(bolt_a["id"], main_a["id"])
+        stock_before = quantity(bolt_a["id"])
         status, review = preview("a", {"sales": False})
         pend = [b for b in review.get("blockers", []) if b["code"] == "pending_operations"]
         check("the review says the dispatch being posted must finish first (with the count)", status == 200 and review["can_apply"] is False and pend and pend[0]["counts"][0]["count"] == 1, (status, review))
@@ -454,22 +446,22 @@ def main() -> int:
         check("nor cancelled or edited (403)", s == 403)
         s, body = svc("a1", SALES, "POST", f"/api/v1/sales/dispatches/{posting['id']}/confirm")
         check("but the dispatch that was ALREADY posting can be finished (200, confirmed): it is not stranded", s == 200 and status_of(body) == "confirmed", (s, str(body)[:200]))
-        check("and the goods were deducted exactly once", quantity(bolt_a["id"], main_a["id"]) == stock_before - 15 and psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE product_id = '{bolt_a['id']}' AND source_type = 'client_dispatch' AND warehouse_id = '{main_a['id']}'") == "1")
+        check("and the goods were deducted exactly once", quantity(bolt_a["id"]) == stock_before - 15 and psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE product_id = '{bolt_a['id']}' AND source_type = 'client_dispatch'") == "1")
         s, body = svc("a1", SALES, "POST", f"/api/v1/sales/dispatches/{posting['id']}/confirm")
         check("once finished, nothing more can be done through the disabled module (403)", s == 403)
         status, body = apply("a", {"sales": True}, reason="Race over")
         check("Sales is switched on again properly, and the finished dispatch and the untouched draft are both there", status == 200 and status_of(svc("a1", SALES, "GET", f"/api/v1/sales/dispatches/{posting['id']}")[1]) == "confirmed" and status_of(svc("a1", SALES, "GET", f"/api/v1/sales/dispatches/{other['id']}")[1]) == "draft")
         # the same for a goods receipt
         order = placed_order("a1", sup_a["id"], bolt_a["id"], "10")
-        receipt = draft_receipt("a1", order, bolt_a["id"], "10", main_a["id"])
+        receipt = draft_receipt("a1", order, bolt_a["id"], "10")
         psql("impex_purchasing", f"UPDATE goods_receipts SET status = 'posting', posting_started_at = now(), posting_attempts = 1 WHERE id = '{receipt['id']}'")
         s, review = preview("a", {"purchasing": False})
         check("a goods receipt being posted blocks switching Purchasing off", review.get("can_apply") is False and any(b["code"] == "pending_operations" for b in review.get("blockers", [])), review)
-        stock_before = quantity(bolt_a["id"], main_a["id"])
+        stock_before = quantity(bolt_a["id"])
         psql("impex_organizations", f"UPDATE organization_modules SET enabled = false WHERE organization_id = '{org_ids['a']}' AND module_key = 'purchasing'")
         s, body = svc("a1", PURCHASING, "POST", f"/api/v1/purchasing/goods-receipts/{receipt['id']}/confirm")
         check("with Purchasing off, a receipt already posting can still be finished (200)", s == 200, (s, str(body)[:200]))
-        check("and the goods were added exactly once", quantity(bolt_a["id"], main_a["id"]) == stock_before + 10)
+        check("and the goods were added exactly once", quantity(bolt_a["id"]) == stock_before + 10)
         check("a second confirmation is refused (403)", svc("a1", PURCHASING, "POST", f"/api/v1/purchasing/goods-receipts/{receipt['id']}/confirm")[0] == 403)
         check("Purchasing is switched on again properly", apply("a", {"purchasing": True})[0] == 200)
 
@@ -632,7 +624,6 @@ def main() -> int:
             "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
             "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
             "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-            "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
             "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             "organizations": delete_exact(psql, "impex_organizations", "organizations", orgs),
             "users": delete_exact(psql, "impex_auth", "users", users),

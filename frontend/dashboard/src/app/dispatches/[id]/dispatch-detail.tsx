@@ -105,7 +105,7 @@ export default function DispatchDetailView({ dispatch: initial }: { dispatch: Di
       {dispatch.status === "draft" && dispatch.posting.last_error && (
         <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">The last attempt to deduct this dispatch from stock was refused, and nothing was deducted: {dispatch.posting.last_error}</p>
       )}
-      {short && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{dispatch.lines_exceeding_stock} {dispatch.lines_exceeding_stock === 1 ? "line asks" : "lines ask"} for more than the warehouse holds right now, so this dispatch cannot be confirmed yet.</p>}
+      {short && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{dispatch.lines_exceeding_stock} {dispatch.lines_exceeding_stock === 1 ? "line asks" : "lines ask"} for more than is in stock right now, so this dispatch cannot be confirmed yet.</p>}
       <p role="note" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">{dispatch.stock_notice || DISPATCH_NOTICE}</p>
 
       <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5" aria-label="Dispatch lines">
@@ -117,7 +117,7 @@ export default function DispatchDetailView({ dispatch: initial }: { dispatch: Di
             <table className="w-full text-left text-sm text-slate-300">
               <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                 <tr>
-                  <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Requested</th><th className="px-3 py-3 font-semibold">Warehouse</th>
+                  <th className="px-3 py-3 font-semibold">Product</th><th className="px-3 py-3 font-semibold text-right">Requested</th>
                   <th className="px-3 py-3 font-semibold text-right">Dispatched</th>{dispatch.stock_status === "ok" && <th className="px-3 py-3 font-semibold text-right">In stock now</th>}<th className="px-3 py-3 font-semibold">Stock movement</th>
                 </tr>
               </thead>
@@ -126,9 +126,8 @@ export default function DispatchDetailView({ dispatch: initial }: { dispatch: Di
                   <tr key={l.id} className="align-top hover:bg-slate-800/30">
                     <td className="px-3 py-3"><div className="font-medium text-white">{l.product_name}</div><div className="font-mono text-xs text-indigo-300">{l.product_sku}</div></td>
                     <td className="px-3 py-3 text-right font-mono">{qty(l.requested_quantity)} <span className="text-xs text-slate-400">{l.unit}</span></td>
-                    <td className="px-3 py-3 text-xs">{l.warehouse_code ?? <span className="text-slate-600">—</span>}</td>
                     <td className="px-3 py-3 text-right font-mono font-semibold text-white">{qty(l.quantity)} <span className="text-xs font-normal text-slate-400">{l.unit}</span></td>
-                    {dispatch.stock_status === "ok" && <td className="px-3 py-3 text-right font-mono text-xs">{l.available_in_warehouse === null ? <span className="text-slate-600">—</span> : <>{qty(l.available_in_warehouse)} {l.unit}</>}</td>}
+                    {dispatch.stock_status === "ok" && <td className="px-3 py-3 text-right font-mono text-xs">{l.available_quantity === null ? <span className="text-slate-600">—</span> : <>{qty(l.available_quantity)} {l.unit}</>}</td>}
                     <td className="px-3 py-3 text-xs">
                       {l.inventory_movement_id
                         ? <Link href={`/movements?product=${l.product_id}`} className="font-mono text-indigo-300 hover:text-indigo-200" title={l.inventory_movement_id}>#{l.inventory_movement_id.slice(0, 8)}</Link>

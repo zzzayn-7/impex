@@ -122,11 +122,11 @@ This needs the application to connect as a non-owner database role. Add it when 
 
 ## Stock tables: the database enforces it too (Step 14)
 
-`warehouses`, `stock_balances`, `stock_movements` and `stock_operations` all carry `organization_id NOT NULL`. In
-addition, `products` and `warehouses` have a unique `(organization_id, id)`, and every row that points at them uses a
-**composite** foreign key `(organization_id, product_id)` / `(organization_id, warehouse_id)`. So even code that forgot
-a filter cannot store Alpha's product in Beta's warehouse or write a movement that mixes the two: PostgreSQL refuses it.
-The tests insert such rows directly to prove it. Warehouse codes are unique per organization too.
+`stock_balances`, `stock_movements` and `stock_operations` all carry `organization_id NOT NULL`. In addition,
+`products` has a unique `(organization_id, id)`, and every row that points at it uses a **composite** foreign key
+`(organization_id, product_id)`. So even code that forgot a filter cannot give Alpha a balance or a movement for Beta's
+product: PostgreSQL refuses it. The tests insert such rows directly to prove it. (There are no warehouses: the business
+keeps one stock figure per product.)
 
 Idempotency keys are per organization (`UNIQUE (organization_id, idempotency_key)`), so one tenant can never replay
 another's result, and the same key in two organizations is two independent operations.
@@ -151,7 +151,7 @@ Like Sales, the Purchasing Service keeps no product data: it asks the Inventory 
 
 `goods_receipts`, `goods_receipt_lines`, `goods_receipt_counters` and `goods_receipt_requests` all carry `organization_id NOT NULL`. A receipt points at its purchase order, and a receipt line at its receipt and its purchase-order line, through **composite** foreign keys `(organization_id, id)`, so a receipt can never reference another organization's order, nor a line another organization's order line. Receipt numbers (`GR-000001`), posting keys and idempotency keys are unique **per organization**. A line of a purchase order can never be re-pointed at another order or organization (database trigger), so the freeze of a placed order cannot be bypassed that way.
 
-Confirming a receipt makes the Purchasing Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
+Confirming a receipt makes the Purchasing Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product of another organization is `404 Product not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
 
 ## Client dispatch (Step 17A)
 
@@ -159,8 +159,8 @@ Confirming a receipt makes the Purchasing Service call the Inventory Service wit
 through **composite** foreign keys `(organization_id, id)`, so a dispatch can never reference another organization's list, client or item. A trigger also requires a dispatch's client to be the client of its list. Dispatch numbers (`DS-000001`), posting keys and idempotency keys are unique
 **per organization**. An item of a delivery list can never be re-pointed at another list or organization (database trigger), so the freeze of a list that is not a draft cannot be bypassed that way.
 
-Confirming a dispatch makes the Sales Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product or warehouse of another
-organization is `404 Product not found.` / `404 Warehouse not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
+Confirming a dispatch makes the Sales Service call the Inventory Service with the **caller's own bearer token** - there is no service credential that could act for another organization. The Inventory Service applies its own isolation: a product of another
+organization is `404 Product not found.`, identical to an id that does not exist, and the posting key is looked up inside the caller's organization only.
 
 ## Sales invoicing (Step 17B)
 

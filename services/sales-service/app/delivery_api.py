@@ -121,7 +121,7 @@ for _path, _target, _doc in (
 def add_item(list_id: uuid.UUID, payload: ItemCreate, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
     """Add a product with an explicit quantity. If it is already on the list the answer is 409 with the existing line:
     nothing is incremented implicitly."""
-    item = delivery.add_item(db, tenant, gateway, list_id, payload.product_id, payload.quantity, payload.planned_warehouse_id)
+    item = delivery.add_item(db, tenant, gateway, list_id, payload.product_id, payload.quantity)
     return _result(db, tenant, gateway, list_id, item)
 
 
@@ -138,7 +138,7 @@ def _result(db: Session, tenant: TenantContext, gateway: InventoryGateway, list_
 
 @router.patch("/delivery-lists/{list_id}/items/{item_id}", response_model=ItemResult, tags=["Delivery list items"])
 def update_item(list_id: uuid.UUID, item_id: uuid.UUID, payload: ItemUpdate, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
-    """Set the quantity (and/or planned warehouse) of a line of a draft list."""
+    """Set the quantity of a line of a draft list."""
     item = delivery.update_item(db, tenant, gateway, list_id, item_id, payload.model_dump(exclude_unset=True))
     return _result(db, tenant, gateway, list_id, item)
 

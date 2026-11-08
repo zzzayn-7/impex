@@ -191,7 +191,7 @@ def billable_lines(db: Session, tenant: TenantContext, client_id: uuid.UUID, lis
             BillableLine(
                 dispatch_line_id=line.id, dispatch_id=dispatch.id, dispatch_number=dispatch.number, dispatch_date=dispatch.dispatch_date,
                 delivery_list=ListRef(id=delivery_list.id, number=delivery_list.number, status=delivery_list.status), product_id=line.product_id,
-                product_sku=line.product_sku, product_name=line.product_name, unit=line.unit, warehouse_code=line.warehouse_code,
+                product_sku=line.product_sku, product_name=line.product_name, unit=line.unit,
                 dispatched_quantity=line.quantity, invoiced_quantity=issued, in_drafts_quantity=drafts, remaining_quantity=max(line.quantity - issued, ZERO),
             )
         )

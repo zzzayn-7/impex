@@ -11,13 +11,12 @@ function fail(error: string, status: number, fieldErrors?: unknown) {
 }
 
 const FIELDS: Record<string, string[]> = {
-  opening: ["product_id", "warehouse_id", "quantity", "reason"],
-  in: ["product_id", "warehouse_id", "quantity", "reason"],
-  out: ["product_id", "warehouse_id", "quantity", "reason"],
-  transfer: ["product_id", "from_warehouse_id", "to_warehouse_id", "quantity", "reason"],
+  opening: ["product_id", "quantity", "reason"],
+  in: ["product_id", "quantity", "reason"],
+  out: ["product_id", "quantity", "reason"],
 };
 
-// OPENING BALANCE / STOCK IN / STOCK OUT / TRANSFER.
+// OPENING BALANCE / STOCK IN / STOCK OUT.
 //
 // Protected: the tenant token comes from the HttpOnly cookie. The browser supplies an Idempotency-Key per
 // intended action (a double click or a retry sends the same key, so the stock changes once). Only the fields
@@ -48,9 +47,6 @@ export async function POST(req: NextRequest, { params }: { params: { action: str
   const quantityError = validateQuantity(forward.quantity ?? "", true); // fractions are judged by the service, per unit
   if (quantityError) fieldErrors.quantity = quantityError;
   if ((forward.reason ?? "").length > 255) fieldErrors.reason = "Reason must be 255 characters or fewer.";
-  if (params.action === "transfer" && forward.from_warehouse_id && forward.from_warehouse_id === forward.to_warehouse_id) {
-    fieldErrors.to_warehouse_id = "Choose a different warehouse than the source.";
-  }
   if (Object.keys(fieldErrors).length > 0) return fail("Please correct the highlighted fields.", 400, fieldErrors);
 
   const result = await inventoryRequest("POST", `/api/v1/inventory/stock/${params.action}`, token, forward, { "Idempotency-Key": key });

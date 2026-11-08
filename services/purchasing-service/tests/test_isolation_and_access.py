@@ -16,12 +16,11 @@ def world(two_orgs, inventory):
     for who in ("alpha", "beta"):
         org = two_orgs[who]
         pid = inventory.add_product(org.org_id, "SHARED-SKU", f"{who} gadget", "pcs")
-        wid = inventory.add_warehouse(org.org_id, "MAIN")
-        inventory.set_stock(pid, wid, 7 if who == "alpha" else 99)
+        inventory.set_stock(pid, 7 if who == "alpha" else 99)
         supplier = org.supplier("Acme Supplies", code="ACME", contact_person=f"{who} contact")
         order = org.order(supplier["id"], supplier_reference=f"{who}-REF")
         line = org.add(order["id"], pid, 3, "1.50").json()["line"]
-        data[who] = {"supplier": supplier, "order": order, "line": line, "product": pid, "warehouse": wid}
+        data[who] = {"supplier": supplier, "order": order, "line": line, "product": pid}
     return data
 
 
@@ -89,11 +88,11 @@ def test_a_product_of_the_other_organization_cannot_be_ordered(two_orgs, world, 
     assert snapshot(session_factory) == before
 
 
-def test_a_warehouse_of_the_other_organization_cannot_be_planned(two_orgs, world):
+def test_a_warehouse_cannot_be_planned_at_all(two_orgs, world):
     alpha = two_orgs["alpha"]
     fresh = alpha.order(alpha.supplier("Other")["id"])
-    response = alpha.add(fresh["id"], world["alpha"]["product"], 1, "1", planned_warehouse_id=world["beta"]["warehouse"])
-    assert response.status_code == 404 and response.json()["detail"] == "Warehouse not found."
+    response = alpha.add(fresh["id"], world["alpha"]["product"], 1, "1", planned_warehouse_id=str(uuid.uuid4()))
+    assert response.status_code == 422
 
 
 def test_the_same_sku_supplier_name_and_code_resolve_to_each_organizations_own_data(two_orgs, world):

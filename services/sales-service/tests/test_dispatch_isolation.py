@@ -9,25 +9,24 @@ from conftest import DISPATCHES, bearer, sent
 
 @pytest.fixture
 def world(two_orgs, inventory):
-    """Each organization: a product with the SAME SKU, a warehouse with stock, a Ready list for 10, a CONFIRMED dispatch and a DRAFT one."""
+    """Each organization: a product with the SAME SKU and stock, a Ready list for 10, a CONFIRMED dispatch and a DRAFT one."""
     data = {}
     for who in ("alpha", "beta"):
         org = two_orgs[who]
         product = inventory.add_product(org.org_id, "SHARED-SKU", f"{who} gadget", "pcs")
-        warehouse = inventory.add_warehouse(org.org_id, "MAIN")
-        inventory.set_stock(product, warehouse, 100)
+        inventory.set_stock(product, 100)
         delivery_list = org.ready_list({"gadget": product}, items=(("gadget", 10),), client_name=f"{who} client")
-        confirmed = org.draft(delivery_list["id"], [sent(delivery_list, product, 3, warehouse)])
+        confirmed = org.draft(delivery_list["id"], [sent(delivery_list, product, 3)])
         assert org.confirm(confirmed["id"]).status_code == 200
-        draft = org.draft(delivery_list["id"], [sent(delivery_list, product, 2, warehouse)])
-        data[who] = {"product": product, "warehouse": warehouse, "list": delivery_list, "confirmed": confirmed, "draft": draft}
+        draft = org.draft(delivery_list["id"], [sent(delivery_list, product, 2)])
+        data[who] = {"product": product, "list": delivery_list, "confirmed": confirmed, "draft": draft}
     return data
 
 
 def snapshot(session_factory):
     with session_factory() as db:
         dispatches = db.execute(text("SELECT id, organization_id, number, status, notes, dispatch_date FROM dispatches ORDER BY id")).all()
-        lines = db.execute(text("SELECT id, organization_id, dispatch_id, quantity, warehouse_id FROM dispatch_lines ORDER BY id")).all()
+        lines = db.execute(text("SELECT id, organization_id, dispatch_id, quantity FROM dispatch_lines ORDER BY id")).all()
         lists = db.execute(text("SELECT id, status FROM delivery_lists ORDER BY id")).all()
     return [tuple(r) for r in dispatches], [tuple(l) for l in lines], [tuple(l) for l in lists]
 
@@ -45,7 +44,7 @@ def test_each_administrator_sees_only_their_own_dispatches(two_orgs, world):
 def test_searching_and_filtering_cannot_reach_the_other_organization(two_orgs, world):
     alpha, theirs = two_orgs["alpha"], world["beta"]
     for params in (
-        {"delivery_list_id": theirs["list"]["id"]}, {"client_id": theirs["list"]["client"]["id"]}, {"warehouse_id": theirs["warehouse"]},
+        {"delivery_list_id": theirs["list"]["id"]}, {"client_id": theirs["list"]["client"]["id"]},
         {"product_id": theirs["product"]}, {"q": "beta"},
     ):
         assert alpha.client.get(DISPATCHES, params=params, headers=alpha.headers).json()["total"] == 0, params
@@ -70,15 +69,12 @@ def test_a_dispatch_cannot_be_started_against_another_organizations_list(two_org
     assert foreign.status_code == missing.status_code == 404 and foreign.json() == missing.json()
 
 
-def test_another_organizations_items_and_warehouses_are_not_found(two_orgs, world):
+def test_another_organizations_items_are_not_found(two_orgs, world):
     alpha, mine, theirs = two_orgs["alpha"], world["alpha"], world["beta"]
-    their_item = sent(theirs["list"], theirs["product"], 1, mine["warehouse"])
+    their_item = sent(theirs["list"], theirs["product"], 1)
     stolen_item = alpha.dispatch_request(mine["list"]["id"], [their_item])
     ghost_item = alpha.dispatch_request(mine["list"]["id"], [{**their_item, "delivery_list_item_id": str(uuid.uuid4())}])
     assert stolen_item.status_code == ghost_item.status_code == 404 and stolen_item.json() == ghost_item.json()
-    stolen_warehouse = alpha.dispatch_request(mine["list"]["id"], [sent(mine["list"], mine["product"], 1, theirs["warehouse"])])
-    ghost_warehouse = alpha.dispatch_request(mine["list"]["id"], [sent(mine["list"], mine["product"], 1, str(uuid.uuid4()))])
-    assert stolen_warehouse.status_code == ghost_warehouse.status_code == 404 and stolen_warehouse.json() == ghost_warehouse.json()
 
 
 @pytest.mark.parametrize("attacker,victim", [("alpha", "beta"), ("beta", "alpha")])

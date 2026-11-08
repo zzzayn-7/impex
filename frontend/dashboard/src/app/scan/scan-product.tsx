@@ -5,14 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { LookupResult, ScanResult, ScanSource, createScanSession, lookupOnServer } from "@/lib/scan";
-import { StockAction, Warehouse, formatQuantity } from "@/lib/stock-validation";
+import { StockAction, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "@/app/stock/stock-form";
 import CameraScanner from "./camera-scanner";
 import DeliverablesPanel, { ActiveList } from "./deliverables-panel";
 import DispatchPanel from "./dispatch-panel";
 
-// Warehouse transfers are not offered here: they stay on the Stock page. The scanner prioritises receiving, issuing and
-// preparing deliveries.
+// The scanner prioritises receiving, issuing and preparing deliveries.
 const SCAN_ACTIONS: StockAction[] = ["in", "out"];
 type Panel = StockAction | "deliver" | "dispatch";
 const ACTION_BUTTONS: { action: Panel; label: string }[] = [
@@ -24,7 +23,7 @@ const ACTION_BUTTONS: { action: Panel; label: string }[] = [
 
 type Notice = { tone: "info" | "error" | "success"; text: string } | null;
 
-export default function ScanProduct({ warehouses, initialListId = null }: { warehouses: Warehouse[]; initialListId?: string | null }) {
+export default function ScanProduct({ initialListId = null }: { initialListId?: string | null }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
@@ -38,7 +37,6 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
   const [activeList, setActiveList] = useState<ActiveList | null>(null);
   const [activeListId, setActiveListId] = useState<string | null>(initialListId);
 
-  const activeWarehouses = useMemo(() => warehouses.filter((w) => w.is_active), [warehouses]);
   const session = useRef(createScanSession({ lookup: lookupOnServer })).current;
   const resultRef = useRef<ScanResult | null>(null);
   resultRef.current = result;
@@ -117,7 +115,6 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
   const product = result?.product;
   const stock = result?.stock;
   const archived = Boolean(product && !product.is_active);
-  const noWarehouse = activeWarehouses.length === 0;
 
   return (
     <div className="space-y-6">
@@ -211,36 +208,12 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-3">
+          <dl>
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-              <dt className="text-xs text-slate-400">Total stock</dt>
+              <dt className="text-xs text-slate-400">In stock</dt>
               <dd className="mt-1 font-mono text-xl font-semibold text-white">{formatQuantity(stock.total_quantity)} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-              <dt className="text-xs text-slate-400">Available stock</dt>
-              <dd className="mt-1 font-mono text-xl font-semibold text-emerald-400">{formatQuantity(stock.available_quantity)} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
-              {stock.available_quantity !== stock.total_quantity && <p className="mt-1 text-[11px] text-slate-500">in active warehouses only</p>}
-            </div>
           </dl>
-
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase text-slate-400">Stock by warehouse</h4>
-            {stock.lines.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-800 px-4 py-4 text-sm text-slate-500">No stock recorded for this product yet.</p>
-            ) : (
-              <ul className="divide-y divide-slate-800/60 rounded-lg border border-slate-800">
-                {stock.lines.map((line) => (
-                  <li key={line.warehouse_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <span className={line.warehouse_active ? "text-slate-200" : "text-slate-500"}>
-                      <span className="font-mono text-xs text-indigo-300">{line.warehouse_code}</span> {line.warehouse_name}
-                      {!line.warehouse_active && <span className="ml-2 text-xs">(archived)</span>}
-                    </span>
-                    <span className="font-mono text-slate-100">{formatQuantity(line.quantity)} {product.unit}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
 
           {archived ? (
             <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -253,7 +226,6 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
                   <button
                     key={action}
                     type="button"
-                    disabled={noWarehouse && action !== "deliver"}
                     aria-pressed={panel === action}
                     onClick={() => { setNotice(null); setPanel(panel === action ? null : action); }}
                     className={`min-h-12 rounded-lg px-2 py-2 text-sm font-semibold transition disabled:opacity-40 ${
@@ -264,10 +236,6 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
                   </button>
                 ))}
               </div>
-              {noWarehouse && <p className="text-xs text-amber-300">Create a warehouse first (Warehouses) to record stock. Delivery lists do not need one.</p>}
-              <p className="text-xs text-slate-500">
-                Moving stock between warehouses is on the <Link href="/stock" className="text-indigo-300 hover:text-indigo-200">Stock page</Link>.
-              </p>
               {panel === "deliver" && (
                 <DeliverablesPanel
                   key={product.id}
@@ -279,23 +247,21 @@ export default function ScanProduct({ warehouses, initialListId = null }: { ware
                   onClose={() => { setPanel(null); refocus(); }}
                 />
               )}
-              {panel === "dispatch" && !noWarehouse && (
+              {panel === "dispatch" && (
                 <DispatchPanel
                   key={product.id}
                   product={product}
                   stock={stock}
-                  warehouses={activeWarehouses}
                   onAdded={(message) => { setNotice({ tone: "success", text: message }); refocus(); }}
                   onClose={() => { setPanel(null); refocus(); }}
                 />
               )}
-              {panel && panel !== "deliver" && panel !== "dispatch" && !noWarehouse && (
+              {panel && panel !== "deliver" && panel !== "dispatch" && (
                 <StockForm
                   key={`${product.id}-${panel}`}
                   initialAction={panel}
                   initialProductId={product.id}
                   products={[product]}
-                  warehouses={activeWarehouses}
                   actions={SCAN_ACTIONS}
                   requireConfirmation
                   lockProduct

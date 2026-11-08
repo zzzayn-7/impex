@@ -5,7 +5,7 @@ list, showing its stock, marking a list Ready) it is asked, using the CALLER'S O
 credential": the Inventory Service derives the organization from the token, so Purchasing can only ever see the caller's own
 products, and nothing a browser claims about a product (name, SKU, unit, stock) is believed.
 
-This module READS products and warehouses, and makes exactly ONE kind of write: posting a CONFIRMED goods receipt
+This module READS products, and makes exactly ONE kind of write: posting a CONFIRMED goods receipt
 (`post_goods_receipt`), which adds the accepted quantities to stock through the Inventory Service's own audited, idempotent
 operation. Purchase orders, drafts and scanning never reach it (tests assert that the only non-GET request ever made is that
 posting, and only on confirmation).
@@ -50,7 +50,6 @@ class ProductInfo:
         self.is_active: bool = bool(data["is_active"])
         self.allows_fractions: bool = bool(data["unit_allows_fractions"])
         self.total = Decimal(str(data["total_quantity"]))
-        self.available = Decimal(str(data["available_quantity"]))
 
 
 class InventoryGateway:
@@ -90,19 +89,6 @@ class InventoryGateway:
             except (ValueError, KeyError, TypeError, ArithmeticError):
                 raise InventoryUnavailable()
         return found
-
-    def warehouse(self, warehouse_id: uuid.UUID) -> Optional[dict]:
-        """The caller's own warehouse, or None if it does not exist (or belongs to someone else)."""
-        response = self._get(f"/api/v1/inventory/warehouses/{warehouse_id}")
-        if response.status_code == status.HTTP_404_NOT_FOUND:
-            return None
-        if response.status_code != status.HTTP_200_OK:
-            raise InventoryUnavailable()
-        try:
-            data = response.json()
-            return {"id": uuid.UUID(str(data["id"])), "code": data["code"], "is_active": bool(data["is_active"])}
-        except (ValueError, KeyError, TypeError):
-            raise InventoryUnavailable()
 
 
     # --- the one write: adding CONFIRMED goods to stock -----------------------------------------------------------------------

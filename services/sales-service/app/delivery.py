@@ -140,10 +140,10 @@ def list_items(db: Session, tenant: TenantContext, list_id: uuid.UUID) -> List[D
 def item_stock(item: DeliveryListItem, info: Optional[ProductInfo]) -> Optional[ItemStock]:
     if info is None:
         return None
-    shortfall = max(item.quantity - info.available, ZERO)
+    shortfall = max(item.quantity - info.total, ZERO)
     return ItemStock(
-        total_quantity=info.total, available_quantity=info.available, product_active=info.is_active,
-        unit_allows_fractions=info.allows_fractions, exceeds_available=item.quantity > info.available, shortfall=shortfall,
+        total_quantity=info.total, product_active=info.is_active,
+        unit_allows_fractions=info.allows_fractions, exceeds_available=item.quantity > info.total, shortfall=shortfall,
     )
 
 
@@ -205,20 +205,6 @@ def check_quantity(info: ProductInfo, quantity: Decimal) -> None:
         )
 
 
-def check_warehouse(gateway: InventoryGateway, warehouse_id: Optional[uuid.UUID]) -> Optional[dict]:
-    if warehouse_id is None:
-        return None
-    try:
-        warehouse = gateway.warehouse(warehouse_id)
-    except InventoryUnavailable:
-        raise unavailable_error()
-    if warehouse is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found.")
-    if not warehouse["is_active"]:
-        raise conflict(f"Warehouse {warehouse['code']} is archived. Choose an active warehouse.")
-    return warehouse
-
-
 def require_active_product(info: ProductInfo) -> None:
     if not info.is_active:
         raise conflict(f"{info.name} is archived and cannot be added to a delivery list. Restore it in Products first.")
@@ -242,11 +228,10 @@ def duplicate_error(item: DeliveryListItem) -> HTTPException:
 
 
 def add_item(db: Session, tenant: TenantContext, gateway: InventoryGateway, list_id: uuid.UUID, product_id: uuid.UUID,
-             quantity: Decimal, planned_warehouse_id: Optional[uuid.UUID]) -> DeliveryListItem:
+             quantity: Decimal) -> DeliveryListItem:
     info = fetch_product(gateway, product_id)
     require_active_product(info)
     check_quantity(info, quantity)
-    warehouse = check_warehouse(gateway, planned_warehouse_id)
 
     delivery_list = get_list_or_404(db, tenant, list_id, lock=True)  # serializes concurrent adds to the same list
     require_draft(delivery_list)
@@ -258,7 +243,6 @@ def add_item(db: Session, tenant: TenantContext, gateway: InventoryGateway, list
     item = DeliveryListItem(
         organization_id=tenant.organization_id, delivery_list_id=list_id, product_id=info.id, product_sku=info.sku,
         product_name=info.name, quantity=quantity, unit=info.unit,
-        planned_warehouse_id=warehouse["id"] if warehouse else None, planned_warehouse_code=warehouse["code"] if warehouse else None,
     )
     db.add(item)
     try:
@@ -282,10 +266,6 @@ def update_item(db: Session, tenant: TenantContext, gateway: InventoryGateway, l
         require_active_product(info)
         check_quantity(info, changes["quantity"])
         item.quantity = changes["quantity"]
-    if "planned_warehouse_id" in changes:
-        warehouse = check_warehouse(gateway, changes["planned_warehouse_id"])
-        item.planned_warehouse_id = warehouse["id"] if warehouse else None
-        item.planned_warehouse_code = warehouse["code"] if warehouse else None
     db.commit()
     db.refresh(item)
     return item

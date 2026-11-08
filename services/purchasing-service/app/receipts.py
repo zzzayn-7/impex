@@ -10,7 +10,7 @@ The rules that matter most:
                                  second receipt cannot take them, and the receipt is frozen.
         2. (NO transaction)     the Inventory Service is asked, with the stable Idempotency-Key  goods-receipt-<receipt id>.
         3. (short transaction)  only when its answer is VERIFIED (the right operation, one movement per accepted line, the right
-                                 product / warehouse / quantity) does the receipt become confirmed, and the order Partially
+                                 product / quantity) does the receipt become confirmed, and the order Partially
                                  Received / Received.
     If anything is uncertain - timeout, outage, crash, garbled answer - the receipt STAYS `posting`. Retrying confirm (from any
     process, after any restart) asks again with the same key: the Inventory Service replays the first result instead of adding the
@@ -219,7 +219,7 @@ def detail(db: Session, tenant: TenantContext, receipt: GoodsReceipt) -> Receipt
                 id=l.id, purchase_order_line_id=l.purchase_order_line_id, product_id=l.product_id, product_sku=l.product_sku,
                 product_name=l.product_name, unit=l.unit, ordered_quantity=ordered, received_elsewhere_quantity=confirmed,
                 pending_elsewhere_quantity=pending, receivable_quantity=max(ordered - confirmed - pending, ZERO),
-                warehouse_id=l.warehouse_id, warehouse_code=l.warehouse_code, accepted_quantity=l.accepted_quantity,
+                accepted_quantity=l.accepted_quantity,
                 rejected_quantity=l.rejected_quantity, notes=l.notes, inventory_movement_id=l.inventory_movement_id,
             )
         )
@@ -247,8 +247,7 @@ class Row:
         self.order_line_id, self.product_id, self.sku, self.name, self.unit = line.id, line.product_id, line.product_sku, line.product_name, line.unit
         self.ordered = line.quantity
         self.accepted, self.rejected = item.accepted_quantity, item.rejected_quantity
-        self.warehouse_id, self.notes = item.warehouse_id, item.notes
-        self.warehouse_code: Optional[str] = None
+        self.notes = item.notes
 
 
 def local_rows(db: Session, tenant: TenantContext, order: PurchaseOrder, items: List[ReceiptLineInput]) -> List[Row]:
@@ -264,25 +263,17 @@ def local_rows(db: Session, tenant: TenantContext, order: PurchaseOrder, items: 
         seen.add(line.id)
         if item.accepted_quantity == 0 and item.rejected_quantity == 0:
             continue
-        if item.accepted_quantity > 0 and item.warehouse_id is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Choose the warehouse that receives {line.product_name}.")
         rows.append(Row(line, item))
     return rows
 
 
 def remote_checks(gateway: InventoryGateway, rows: List[Row]) -> None:
-    """Ask the Inventory Service (caller's own token) whether the products and warehouses can take this. Called with no
+    """Ask the Inventory Service (caller's own token) whether the products can take this. Called with no
     transaction open. Archived or unknown things are refused; a product whose unit is no longer the ordered one is refused."""
     if not rows:
         return
     try:
         products: Dict[uuid.UUID, ProductInfo] = gateway.products([r.product_id for r in rows])
-        warehouses: Dict[uuid.UUID, dict] = {}
-        for warehouse_id in dict.fromkeys(r.warehouse_id for r in rows if r.warehouse_id is not None):
-            found = gateway.warehouse(warehouse_id)
-            if found is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found.")
-            warehouses[warehouse_id] = found
     except InventoryUnavailable:
         raise unavailable_error()
     for r in rows:
@@ -302,11 +293,6 @@ def remote_checks(gateway: InventoryGateway, rows: List[Row]) -> None:
                     raise HTTPException(
                         status.HTTP_422_UNPROCESSABLE_ENTITY, f"The {label} quantity must be a whole number: {info.name} is counted in '{info.unit}'."
                     )
-        if r.warehouse_id is not None:
-            warehouse = warehouses[r.warehouse_id]
-            r.warehouse_code = warehouse["code"]
-            if r.accepted > 0 and not warehouse["is_active"]:
-                raise conflict(f"Warehouse {warehouse['code']} is archived. Choose an active warehouse.")
 
 
 def check_capacity(db: Session, tenant: TenantContext, rows: List[Row], receipt_id: Optional[uuid.UUID]) -> None:
@@ -404,7 +390,7 @@ def _write_lines(db: Session, tenant: TenantContext, receipt: GoodsReceipt, rows
             GoodsReceiptLine(
                 organization_id=tenant.organization_id, goods_receipt_id=receipt.id, purchase_order_line_id=r.order_line_id,
                 product_id=r.product_id, product_sku=r.sku, product_name=r.name, unit=r.unit,
-                warehouse_id=r.warehouse_id, warehouse_code=r.warehouse_code, accepted_quantity=r.accepted, rejected_quantity=r.rejected, notes=r.notes,
+                accepted_quantity=r.accepted, rejected_quantity=r.rejected, notes=r.notes,
             )
         )
     db.flush()
@@ -499,7 +485,7 @@ def posting_body(receipt: GoodsReceipt, order_number: str, lines: List[GoodsRece
         "purchase_order_number": order_number,
         "lines": [
             {
-                "line_id": str(l.id), "product_id": str(l.product_id), "warehouse_id": str(l.warehouse_id),
+                "line_id": str(l.id), "product_id": str(l.product_id),
                 "quantity": format(l.accepted_quantity, "f"), "unit": l.unit,
             }
             for l in lines
@@ -510,7 +496,7 @@ def posting_body(receipt: GoodsReceipt, order_number: str, lines: List[GoodsRece
 
 def verify_posting(number: str, body: dict, data: Optional[dict]) -> Tuple[uuid.UUID, Dict[uuid.UUID, uuid.UUID]]:
     """Accept the Inventory Service's answer only if it says exactly what we asked for: this receipt, one movement per accepted
-    line, each for the right product, warehouse and quantity. Returns (operation id, receipt line id -> movement id)."""
+    line, each for the right product and quantity. Returns (operation id, receipt line id -> movement id)."""
     try:
         if not isinstance(data, dict) or data.get("receipt_number") != number:
             raise Mismatch()
@@ -523,7 +509,6 @@ def verify_posting(number: str, body: dict, data: Optional[dict]) -> Tuple[uuid.
             if (
                 expected is None or line_id in movements
                 or str(uuid.UUID(str(movement["product_id"]))) != expected["product_id"]
-                or str(uuid.UUID(str(movement["warehouse_id"]))) != expected["warehouse_id"]
                 or Decimal(str(movement["quantity"])) != Decimal(expected["quantity"])
             ):
                 raise Mismatch()
@@ -674,7 +659,7 @@ def confirm_receipt(db: Session, tenant: TenantContext, gateway: InventoryGatewa
 def row_from_line(line: GoodsReceiptLine, ordered: Decimal) -> "Row":
     row = Row.__new__(Row)
     row.order_line_id, row.product_id, row.sku, row.name, row.unit = line.purchase_order_line_id, line.product_id, line.product_sku, line.product_name, line.unit
-    row.accepted, row.rejected, row.warehouse_id, row.notes, row.warehouse_code = line.accepted_quantity, line.rejected_quantity, line.warehouse_id, line.notes, line.warehouse_code
+    row.accepted, row.rejected, row.notes = line.accepted_quantity, line.rejected_quantity, line.notes
     row.ordered = ordered
     return row
 

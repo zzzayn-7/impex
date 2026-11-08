@@ -55,7 +55,6 @@ def list_dispatches(
     delivery_list_id: Optional[uuid.UUID] = None,
     client_id: Optional[uuid.UUID] = None,
     status_filter: Optional[Literal["draft", "posting", "confirmed", "cancelled"]] = Query(default=None, alias="status"),
-    warehouse_id: Optional[uuid.UUID] = None,
     product_id: Optional[uuid.UUID] = None,
     q: Optional[str] = Query(default=None, max_length=100, description="Search dispatch number, delivery list number, tracking reference or client name"),
     date_from: Optional[date] = None,
@@ -76,9 +75,8 @@ def list_dispatches(
         filters.append(Dispatch.dispatch_date >= date_from)
     if date_to:
         filters.append(Dispatch.dispatch_date <= date_to)
-    for column, value in ((DispatchLine.warehouse_id, warehouse_id), (DispatchLine.product_id, product_id)):
-        if value:
-            filters.append(exists().where(DispatchLine.organization_id == Dispatch.organization_id, DispatchLine.dispatch_id == Dispatch.id, column == value))
+    if product_id:
+        filters.append(exists().where(DispatchLine.organization_id == Dispatch.organization_id, DispatchLine.dispatch_id == Dispatch.id, DispatchLine.product_id == product_id))
     if q and q.strip():
         filters.append(dispatches.search_filter(like_pattern(q.strip())))
     list_join = (DeliveryList.id == Dispatch.delivery_list_id) & (DeliveryList.organization_id == Dispatch.organization_id)
@@ -93,7 +91,7 @@ def list_dispatches(
 
 @router.get("/dispatches/{dispatch_id}", response_model=DispatchDetail, tags=["Dispatches"])
 def get_dispatch(dispatch_id: uuid.UUID, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
-    """The dispatch, its lines (with the live stock of each warehouse while it is a draft) and its posting bookkeeping."""
+    """The dispatch, its lines (with the live stock of each product while it is a draft) and its posting bookkeeping."""
     return dispatches.detail(db, tenant, gateway, dispatches.get_dispatch_or_404(db, tenant, dispatch_id))
 
 

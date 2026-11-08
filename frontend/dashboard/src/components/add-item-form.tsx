@@ -6,7 +6,7 @@ import { DuplicateItem, STOCK_NOTICE, addDecimal, api, exceeds, jsonBody, qty, s
 import { validateQuantity } from "@/lib/stock-validation";
 
 export type AddProduct = { id: string; name: string; sku: string; unit: string; unit_allows_fractions?: boolean };
-export type AddStock = { total_quantity: string; available_quantity: string };
+export type AddStock = { total_quantity: string };
 
 type Props = {
   listId: string;
@@ -33,7 +33,7 @@ export default function AddItemForm({ listId, listNumber, product, stock, onChan
   const clean = quantity.trim();
   const problem = clean ? validateQuantity(clean, allowsFractions, product.unit) : undefined;
   const valid = Boolean(clean) && !problem;
-  const available = stock?.available_quantity ?? null;
+  const available = stock?.total_quantity ?? null;
   const tooMuch = valid && available !== null && exceeds(clean, available);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -79,8 +79,7 @@ export default function AddItemForm({ listId, listNumber, product, stock, onChan
         </p>
         {stock ? (
           <p className="mt-1 text-xs text-slate-300" data-testid="availability">
-            Available now: <span className="font-mono font-semibold text-emerald-400">{qty(stock.available_quantity)} {product.unit}</span>
-            <span className="text-slate-500"> (total {qty(stock.total_quantity)} {product.unit})</span>
+            In stock now: <span className="font-mono font-semibold text-emerald-400">{qty(stock.total_quantity)} {product.unit}</span>
           </p>
         ) : (
           <p className="mt-1 text-xs text-slate-500">Current stock could not be loaded.</p>

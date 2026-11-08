@@ -29,26 +29,18 @@ const FLOUR = "7a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const NAILS = "8b1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const I_BOLT = "e0000000-0000-4000-8000-000000000001";
 const I_FLOUR = "e0000000-0000-4000-8000-000000000002";
-const W_MAIN = "22222222-2222-4222-8222-222222222222";
-const W_SHELF = "33333333-3333-4333-8333-333333333333";
 const DISPATCH = "f0000000-0000-4000-8000-000000000001";
 
-const warehouses = [
-  { id: W_MAIN, code: "MAIN", name: "Main depot", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 1 },
-  { id: W_SHELF, code: "SHELF", name: "Shelf room", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 1 },
-];
-const stockLine = (id: string, code: string, quantity: string) => ({ warehouse_id: id, warehouse_code: code, warehouse_name: `${code} depot`, warehouse_active: true, quantity });
-const stockOf = (id: string, sku: string, name: string, unit: string, lines: any[]) => ({
-  product_id: id, sku, name, category: "G", unit, unit_allows_fractions: unit === "kg", is_active: true,
-  total_quantity: lines.reduce((s, l) => s + Number(l.quantity), 0).toFixed(4), available_quantity: lines.reduce((s, l) => s + Number(l.quantity), 0).toFixed(4), lines,
+const stockOf = (id: string, sku: string, name: string, unit: string, quantity: string) => ({
+  product_id: id, sku, name, category: "G", unit, unit_allows_fractions: unit === "kg", is_active: true, total_quantity: quantity,
 });
 const STOCK = {
-  [BOLT]: stockOf(BOLT, "BOLT-1", "Steel bolt", "pcs", [stockLine(W_MAIN, "MAIN", "40.0000"), stockLine(W_SHELF, "SHELF", "20.0000")]),
-  [FLOUR]: stockOf(FLOUR, "FLOUR", "Flour", "kg", [stockLine(W_MAIN, "MAIN", "2.5000")]),
+  [BOLT]: stockOf(BOLT, "BOLT-1", "Steel bolt", "pcs", "40.0000"),
+  [FLOUR]: stockOf(FLOUR, "FLOUR", "Flour", "kg", "2.5000"),
 };
 
 const item = (id: string, productId: string, sku: string, name: string, unit: string, quantity: string, extra: Record<string, unknown> = {}) => ({
-  id, product_id: productId, product_sku: sku, product_name: name, quantity, unit, planned_warehouse_id: null, planned_warehouse_code: null, created_at: now, updated_at: now,
+  id, product_id: productId, product_sku: sku, product_name: name, quantity, unit, created_at: now, updated_at: now,
   stock: null, dispatched_quantity: "0.0000", pending_quantity: "0.0000", remaining_quantity: quantity, ...extra,
 });
 const list = (extra: Record<string, unknown> = {}, items?: any[]) => ({
@@ -66,12 +58,11 @@ function dispatchFrom(lines: any[], extra: Record<string, unknown> = {}) {
     delivery_address: null, transport_details: null, notes: null,
     lines: lines.map((x, i) => {
       const it = l.items.find((y) => y.id === x.deliveryListItemId)!;
-      const w = warehouses.find((y) => y.id === x.warehouseId)!;
-      const held = STOCK[it.product_id].lines.find((y) => y.warehouse_id === w.id)?.quantity ?? "0";
+      const held = STOCK[it.product_id].total_quantity;
       return {
         id: `d000000${i}-0000-4000-8000-000000000000`, delivery_list_item_id: it.id, product_id: it.product_id, product_sku: it.product_sku, product_name: it.product_name, unit: it.unit,
-        requested_quantity: it.quantity, dispatched_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", dispatchable_quantity: it.quantity, warehouse_id: w.id, warehouse_code: w.code,
-        quantity: x.quantity, inventory_movement_id: null, available_in_warehouse: held,
+        requested_quantity: it.quantity, dispatched_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", dispatchable_quantity: it.quantity,
+        quantity: x.quantity, inventory_movement_id: null, available_quantity: held,
       };
     }),
     posting: { attempts: 0, started_at: null, last_attempt_at: null, last_error: null }, inventory_operation_id: null, editable: true, stock_status: "ok", lines_exceeding_stock: 0, stock_notice: "x", ...extra,
@@ -89,7 +80,7 @@ let openDraft: any = null;
 const CATALOG: Record<string, any> = {
   "BOLT-1": { matched_by: "sku", identifier_kind: null, product: { id: BOLT, sku: "BOLT-1", name: "Steel bolt", unit: "pcs", unit_allows_fractions: false, is_active: true }, stock: STOCK[BOLT] },
   FLOUR: { matched_by: "sku", identifier_kind: null, product: { id: FLOUR, sku: "FLOUR", name: "Flour", unit: "kg", unit_allows_fractions: true, is_active: true }, stock: STOCK[FLOUR] },
-  NAILS: { matched_by: "sku", identifier_kind: null, product: { id: NAILS, sku: "NAILS", name: "Nails", unit: "pcs", unit_allows_fractions: false, is_active: true }, stock: stockOf(NAILS, "NAILS", "Nails", "pcs", []) },
+  NAILS: { matched_by: "sku", identifier_kind: null, product: { id: NAILS, sku: "NAILS", name: "Nails", unit: "pcs", unit_allows_fractions: false, is_active: true }, stock: stockOf(NAILS, "NAILS", "Nails", "pcs", "0.0000") },
 };
 
 function stub() {
@@ -122,21 +113,20 @@ function stub() {
   }));
 }
 const posts = (suffix: string) => calls.filter((c) => c.method === "POST" && c.url.endsWith(suffix));
-const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory|warehouses)/.test(c.url));
+const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory)/.test(c.url));
 
 beforeEach(() => { router.replace.mockReset(); router.refresh.mockReset(); router.push.mockReset(); decoderState.code = "BOLT-1"; stub(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const user = () => userEvent.setup();
 const quantityOf = (name: string, n = "") => screen.getByLabelText(`Quantity to dispatch of ${name}${n}`) as HTMLInputElement;
-const warehouseOf = (name: string, n = "") => screen.getByLabelText(`Warehouse for ${name}${n}`) as HTMLSelectElement;
 
 function mount(props: Partial<{ list: any; draft: any }> = {}) {
-  return render(<DispatchForm list={(props.list ?? list()) as any} warehouses={warehouses as any} stock={STOCK as any} draft={(props.draft ?? null) as any} />);
+  return render(<DispatchForm list={(props.list ?? list()) as any} stock={STOCK as any} draft={(props.draft ?? null) as any} />);
 }
 
 // =====================================================================================================
-describe("Prepare dispatch: choosing quantities and warehouses", () => {
+describe("Prepare dispatch: choosing quantities", () => {
   it("shows requested, dispatched, in progress and remaining, and says nothing changes stock yet", () => {
     mount({ list: list({}, [item(I_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "15.0000", { dispatched_quantity: "10.0000", pending_quantity: "2.0000", remaining_quantity: "3.0000" })]) });
     const block = screen.getByTestId("item-BOLT-1");
@@ -154,11 +144,14 @@ describe("Prepare dispatch: choosing quantities and warehouses", () => {
     expect(quantityOf("Steel bolt").value).toBe("");
   });
 
-  it("offers each warehouse with the stock it holds", async () => {
+  it("shows the stock on hand next to the quantity, and nothing about warehouses", async () => {
     mount();
     await user().click(screen.getByRole("button", { name: "Dispatch Steel bolt" }));
-    const labels = within(warehouseOf("Steel bolt")).getAllByRole("option").map((o) => o.textContent);
-    expect(labels).toEqual(["MAIN — Main depot (40 in stock)", "SHELF — Shelf room (20 in stock)"]);
+    const block = screen.getByTestId("item-BOLT-1");
+    expect(block.textContent).toContain("40 pcs in stock");
+    expect(block.textContent!.toLowerCase()).not.toContain("warehouse");
+    expect(screen.queryByLabelText(/Warehouse for/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /another warehouse/ })).toBeNull();
   });
 
   it("refuses an empty dispatch without calling the server", async () => {
@@ -178,18 +171,6 @@ describe("Prepare dispatch: choosing quantities and warehouses", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("adds the quantities of one product that leaves from two warehouses before comparing with what remains", async () => {
-    mount();
-    const u = user();
-    await u.click(screen.getByRole("button", { name: "Dispatch Steel bolt" }));
-    await u.type(quantityOf("Steel bolt"), "10");
-    await u.click(screen.getByRole("button", { name: /another warehouse/ }));
-    await u.type(quantityOf("Steel bolt", " (2)"), "6");
-    await u.click(screen.getByRole("button", { name: "Review dispatch" }));
-    expect(screen.getByRole("alert").textContent).toContain("Only 15 pcs of Steel bolt can still be dispatched.");
-    expect(calls).toHaveLength(0);
-  });
-
   it.each(["abc", "-1", "0", "1.00001", "1e3", "1,5"])("refuses the quantity %j", async (value) => {
     mount();
     const u = user();
@@ -200,12 +181,12 @@ describe("Prepare dispatch: choosing quantities and warehouses", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("warns when the typed quantity is more than the warehouse holds, but still lets the draft be saved", async () => {
+  it("warns when the typed quantity is more than is in stock, but still lets the draft be saved", async () => {
     mount({ list: list({}, [item(I_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "50.0000")]) });
     const u = user();
     await u.click(screen.getByRole("button", { name: "Dispatch Steel bolt" }));
     await u.type(quantityOf("Steel bolt"), "45");
-    expect(screen.getByText(/more than the 40 pcs in this warehouse/)).toBeTruthy();
+    expect(screen.getByText(/more than the 40 pcs in stock/)).toBeTruthy();
     await u.click(screen.getByRole("button", { name: "Review dispatch" }));
     await screen.findByRole("heading", { name: "Review DS-000001" });
   });
@@ -293,25 +274,24 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
   async function fillAndReview(u = user()) {
     await u.click(screen.getByRole("button", { name: "Dispatch Steel bolt" }));
     await u.type(quantityOf("Steel bolt"), "10");
-    await u.selectOptions(warehouseOf("Steel bolt"), W_SHELF);
     await u.click(screen.getByRole("button", { name: "Review dispatch" }));
     await screen.findByRole("heading", { name: "Review DS-000001" });
     return u;
   }
 
-  it("saves a DRAFT with the exact quantities, the chosen warehouse and a stable key - and deducts nothing", async () => {
+  it("saves a DRAFT with the exact quantities and a stable key - and deducts nothing", async () => {
     mount();
     await fillAndReview();
     const create = posts("/api/sales/dispatches");
     expect(create).toHaveLength(1);
     expect(create[0].headers["Idempotency-Key"]).toMatch(/^ui-[0-9a-f-]{36}$/);
-    expect(create[0].body).toMatchObject({ deliveryListId: LIST, dispatchDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), lines: [{ deliveryListItemId: I_BOLT, warehouseId: W_SHELF, quantity: "10" }] });
+    expect(create[0].body).toMatchObject({ deliveryListId: LIST, dispatchDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), lines: [{ deliveryListItemId: I_BOLT, quantity: "10" }] });
     expect(JSON.stringify(create[0].body)).not.toMatch(/organization|unit|status|price|clientId/i);
     expect(posts("/confirm")).toHaveLength(0);
     expect(stockCalls()).toHaveLength(0);
     expect(screen.getByRole("note").textContent).toContain("Nothing has been deducted from your stock yet");
-    expect(screen.getByText("In stock now")).toBeTruthy(); // the available stock of the chosen warehouse is shown at review
-    expect(screen.getByText("20 pcs")).toBeTruthy();
+    expect(screen.getByText("In stock now")).toBeTruthy(); // the stock on hand is shown at review
+    expect(screen.getByText("40 pcs")).toBeTruthy();
   });
 
   it("only the Confirm button deducts stock, once", async () => {
@@ -339,7 +319,7 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
     expect(posts("/confirm")).toHaveLength(1);
   });
 
-  it("a draft that asks for more than the warehouse holds cannot be confirmed from the review", async () => {
+  it("a draft that asks for more than is in stock cannot be confirmed from the review", async () => {
     mount({ list: list({}, [item(I_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "50.0000")]) });
     server["POST /api/sales/dispatches"] = (body) => { lastLines = body.lines; return json(201, { dispatch: dispatchFrom(body.lines, { lines_exceeding_stock: 1 }), replayed: false }); };
     const u = user();
@@ -347,7 +327,7 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
     await u.type(quantityOf("Steel bolt"), "45");
     await u.click(screen.getByRole("button", { name: "Review dispatch" }));
     await screen.findByRole("heading", { name: "Review DS-000001" });
-    expect(screen.getByRole("alert").textContent).toContain("more than the warehouse holds right now");
+    expect(screen.getByRole("alert").textContent).toContain("more than is in stock right now");
     expect((screen.getByRole("button", { name: "Confirm and deduct from stock" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -372,7 +352,7 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
   });
 
   it("insufficient stock explains itself and returns to editing the draft", async () => {
-    server["POST /api/sales/dispatches/:id/confirm"] = () => json(409, { error: "Not enough stock: 40 pcs of Steel bolt in MAIN, 45 to dispatch. Nothing was deducted.", code: "insufficient_stock" });
+    server["POST /api/sales/dispatches/:id/confirm"] = () => json(409, { error: "Not enough stock: 40 pcs of Steel bolt in stock, 45 to dispatch. Nothing was deducted.", code: "insufficient_stock" });
     mount();
     const u = await fillAndReview();
     await u.click(screen.getByRole("button", { name: "Confirm and deduct from stock" }));
@@ -457,10 +437,9 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
   });
 
   it("resuming a draft fills in what was saved and updates it (PUT), keeping its number", async () => {
-    const draft = dispatchFrom([{ deliveryListItemId: I_FLOUR, warehouseId: W_MAIN, quantity: "1.5000" }], { tracking_reference: "TRK-5" });
+    const draft = dispatchFrom([{ deliveryListItemId: I_FLOUR, quantity: "1.5000" }], { tracking_reference: "TRK-5" });
     mount({ draft });
     expect(quantityOf("Flour").value).toBe("1.5");
-    expect(warehouseOf("Flour").value).toBe(W_MAIN);
     expect(screen.getByRole("status").textContent).toContain("Editing the draft DS-000001");
     expect((screen.getByLabelText("Tracking / reference number") as HTMLInputElement).value).toBe("TRK-5");
     await user().click(screen.getByRole("button", { name: "Review dispatch" }));
@@ -472,10 +451,10 @@ describe("Prepare dispatch: review and explicit confirmation", () => {
 
 // =====================================================================================================
 describe("a dispatch page", () => {
-  const detail = (extra: Record<string, unknown> = {}) => dispatchFrom([{ deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "10.0000" }], extra) as any;
+  const detail = (extra: Record<string, unknown> = {}) => dispatchFrom([{ deliveryListItemId: I_BOLT, quantity: "10.0000" }], extra) as any;
 
   it("confirms a draft and updates in place", async () => {
-    lastLines = [{ deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "10.0000" }];
+    lastLines = [{ deliveryListItemId: I_BOLT, quantity: "10.0000" }];
     render(<DispatchDetailView dispatch={detail()} />);
     await user().click(screen.getByRole("button", { name: "Confirm and deduct from stock" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("is confirmed"));
@@ -525,7 +504,7 @@ describe("a dispatch page", () => {
 });
 
 describe("the dispatches list", () => {
-  const summary = { ...(dispatchFrom([{ deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "1" }]) as any), line_count: 1 };
+  const summary = { ...(dispatchFrom([{ deliveryListItemId: I_BOLT, quantity: "1" }]) as any), line_count: 1 };
   const ok = { ok: true as const, items: [summary], total: 1, limit: 25, offset: 0 };
   const filters = { q: "", status: "" as const, clientId: "", listId: "", dateFrom: "", dateTo: "", page: 1 };
 
@@ -564,7 +543,7 @@ describe("the dispatches list", () => {
 // =====================================================================================================
 describe("a delivery list during dispatch", () => {
   it("shows quantity progress per product and the dispatch history", () => {
-    const l = list({ status: "partially_dispatched", dispatches: [{ ...(dispatchFrom([{ deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "1" }]) as any), status: "confirmed" }] },
+    const l = list({ status: "partially_dispatched", dispatches: [{ ...(dispatchFrom([{ deliveryListItemId: I_BOLT, quantity: "1" }]) as any), status: "confirmed" }] },
       [item(I_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "15.0000", { dispatched_quantity: "10.0000", remaining_quantity: "5.0000" })]);
     render(<DeliveryListDetail list={l as any} />);
     const progress = screen.getByTestId("progress-BOLT-1");
@@ -581,25 +560,26 @@ describe("a delivery list during dispatch", () => {
 // =====================================================================================================
 describe("Scan Product: Prepare Dispatch", () => {
   const product = { id: BOLT, sku: "BOLT-1", name: "Steel bolt", unit: "pcs", unit_allows_fractions: false, is_active: true } as any;
-  const mountPanel = (onAdded = vi.fn()) => render(<DispatchPanel product={product} stock={STOCK[BOLT] as any} warehouses={warehouses as any} onAdded={onAdded} onClose={vi.fn()} />);
+  const mountPanel = (onAdded = vi.fn()) => render(<DispatchPanel product={product} stock={STOCK[BOLT] as any} onAdded={onAdded} onClose={vi.fn()} />);
   const readyList = { id: LIST, number: "DL-000001", client: { id: CLIENT, name: "Acme Ltd", is_active: true }, status: "ready", item_count: 2 };
 
   it("is offered next to Stock In, Stock Out and Add to Deliverables", async () => {
-    render(<ScanProduct warehouses={warehouses as any} />);
+    render(<ScanProduct />);
     await user().type(screen.getByLabelText(/Scan or type a barcode/), "BOLT-1{Enter}");
     const group = await screen.findByRole("group", { name: "Actions" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock In", "Stock Out", "Add to Deliverables", "Prepare Dispatch"]);
   });
 
-  it("shows requested, dispatched, remaining and the warehouse stock, and needs a typed quantity", async () => {
+  it("shows requested, dispatched, remaining and the stock on hand, and needs a typed quantity", async () => {
     readyLists = [readyList];
     server["GET /api/sales/delivery-lists/:id"] = () => json(200, { list: list({}, [item(I_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "15.0000", { dispatched_quantity: "10.0000", remaining_quantity: "5.0000" })]) });
     mountPanel();
     const form = await screen.findByRole("form", { name: "Dispatch quantity" });
     for (const text of ["Client requested", "15 pcs", "Already dispatched", "10 pcs", "Remaining", "5 pcs"]) expect(form.textContent, text).toContain(text);
     expect((screen.getByPlaceholderText("Type the quantity") as HTMLInputElement).value).toBe("");
-    expect(within(screen.getByLabelText("Dispatching warehouse")).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "MAIN — Main depot (40 pcs in stock)", "SHELF — Shelf room (20 pcs in stock)"]);
+    expect(form.textContent).toContain("In stock");
+    expect(form.textContent).toContain("40 pcs");
+    expect(screen.queryByLabelText("Dispatching warehouse")).toBeNull();
     const u = user();
     await u.click(screen.getByRole("button", { name: "Add to the draft dispatch" }));
     expect(screen.getByRole("alert").textContent).toContain("Enter a quantity");
@@ -624,35 +604,34 @@ describe("Scan Product: Prepare Dispatch", () => {
     mountPanel(onAdded);
     const u = user();
     await screen.findByRole("form", { name: "Dispatch quantity" });
-    await u.selectOptions(screen.getByLabelText("Dispatching warehouse"), W_SHELF);
     await u.type(screen.getByPlaceholderText("Type the quantity"), "6");
     await u.click(screen.getByRole("button", { name: "Add to the draft dispatch" }));
     await waitFor(() => expect(onAdded).toHaveBeenCalled());
     const create = posts("/api/sales/dispatches");
     expect(create).toHaveLength(1);
     expect(create[0].headers["Idempotency-Key"]).toMatch(/^ui-/);
-    expect(create[0].body).toEqual({ deliveryListId: LIST, lines: [{ deliveryListItemId: I_BOLT, warehouseId: W_SHELF, quantity: "6" }] });
+    expect(create[0].body).toEqual({ deliveryListId: LIST, lines: [{ deliveryListItemId: I_BOLT, quantity: "6" }] });
     expect(onAdded.mock.calls[0][0]).toContain("Nothing has been deducted from stock");
     expect(posts("/confirm")).toHaveLength(0);
     expect(stockCalls()).toHaveLength(0);
   });
 
-  it("a second scan SETS the quantity of that product and warehouse on the open draft - it never adds to it", async () => {
+  it("a second scan SETS the quantity of that product on the open draft - it never adds to it", async () => {
     readyLists = [readyList];
-    openDraft = dispatchFrom([{ deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "4.0000" }, { deliveryListItemId: I_FLOUR, warehouseId: W_MAIN, quantity: "1.0000" }]);
+    openDraft = dispatchFrom([{ deliveryListItemId: I_BOLT, quantity: "4.0000" }, { deliveryListItemId: I_FLOUR, quantity: "1.0000" }]);
     mountPanel();
     const u = user();
     await screen.findByRole("form", { name: "Dispatch quantity" });
     await screen.findByText(/Adding to the open draft/);
-    expect(screen.getByRole("status").textContent).toContain("already on DS-000001 from this warehouse with 4 pcs");
+    expect(screen.getByRole("status").textContent).toContain("already on DS-000001 with 4 pcs");
     expect(screen.getByRole("status").textContent).toContain("never adds to it");
     await u.type(screen.getByPlaceholderText("Type the quantity"), "7");
     await u.click(screen.getByRole("button", { name: "Replace the quantity on the draft" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.body.lines).toEqual([
-      { deliveryListItemId: I_FLOUR, warehouseId: W_MAIN, quantity: "1.0000" }, // untouched
-      { deliveryListItemId: I_BOLT, warehouseId: W_MAIN, quantity: "7" }, // replaced, not 4 + 7
+      { deliveryListItemId: I_FLOUR, quantity: "1.0000" }, // untouched
+      { deliveryListItemId: I_BOLT, quantity: "7" }, // replaced, not 4 + 7
     ]);
   });
 
@@ -668,7 +647,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
   const L1 = "e0000000-0000-4000-8000-0000000000a1";
   const L2 = "e0000000-0000-4000-8000-0000000000a2";
   const orderLine = (id: string, productId: string, sku: string, name: string, unit: string, quantity: string) => ({
-    id, product_id: productId, product_sku: sku, product_name: name, unit, quantity, unit_price: "2.0000", line_total: "20.0000", planned_warehouse_id: null, planned_warehouse_code: null, notes: null,
+    id, product_id: productId, product_sku: sku, product_name: name, unit, quantity, unit_price: "2.0000", line_total: "20.0000", notes: null,
     created_at: now, updated_at: now, received_quantity: "0.0000", pending_quantity: "0.0000", remaining_quantity: quantity,
   });
   const order = {
@@ -685,7 +664,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     HTMLMediaElement.prototype.pause = vi.fn() as any;
     return { tracks, getUserMedia };
   }
-  const mountReceive = () => render(<ReceiveForm order={order} warehouses={warehouses as any} draft={null} />);
+  const mountReceive = () => render(<ReceiveForm order={order} draft={null} />);
   const accepted = (name: string) => screen.getByLabelText(`Accepted quantity of ${name}`) as HTMLInputElement;
 
   it("offers Use camera beside the manual box and keeps manual entry working", async () => {

@@ -57,13 +57,13 @@ def make_receipt(engine, world, number="GR-000001"):
     return receipt
 
 
-def add_line(engine, world, receipt, index=0, accepted="3", rejected="0", warehouse=True, unit="pcs", product=None, order_line=None):
+def add_line(engine, world, receipt, index=0, accepted="3", rejected="0", unit="pcs", product=None, order_line=None):
     line = uuid.uuid4()
     run(engine,
         "INSERT INTO goods_receipt_lines (id, organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, "
-        "warehouse_id, warehouse_code, accepted_quantity, rejected_quantity) VALUES (:id, :o, :r, :pl, :p, 'SKU', 'Thing', :unit, :w, :wc, :a, :j)",
+        "accepted_quantity, rejected_quantity) VALUES (:id, :o, :r, :pl, :p, 'SKU', 'Thing', :unit, :a, :j)",
         id=line, o=world["org"], r=receipt, pl=order_line or world["lines"][index], p=product or world["products"][index], unit=unit,
-        w=uuid.uuid4() if warehouse else None, wc="MAIN" if warehouse else None, a=Decimal(accepted), j=Decimal(rejected))
+        a=Decimal(accepted), j=Decimal(rejected))
     return line
 
 
@@ -241,12 +241,12 @@ def test_a_receipt_line_must_be_on_the_receipts_order_with_the_same_product_and_
     receipt = make_receipt(engine, w)
     assert "not on the purchase order" in refused(
         engine,
-        "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, warehouse_id, accepted_quantity) "
-        "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', gen_random_uuid(), 1)", o=w["org"], r=receipt, pl=other["lines"][0], p=other["products"][0])
+        "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, accepted_quantity) "
+        "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', 1)", o=w["org"], r=receipt, pl=other["lines"][0], p=other["products"][0])
     assert "product and the unit" in refused(
         engine,
-        "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, warehouse_id, accepted_quantity) "
-        "VALUES (:o, :r, :pl, gen_random_uuid(), 'S', 'N', 'pcs', gen_random_uuid(), 1)", o=w["org"], r=receipt, pl=w["lines"][0])
+        "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, accepted_quantity) "
+        "VALUES (:o, :r, :pl, gen_random_uuid(), 'S', 'N', 'pcs', 1)", o=w["org"], r=receipt, pl=w["lines"][0])
     assert "product and the unit" in str(refused_call(engine, w, receipt, unit="kg"))
 
 
@@ -261,8 +261,8 @@ def test_a_receipt_line_cannot_cross_organizations(engine):
     receipt = make_receipt(engine, w)
     with pytest.raises(DBAPIError):
         run(engine,
-            "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, warehouse_id, accepted_quantity) "
-            "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', gen_random_uuid(), 1)", o=other["org"], r=receipt, pl=w["lines"][0], p=w["products"][0])
+            "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, accepted_quantity) "
+            "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', 1)", o=other["org"], r=receipt, pl=w["lines"][0], p=w["products"][0])
 
 
 def test_quantity_rules_on_a_line(engine):
@@ -272,9 +272,7 @@ def test_quantity_rules_on_a_line(engine):
         add_line(engine, w, receipt, accepted="0", rejected="0")  # nothing at all
     with pytest.raises(DBAPIError):
         add_line(engine, w, receipt, accepted="-1")
-    with pytest.raises(DBAPIError):
-        add_line(engine, w, receipt, accepted="2", warehouse=False)  # accepted goods need a warehouse
-    add_line(engine, w, receipt, accepted="0", rejected="2", warehouse=False)  # all rejected: no warehouse needed
+    add_line(engine, w, receipt, accepted="0", rejected="2")  # all rejected: fine
 
 
 def test_one_line_per_order_line_per_receipt(engine):
@@ -288,7 +286,7 @@ def test_one_line_per_order_line_per_receipt(engine):
 def test_nothing_can_be_confirmed_that_accepts_no_goods(engine):
     w = make_world(engine)
     receipt = make_receipt(engine, w)
-    add_line(engine, w, receipt, accepted="0", rejected="2", warehouse=False)
+    add_line(engine, w, receipt, accepted="0", rejected="2")
     assert "accepts nothing" in refused(engine, "UPDATE goods_receipts SET status = 'posting', posting_started_at = now() WHERE id = :id", id=receipt)
     empty = make_receipt(engine, w, "GR-000002")
     assert "accepts nothing" in refused(engine, "UPDATE goods_receipts SET status = 'posting', posting_started_at = now() WHERE id = :id", id=empty)
@@ -350,7 +348,7 @@ def test_a_receipt_is_not_confirmed_until_every_accepted_line_has_its_movement(e
     w = make_world(engine)
     receipt = make_receipt(engine, w)
     first = add_line(engine, w, receipt, 0, "3")
-    add_line(engine, w, receipt, 1, "0", "1", warehouse=False)
+    add_line(engine, w, receipt, 1, "0", "1")
     start_posting(engine, receipt)
     confirmed = "UPDATE goods_receipts SET status = 'confirmed', inventory_operation_id = gen_random_uuid(), confirmed_at = now(), confirmed_by_email = 'a@b.c' WHERE id = :id"
     assert "before every accepted line" in refused(engine, confirmed, id=receipt)
@@ -390,7 +388,7 @@ def test_a_confirmed_receipt_can_never_be_changed_or_deleted(engine):
         assert "never" in refused(engine, sql, id=receipt), sql
     for sql in (
         "UPDATE goods_receipt_lines SET accepted_quantity = 99 WHERE id = :l",
-        "UPDATE goods_receipt_lines SET warehouse_id = gen_random_uuid() WHERE id = :l",
+        "UPDATE goods_receipt_lines SET rejected_quantity = 5 WHERE id = :l",
         "UPDATE goods_receipt_lines SET inventory_movement_id = gen_random_uuid() WHERE id = :l",
         "UPDATE goods_receipt_lines SET notes = 'x' WHERE id = :l",
         "DELETE FROM goods_receipt_lines WHERE id = :l",
@@ -408,10 +406,10 @@ def test_a_receipt_being_posted_is_frozen_except_for_its_bookkeeping_and_the_mov
     assert "frozen" in refused(engine, "UPDATE goods_receipts SET notes = 'x' WHERE id = :id", id=receipt)
     assert "frozen" in refused(engine, "UPDATE goods_receipts SET received_date = current_date - 3 WHERE id = :id", id=receipt)
     assert "frozen" in refused(engine, "UPDATE goods_receipt_lines SET accepted_quantity = 1 WHERE id = :l", l=line)
-    assert "frozen" in refused(engine, "UPDATE goods_receipt_lines SET warehouse_id = gen_random_uuid() WHERE id = :l", l=line)
+    assert "frozen" in refused(engine, "UPDATE goods_receipt_lines SET rejected_quantity = 5 WHERE id = :l", l=line)
     assert "cannot be removed" in refused(engine, "DELETE FROM goods_receipt_lines WHERE id = :l", l=line)
-    assert "draft" in refused(engine, "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, warehouse_id, accepted_quantity) "
-                                      "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', gen_random_uuid(), 1)", o=w["org"], r=receipt, pl=w["lines"][1], p=w["products"][1])
+    assert "draft" in refused(engine, "INSERT INTO goods_receipt_lines (organization_id, goods_receipt_id, purchase_order_line_id, product_id, product_sku, product_name, unit, accepted_quantity) "
+                                      "VALUES (:o, :r, :pl, :p, 'S', 'N', 'pcs', 1)", o=w["org"], r=receipt, pl=w["lines"][1], p=w["products"][1])
     run(engine, "UPDATE goods_receipts SET posting_attempts = 2, last_posting_error = 'timeout', last_posting_attempt_at = now() WHERE id = :id", id=receipt)
     run(engine, "UPDATE goods_receipt_lines SET inventory_movement_id = gen_random_uuid() WHERE id = :l", l=line)
     assert "frozen" in refused(engine, "UPDATE goods_receipt_lines SET inventory_movement_id = gen_random_uuid() WHERE id = :l", l=line)  # only once

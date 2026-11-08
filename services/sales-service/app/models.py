@@ -124,8 +124,6 @@ class DeliveryListItem(TenantOwnedMixin, Base):
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    planned_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
-    planned_warehouse_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # snapshot, for display
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -227,12 +225,12 @@ class DispatchRequest(TenantOwnedMixin, Base):
 
 
 class DispatchLine(TenantOwnedMixin, Base):
-    """A quantity of one delivery-list item leaving one warehouse. An item may be dispatched from several warehouses (one line each).
+    """A quantity of one delivery-list item leaving stock: one line per item in a dispatch.
     Product, SKU, name and unit are copied from the item and can never differ from it (database-enforced)."""
 
     __tablename__ = "dispatch_lines"
     __table_args__ = (
-        UniqueConstraint("organization_id", "dispatch_id", "delivery_list_item_id", "warehouse_id", name="uq_dispatch_lines_dispatch_item_warehouse"),
+        UniqueConstraint("organization_id", "dispatch_id", "delivery_list_item_id", name="uq_dispatch_lines_dispatch_item"),
         ForeignKeyConstraint(["organization_id", "dispatch_id"], ["dispatches.organization_id", "dispatches.id"],
                              name="fk_dispatch_lines_dispatch_same_organization", ondelete="RESTRICT"),
         ForeignKeyConstraint(["organization_id", "delivery_list_item_id"], ["delivery_list_items.organization_id", "delivery_list_items.id"],
@@ -250,8 +248,6 @@ class DispatchLine(TenantOwnedMixin, Base):
     product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    warehouse_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # snapshot, for display
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     inventory_movement_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)  # set when the posting is verified
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

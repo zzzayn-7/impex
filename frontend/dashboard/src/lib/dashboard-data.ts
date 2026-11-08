@@ -2,7 +2,7 @@ import { financeRequest, type Overview } from "@/lib/finance";
 import { inventoryRequest } from "@/lib/inventory";
 import { purchasingRequest, type PurchaseOrderSummary } from "@/lib/purchasing";
 import { salesRequest, type InvoiceSummary } from "@/lib/sales";
-import type { Movement, Warehouse } from "@/lib/stock-validation";
+import type { Movement } from "@/lib/stock-validation";
 import { lastDays, lastMonths, startOfMonths, totalsByCurrency, type Money } from "@/lib/dashboard-metrics";
 import { formatDate, type Preferences } from "@/lib/format";
 import { usableModules, type ModuleKey } from "@/lib/modules";
@@ -23,7 +23,6 @@ export type Section<T> = { status: "ok"; data: T } | { status: "unavailable" };
 
 export type InventoryData = {
   products: number; // active products
-  warehouses: { id: string; code: string; name: string; products: number }[]; // active warehouses and how many different products each holds
   movements: Movement[]; // the latest (newest first)
   movementsTruncated: boolean;
 };
@@ -70,17 +69,15 @@ async function readRows<T>(get: Fetcher, path: string): Promise<{ rows: T[]; tot
 
 async function loadInventory(token: string): Promise<Section<InventoryData>> {
   const get: Fetcher = (path) => inventoryRequest("GET", path, token);
-  const [stock, warehouses, movements] = await Promise.all([
+  const [stock, movements] = await Promise.all([
     get("/api/v1/inventory/stock?status=active&limit=1"),
-    readRows<Warehouse>(get, "/api/v1/inventory/warehouses?status=active"),
     get(`/api/v1/inventory/stock/movements?limit=${PAGE}`),
   ]);
-  if (!stock || stock.status !== 200 || !warehouses || !movements || movements.status !== 200 || !Array.isArray(movements.data?.items)) return { status: "unavailable" };
+  if (!stock || stock.status !== 200 || !movements || movements.status !== 200 || !Array.isArray(movements.data?.items)) return { status: "unavailable" };
   return {
     status: "ok",
     data: {
       products: Number(stock.data?.total) || 0,
-      warehouses: warehouses.rows.map((w) => ({ id: w.id, code: w.code, name: w.name, products: Number(w.products_in_stock) || 0 })),
       movements: movements.data.items as Movement[],
       movementsTruncated: Number(movements.data.total) > movements.data.items.length,
     },

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams();
   const status = p.get("status");
   if (status && STATUSES.includes(status)) params.set("status", status);
-  for (const [name, upstream] of [["deliveryListId", "delivery_list_id"], ["clientId", "client_id"], ["warehouseId", "warehouse_id"], ["productId", "product_id"]] as const) {
+  for (const [name, upstream] of [["deliveryListId", "delivery_list_id"], ["clientId", "client_id"], ["productId", "product_id"]] as const) {
     const value = p.get(name);
     if (value) {
       if (!checkUuid(value)) return fail("Not found.", 404);
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 //
 // The browser sends an Idempotency-Key with every create (generated once per form), so a double click or a retry returns the same
 // draft instead of a second one. Only the list id, the date, the address / transport / tracking details, a note and the lines
-// (item id, warehouse id, exact quantity string) are read from the browser. Product, SKU, name and unit come from the delivery
+// (item id, exact quantity string) are read from the browser. Product, SKU, name and unit come from the delivery
 // list; the number, status, owner, client and organization are decided by the Sales Service.
 export async function POST(req: NextRequest) {
   const token = sessionToken(req);

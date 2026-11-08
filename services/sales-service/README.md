@@ -41,8 +41,8 @@ Inventory Service's own audited, idempotent operation:
 | `GET /delivery-lists/{id}` | the list, its items and the **live** stock of each product |
 | `PATCH /delivery-lists/{id}` | edit reference / notes (draft only) |
 | `POST /delivery-lists/{id}/ready` / `cancel` / `reopen` | Draft to Ready, Draft or Ready to Cancelled, Ready back to Draft. Cancelled is final. Once goods are dispatched (or being dispatched) a list can be neither reopened nor cancelled |
-| `POST /delivery-lists/{id}/items` | add a product: only `product_id`, `quantity` and an optional `planned_warehouse_id` |
-| `PATCH /delivery-lists/{id}/items/{item_id}` | set the quantity (and/or planned warehouse) |
+| `POST /delivery-lists/{id}/items` | add a product: only `product_id` and `quantity` |
+| `PATCH /delivery-lists/{id}/items/{item_id}` | set the quantity |
 | `POST /delivery-lists/{id}/items/{item_id}/increase` | add an explicit amount to an existing line |
 | `DELETE /delivery-lists/{id}/items/{item_id}` | remove a line |
 
@@ -53,10 +53,10 @@ Lists and clients are never deleted. Items can be changed only while the list is
 | Method & path | Purpose |
 | :--- | :--- |
 | `POST /dispatches` | start a **draft** dispatch against a Ready / Partially Dispatched list, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
-| `GET /dispatches?delivery_list_id=&client_id=&status=&warehouse_id=&product_id=&q=&date_from=&date_to=` | list / filter / search |
-| `GET /dispatches/{id}` | the dispatch, its lines (requested / dispatched elsewhere / dispatchable, and the LIVE stock of each warehouse while it is a draft) and posting bookkeeping |
+| `GET /dispatches?delivery_list_id=&client_id=&status=&product_id=&q=&date_from=&date_to=` | list / filter / search |
+| `GET /dispatches/{id}` | the dispatch, its lines (requested / dispatched elsewhere / dispatchable, and the LIVE stock of each product while it is a draft) and posting bookkeeping |
 | `PATCH /dispatches/{id}` | edit the date, delivery address, transport details, tracking reference or notes (draft only) |
-| `PUT /dispatches/{id}/lines` | replace the draft's lines: per line a delivery-list item, a **warehouse** and a **quantity**; one item may leave from several warehouses |
+| `PUT /dispatches/{id}/lines` | replace the draft's lines: per line a delivery-list item and a **quantity** (one line per item) |
 | `POST /dispatches/{id}/confirm` | deduct the quantities from stock. `200` confirmed (also if it already was); `202` the posting could not be verified yet - call it again; `409` (`insufficient_stock` / `inventory_rejected` / `over_dispatch`) nothing was deducted and the draft is intact |
 | `POST /dispatches/{id}/cancel` | discard a draft (kept for history) |
 
@@ -73,12 +73,12 @@ moment: the check runs under a lock on the delivery list, and a database trigger
 1. **The intent is saved first** (short transaction): `draft -> posting`, with an attempt counter. From that moment the dispatch is frozen and its quantities are reserved.
 2. **No database transaction is open while the Inventory Service is called.** The call carries the **stable `Idempotency-Key` `dispatch-<dispatch id>`** (a check constraint ties the key to the id),
    the caller's own token and all lines at once. The Inventory Service deducts them in one transaction, once per key, never below zero, and also refuses a dispatch line it has already posted under any other key.
-3. **Only a verified answer confirms.** The answer must name this dispatch, one movement per line, each for the right product, warehouse and quantity. Then, in one short transaction, the movement ids are stored on the lines, the dispatch becomes
+3. **Only a verified answer confirms.** The answer must name this dispatch, one movement per line, each for the right product and quantity. Then, in one short transaction, the movement ids are stored on the lines, the dispatch becomes
    `confirmed` and the list `Partially Dispatched` / `Dispatched`. The database refuses to confirm a dispatch whose lines lack their movement.
 4. **When the outcome is unknown** (timeout, connection lost, 5xx, an answer that does not match) the dispatch stays `posting` and `confirm` answers `202`. Before giving up, the service asks the Inventory Service whether the posting happened
    (`GET /dispatches/by-key/{key}`) and finishes the job if it did. Calling `confirm` again - from any process, after any restart - repeats the posting with the same key; the Inventory Service replays the first result.
-5. **A definitive refusal** (not enough stock, an archived product or warehouse, a changed unit...) is confirmed with the same status lookup, then the dispatch returns to `draft` with the reason, and nothing was deducted.
-   Stock is also checked against the live warehouse quantities *before* anything is reserved, so an obvious shortage is explained at once.
+5. **A definitive refusal** (not enough stock, an archived product, a changed unit...) is confirmed with the same status lookup, then the dispatch returns to `draft` with the reason, and nothing was deducted.
+   Stock is also checked against the live quantities *before* anything is reserved, so an obvious shortage is explained at once.
 
 There is no background worker: recovery is the retry of `confirm`, which needs an administrator's token. A dispatch left in `posting` is listed with a *Retry posting* button.
 

@@ -32,8 +32,8 @@ class ModuleDef:
 
 REGISTRY: Dict[str, ModuleDef] = {
     "inventory": ModuleDef(
-        "inventory", "Inventory", "Products, warehouses and stock, with scanning and a full movement history.",
-        ("Products", "Warehouses", "Stock", "Scanning", "Movements"), default_for_new=True,
+        "inventory", "Inventory", "Products and stock, with scanning and a full movement history.",
+        ("Products", "Stock", "Scanning", "Movements"), default_for_new=True,
     ),
     "purchasing": ModuleDef(
         "purchasing", "Purchasing", "Buying from suppliers and receiving the goods into stock.",

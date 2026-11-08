@@ -18,8 +18,6 @@ const FLOUR = "7a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const NAILS = "8b1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const L_BOLT = "e0000000-0000-4000-8000-000000000001";
 const L_FLOUR = "e0000000-0000-4000-8000-000000000002";
-const W_MAIN = "22222222-2222-4222-8222-222222222222";
-const W_SHELF = "33333333-3333-4333-8333-333333333333";
 const RECEIPT = "f0000000-0000-4000-8000-000000000001";
 
 const product = (id: string, sku: string, name: string, unit: string, extra: Record<string, unknown> = {}) => ({
@@ -28,14 +26,14 @@ const product = (id: string, sku: string, name: string, unit: string, extra: Rec
 });
 const found = (p: ReturnType<typeof product>) => ({
   matched_by: "sku", identifier_kind: null, product: p,
-  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3", available_quantity: "3", lines: [] },
+  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3" },
 });
 const CATALOG: Record<string, any> = {
   "BOLT-1": found(product(BOLT, "BOLT-1", "Steel bolt", "pcs")), FLOUR: found(product(FLOUR, "FLOUR", "Flour", "kg")), NAILS: found(product(NAILS, "NAILS", "Nails", "pcs")),
 };
 
 const orderLine = (id: string, productId: string, sku: string, name: string, unit: string, quantity: string, extra: Record<string, unknown> = {}) => ({
-  id, product_id: productId, product_sku: sku, product_name: name, unit, quantity, unit_price: "2.0000", line_total: "20.0000", planned_warehouse_id: null, planned_warehouse_code: null, notes: null,
+  id, product_id: productId, product_sku: sku, product_name: name, unit, quantity, unit_price: "2.0000", line_total: "20.0000", notes: null,
   created_at: now, updated_at: now, received_quantity: "0.0000", pending_quantity: "0.0000", remaining_quantity: quantity, ...extra,
 });
 const order = (extra: Record<string, unknown> = {}, lines?: any[]) => ({
@@ -44,11 +42,6 @@ const order = (extra: Record<string, unknown> = {}, lines?: any[]) => ({
   created_at: now, updated_at: now, frozen: true, stock_notice: "x", receipts: [], can_receive: true,
   lines: lines ?? [orderLine(L_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "10.0000"), orderLine(L_FLOUR, FLOUR, "FLOUR", "Flour", "kg", "5.0000")], ...extra,
 });
-const warehouses = [
-  { id: W_MAIN, code: "MAIN", name: "Main depot", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 0 },
-  { id: W_SHELF, code: "SHELF", name: "Shelf room", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 0 },
-];
-
 // what the Purchasing Service would answer for a receipt built from the lines the browser sent
 function receiptFrom(lines: any[], extra: Record<string, unknown> = {}) {
   const po = order();
@@ -57,10 +50,9 @@ function receiptFrom(lines: any[], extra: Record<string, unknown> = {}) {
     line_count: lines.length, created_by_email: "a@b.c", created_at: now, confirmed_at: null, confirmed_by_email: null, cancelled_at: null, cancelled_by_email: null, updated_at: now,
     lines: lines.map((l, i) => {
       const ol = po.lines.find((x) => x.id === l.purchaseOrderLineId)!;
-      const wh = warehouses.find((w) => w.id === l.warehouseId);
       return {
         id: `d000000${i}-0000-4000-8000-000000000000`, purchase_order_line_id: ol.id, product_id: ol.product_id, product_sku: ol.product_sku, product_name: ol.product_name, unit: ol.unit,
-        ordered_quantity: ol.quantity, received_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", receivable_quantity: ol.quantity, warehouse_id: wh?.id ?? null, warehouse_code: wh?.code ?? null,
+        ordered_quantity: ol.quantity, received_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", receivable_quantity: ol.quantity,
         accepted_quantity: l.acceptedQuantity, rejected_quantity: l.rejectedQuantity, notes: l.notes ?? null, inventory_movement_id: null,
       };
     }),
@@ -98,7 +90,7 @@ function stub() {
   }));
 }
 const posts = (suffix: string) => calls.filter((c) => c.method === "POST" && c.url.endsWith(suffix));
-const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory|warehouses)/.test(c.url));
+const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory)/.test(c.url));
 
 beforeEach(() => { router.replace.mockReset(); router.refresh.mockReset(); router.push.mockReset(); stub(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -106,10 +98,9 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const user = () => userEvent.setup();
 const accepted = (name: string) => screen.getByLabelText(`Accepted quantity of ${name}`) as HTMLInputElement;
 const rejected = (name: string) => screen.getByLabelText(`Rejected quantity of ${name}`) as HTMLInputElement;
-const warehouseOf = (name: string) => screen.getByLabelText(`Warehouse for ${name}`) as HTMLSelectElement;
 
 function mount(props: Partial<{ order: any; draft: any }> = {}) {
-  return render(<ReceiveForm order={(props.order ?? order()) as any} warehouses={warehouses as any} draft={(props.draft ?? null) as any} />);
+  return render(<ReceiveForm order={(props.order ?? order()) as any} draft={(props.draft ?? null) as any} />);
 }
 
 describe("Receive goods: preparing the receipt", () => {
@@ -126,13 +117,10 @@ describe("Receive goods: preparing the receipt", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("defaults each product's warehouse (the planned one if there is one)", () => {
-    mount({ order: order({}, [
-      orderLine(L_BOLT, BOLT, "BOLT-1", "Steel bolt", "pcs", "10.0000", { planned_warehouse_id: W_SHELF, planned_warehouse_code: "SHELF" }),
-      orderLine(L_FLOUR, FLOUR, "FLOUR", "Flour", "kg", "5.0000"),
-    ]) });
-    expect(warehouseOf("Steel bolt").value).toBe(W_SHELF);
-    expect(warehouseOf("Flour").value).toBe(W_MAIN);
+  it("asks for no warehouse at all", () => {
+    mount();
+    expect(screen.queryByLabelText(/Warehouse for/)).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Warehouse" })).toBeNull();
   });
 
   it("refuses an empty receipt without calling the server", async () => {
@@ -227,13 +215,12 @@ describe("Receive goods: review and explicit confirmation", () => {
   async function fillAndReview(u = user()) {
     await u.type(accepted("Steel bolt"), "4");
     await u.type(rejected("Steel bolt"), "1");
-    await u.selectOptions(warehouseOf("Steel bolt"), W_SHELF);
     await u.click(screen.getByRole("button", { name: "Review receipt" }));
     await screen.findByRole("heading", { name: "Review GR-000001" });
     return u;
   }
 
-  it("saves a DRAFT with the exact quantities, the chosen warehouse and a stable key - and changes no stock", async () => {
+  it("saves a DRAFT with the exact quantities and a stable key - and changes no stock", async () => {
     mount();
     await fillAndReview();
     const create = posts("/api/purchasing/goods-receipts");
@@ -241,13 +228,12 @@ describe("Receive goods: review and explicit confirmation", () => {
     expect(create[0].headers["Idempotency-Key"]).toMatch(/^ui-[0-9a-f-]{36}$/);
     expect(create[0].body).toMatchObject({
       purchaseOrderId: ORDER, receivedDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      lines: [{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4", rejectedQuantity: "1", warehouseId: W_SHELF }],
+      lines: [{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4", rejectedQuantity: "1" }],
     });
     expect(JSON.stringify(create[0].body)).not.toMatch(/organization|unit|status|price/i);
     expect(posts("/confirm")).toHaveLength(0);
     expect(stockCalls()).toHaveLength(0);
     expect(screen.getByRole("note").textContent).toContain("Nothing has been added to your stock yet");
-    expect(screen.getByText("SHELF")).toBeTruthy();
   });
 
   it("only the Confirm button adds stock, once", async () => {
@@ -370,11 +356,10 @@ describe("Receive goods: review and explicit confirmation", () => {
   });
 
   it("resuming a draft fills in what was saved and updates it (PUT), keeping its number", async () => {
-    const draft = receiptFrom([{ purchaseOrderLineId: L_FLOUR, acceptedQuantity: "2.5000", rejectedQuantity: "0.5000", warehouseId: W_SHELF, notes: "damp" }]);
+    const draft = receiptFrom([{ purchaseOrderLineId: L_FLOUR, acceptedQuantity: "2.5000", rejectedQuantity: "0.5000", notes: "damp" }]);
     mount({ draft });
     expect(accepted("Flour").value).toBe("2.5");
     expect(rejected("Flour").value).toBe("0.5");
-    expect(warehouseOf("Flour").value).toBe(W_SHELF);
     expect(screen.getByRole("status").textContent).toContain("Editing the draft GR-000001");
     await user().click(screen.getByRole("button", { name: "Review receipt" }));
     await screen.findByRole("heading", { name: "Review GR-000001" });
@@ -384,11 +369,11 @@ describe("Receive goods: review and explicit confirmation", () => {
 });
 
 // ---- one receipt --------------------------------------------------------------------------------------------------------------------
-const detailOf = (extra: Record<string, unknown> = {}) => receiptFrom([{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4.0000", rejectedQuantity: "1.0000", warehouseId: W_MAIN }], extra) as any;
+const detailOf = (extra: Record<string, unknown> = {}) => receiptFrom([{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4.0000", rejectedQuantity: "1.0000" }], extra) as any;
 
 describe("a goods receipt page", () => {
   it("confirms a draft and updates in place", async () => {
-    lastLines = [{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4.0000", rejectedQuantity: "1.0000", warehouseId: W_MAIN }];
+    lastLines = [{ purchaseOrderLineId: L_BOLT, acceptedQuantity: "4.0000", rejectedQuantity: "1.0000" }];
     render(<ReceiptDetailView receipt={detailOf()} />);
     await user().click(screen.getByRole("button", { name: "Confirm and add to stock" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("is confirmed"));
@@ -434,21 +419,20 @@ describe("a goods receipt page", () => {
 // ---- the list ---------------------------------------------------------------------------------------------------------------------------
 describe("the goods receipts list", () => {
   const list = { ok: true as const, items: [{ ...(detailOf() as any), line_count: 1 }], total: 1, limit: 25, offset: 0 };
-  const filters = { q: "", status: "" as const, supplierId: "", warehouseId: "", dateFrom: "", dateTo: "", page: 1 };
+  const filters = { q: "", status: "" as const, supplierId: "", dateFrom: "", dateTo: "", page: 1 };
 
   it("changing a filter navigates with only whitelisted query parameters", async () => {
-    render(<ReceiptIndex list={list} filters={filters} suppliers={[{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any]} warehouses={warehouses as any} />);
+    render(<ReceiptIndex list={list} filters={filters} suppliers={[{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any]} />);
     const u = user();
     await u.selectOptions(screen.getByLabelText("Status"), "confirmed");
     expect(router.push).toHaveBeenLastCalledWith("/goods-receipts?status=confirmed");
-    await u.selectOptions(screen.getByLabelText("Warehouse"), W_SHELF);
-    expect(router.push).toHaveBeenLastCalledWith(`/goods-receipts?warehouse=${W_SHELF}`);
+    expect(screen.queryByLabelText("Warehouse")).toBeNull();
     await u.type(screen.getByLabelText("Search"), "dn-7{enter}");
     expect(router.push).toHaveBeenLastCalledWith("/goods-receipts?q=dn-7");
   });
 
   it("clears filters and shows the right empty state", async () => {
-    render(<ReceiptIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, status: "draft" }} suppliers={[]} warehouses={[]} />);
+    render(<ReceiptIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, status: "draft" }} suppliers={[]} />);
     expect(screen.getByText("No goods receipts match these filters.")).toBeTruthy();
     await user().click(screen.getByRole("button", { name: "Clear filters" }));
     expect(router.push).toHaveBeenLastCalledWith("/goods-receipts");

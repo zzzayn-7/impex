@@ -134,14 +134,8 @@ def main() -> int:
         created.add("products", body.get("id"))
         return body
 
-    def warehouse(key, code, name):
-        _, text, _, _ = portal(key, "POST", "/api/warehouses", {"code": code, "name": name})
-        body = jbody(text).get("warehouse", {})
-        created.add("warehouses", body.get("id"))
-        return body
-
-    def stock_in(key, pid, wid, quantity):
-        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "warehouse_id": wid, "quantity": quantity}, {"Idempotency-Key": f"po-{uuid.uuid4()}"})[0]
+    def stock_in(key, pid, quantity):
+        return portal(key, "POST", "/api/stock/in", {"product_id": pid, "quantity": quantity}, {"Idempotency-Key": f"po-{uuid.uuid4()}"})[0]
 
     def supplier(key, name, **extra):
         status, text, _, _ = portal(key, "POST", "/api/purchasing/suppliers", {"name": name, **extra})
@@ -166,7 +160,7 @@ def main() -> int:
         return status, jbody(text)
 
     def inventory_state(org):
-        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || warehouse_id || ':' || quantity::text, ',' ORDER BY product_id, warehouse_id), '') FROM stock_balances WHERE organization_id = '{org}'")
+        balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{org}'")
         movements = psql("impex_inventory", f"SELECT count(*) || '/' || coalesce(max(created_at)::text, '') FROM stock_movements WHERE organization_id = '{org}'")
         operations = psql("impex_inventory", f"SELECT count(*) FROM stock_operations WHERE organization_id = '{org}'")
         prices = psql("impex_inventory", f"SELECT coalesce(string_agg(sku || ':' || cost_price::text || ':' || selling_price::text || ':' || unit || ':' || is_active::text, ',' ORDER BY sku), '') FROM products WHERE organization_id = '{org}'")
@@ -205,12 +199,10 @@ def main() -> int:
         # the SAME sku in both organizations, different products
         a_bolt, a_flour, a_old = product("a", "PO-BOLT", "POA steel bolt", "pcs"), product("a", "PO-FLOUR", "POA flour", "kg"), product("a", "PO-OLD", "POA old widget", "pcs")
         b_bolt = product("b", "PO-BOLT", "POB silk scarf", "pcs")
-        a_main, a_annex, b_main = warehouse("a", "MAIN", "POA main depot"), warehouse("a", "ANNEX", "POA annex"), warehouse("b", "MAIN", "POB main depot")
-        check("products and warehouses created (same SKU 'PO-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_old, b_bolt, a_main, a_annex, b_main)))
-        stock_in("a", a_bolt["id"], a_main["id"], "40")
-        stock_in("a", a_flour["id"], a_main["id"], "2.5")
-        stock_in("b", b_bolt["id"], b_main["id"], "99")
-        portal("a", "POST", f"/api/warehouses/{a_annex['id']}/archive")
+        check("products created (same SKU 'PO-BOLT' in both organizations)", all(x.get("id") for x in (a_bolt, a_flour, a_old, b_bolt)))
+        stock_in("a", a_bolt["id"], "40")
+        stock_in("a", a_flour["id"], "2.5")
+        stock_in("b", b_bolt["id"], "99")
         portal("a", "POST", f"/api/products/{a_old['id']}/archive")
         inventory_before = {k: inventory_state(org_ids[k]) for k in ("a", "b")}
         check("starting stock and prices recorded (A: 40 bolts + 2.5 kg flour; B: 99; selling price 9.99, cost price 5)",
@@ -316,9 +308,9 @@ def main() -> int:
         check("ORDER 50 UNITS: the bolt is added with quantity 50 and price 1.25 (201)", s == 201 and bolt_line.get("quantity") == "50.0000" and bolt_line.get("unit_price") == "1.2500", (s, body))
         check("the line total is calculated by the server: 62.5000", bolt_line.get("line_total") == "62.5000" and body.get("total_amount") == "62.5000" and body.get("line_count") == 1, body)
         check("name, SKU and unit come from the Inventory Service", (bolt_line.get("product_name"), bolt_line.get("product_sku"), bolt_line.get("unit")) == ("POA steel bolt", "PO-BOLT", "pcs"), bolt_line)
-        s, body = add("a", po1["id"], a_flour["id"], "2.5", "3.10", plannedWarehouseId=a_main["id"], notes="Food grade")
+        s, body = add("a", po1["id"], a_flour["id"], "2.5", "3.10", notes="Food grade")
         flour_line = body.get("line", {})
-        check("a kg product takes decimals; planned warehouse and note are kept (201)", s == 201 and flour_line.get("line_total") == "7.7500" and flour_line.get("planned_warehouse_code") == "MAIN" and flour_line.get("notes") == "Food grade", (s, body))
+        check("a kg product takes decimals; the note is kept and no warehouse is stored (201)", s == 201 and flour_line.get("line_total") == "7.7500" and "planned_warehouse_code" not in flour_line and flour_line.get("notes") == "Food grade", (s, body))
         s, d = detail("a", po1["id"])
         check("the order total is the exact sum: 62.5000 + 7.7500 = 70.2500", d["total_amount"] == "70.2500" and d["line_count"] == 2 and d["frozen"] is False, d)
         s, body = add("a", po2["id"], a_flour["id"], "3", "0.3333")
@@ -345,9 +337,9 @@ def main() -> int:
         s, body = add("a", fresh["id"], str(uuid.uuid4()), "1", "1")
         check("an unknown product is refused (404)", s == 404 and "Product not found" in body.get("error", ""), (s, body))
         s, body = add("a", fresh["id"], a_bolt["id"], "5", "1", plannedWarehouseId=str(uuid.uuid4()))
-        check("an unknown planned warehouse is refused (404)", s == 404, (s, body))
-        s, body = add("a", fresh["id"], a_bolt["id"], "5", "1", plannedWarehouseId=a_annex["id"])
-        check("an archived planned warehouse is refused (409)", s == 409, (s, body))
+        check("a planned warehouse sent by the browser is dropped: nothing is stored (201)", s == 201 and "planned_warehouse_id" not in body["line"]
+              and psql("impex_purchasing", "SELECT count(*) FROM information_schema.columns WHERE table_name = 'purchase_order_lines' AND column_name LIKE '%warehouse%'") == "0", (s, body))
+        portal("a", "DELETE", f"/api/purchasing/purchase-orders/{fresh['id']}/lines/{body['line']['id']}")  # leave the order empty for the next checks
         s, body = add("a", fresh["id"], a_bolt["id"], "5", "1", productName="HACKED", productSku="EVIL", unit="kg", lineTotal="0.01", total_amount="0", selling_price="0.01")
         row = psql("impex_purchasing", f"SELECT product_name || '|' || product_sku || '|' || unit || '|' || line_total::text FROM purchase_order_lines WHERE purchase_order_id = '{fresh['id']}'")
         check("extra fields are dropped; the saved name, SKU, unit and total are the server's (POA steel bolt|PO-BOLT|pcs|5.0000)", s == 201 and row == "POA steel bolt|PO-BOLT|pcs|5.0000", (s, row))
@@ -470,8 +462,6 @@ def main() -> int:
         check("B orders B's own product with the same SKU (201)", s == 201 and body["line"]["product_name"] == "POB silk scarf" and body["total_amount"] == "17.5000", (s, body))
         s, d = detail("b", b_po["id"])
         check("B's order contains nothing of A's", "POA" not in json.dumps(d) and "Acme Supplies GmbH" in json.dumps(d))
-        s, body = add("b", b_po["id"], b_bolt["id"], "1", "1", plannedWarehouseId=a_main["id"])
-        check("B cannot plan A's warehouse (404 'Warehouse not found')", s == 404 and "Warehouse not found" in body.get("error", ""), (s, body))
         s, text, _, _ = call(PURCHASING, "GET", f"/api/v1/purchasing/purchase-orders?organization_id={org_ids['a']}", headers={**bearer(tokens["b"]), "X-Organization-Id": org_ids["a"]})
         check("a query parameter and header naming A change nothing for B", s == 200 and all("POA" not in json.dumps(i) and i["id"] != po2["id"] for i in jbody(text).get("items", [])))
         s, text, _, _ = call(PURCHASING, "POST", "/api/v1/purchasing/suppliers", {"name": "Sneaky", "organization_id": org_ids["a"]}, bearer(tokens["b"]))
@@ -554,7 +544,6 @@ def main() -> int:
             "movements": delete_exact(psql, "impex_inventory", "stock_movements", orgs, "organization_id", ledger=True),
             "balances": delete_exact(psql, "impex_inventory", "stock_balances", orgs, "organization_id"),
             "operations": delete_exact(psql, "impex_inventory", "stock_operations", orgs, "organization_id"),
-            "warehouses": delete_exact(psql, "impex_inventory", "warehouses", created.get("warehouses")),
             "products": delete_exact(psql, "impex_inventory", "products", created.get("products")),
             "organizations": delete_exact(psql, "impex_organizations", "organizations", orgs),
             "users": delete_exact(psql, "impex_auth", "users", created.get("users")),

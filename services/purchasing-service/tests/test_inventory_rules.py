@@ -35,7 +35,7 @@ def test_ordering_50_units_does_not_add_a_single_unit_of_stock(api, shop, invent
     api.add(created["id"], shop["bolt"], 50, "1.25")
     api.action(created["id"], "order")
     assert inventory.snapshot() == before  # still 40 bolts
-    assert inventory.stock[(shop["bolt"], shop["main"])] == 40
+    assert inventory.stock[shop["bolt"]] == 40
 
 
 def test_no_operation_changes_a_single_stock_quantity(api, shop, inventory):
@@ -50,7 +50,6 @@ def test_the_purchasing_service_only_ever_reads_from_the_inventory_service(api, 
     assert inventory.writes() == []  # not one POST / PATCH / PUT / DELETE: no stock, no movements, no product edits
     assert {(m, p) for m, p, _ in inventory.requests} <= {
         ("GET", "/api/v1/inventory/stock/summary"),
-        *{("GET", f"/api/v1/inventory/warehouses/{w}") for w in (shop["main"], shop["annex"])},
     }
     assert not any("/stock/in" in p or "/stock/opening" in p or "/stock/transfer" in p or "/movements" in p for _, p, _ in inventory.requests)
 

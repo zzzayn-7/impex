@@ -8,14 +8,12 @@ import { formatMoney } from "@/lib/product-validation";
 import { validateQuantity } from "@/lib/stock-validation";
 
 export type OrderProduct = { id: string; name: string; sku: string; unit: string; unit_allows_fractions?: boolean };
-export type PickWarehouse = { id: string; code: string; name: string };
 
 type Props = {
   orderId: string;
   orderNumber: string;
   currency: string;
   product: OrderProduct;
-  warehouses: PickWarehouse[];
   /** Called after the line was added; `existingLineId` is set when the product was already on the order. */
   onAdded: (message: string) => void;
   onDuplicate: (lineId: string) => void;
@@ -27,10 +25,9 @@ const border = (error?: string) => (error ? "border-red-500/60 focus:border-red-
 // Add ONE existing product to a draft purchase order with the ordered quantity and the unit purchase price. The preview of the
 // line total is only a convenience while typing: the Purchasing Service calculates the real one. Nothing here changes stock,
 // and the purchase price never touches the product's own prices.
-export default function AddLineForm({ orderId, orderNumber, currency, product, warehouses, onAdded, onDuplicate }: Props) {
+export default function AddLineForm({ orderId, orderNumber, currency, product, onAdded, onDuplicate }: Props) {
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +49,7 @@ export default function AddLineForm({ orderId, orderNumber, currency, product, w
     setBusy(true);
     const r = await api(`/api/purchasing/purchase-orders/${orderId}/lines`, {
       method: "POST",
-      ...jsonBody({ productId: product.id, quantity: q, unitPrice: p, plannedWarehouseId: warehouseId, notes }),
+      ...jsonBody({ productId: product.id, quantity: q, unitPrice: p, notes }),
     });
     setBusy(false);
     if (r.ok) {
@@ -88,19 +85,10 @@ export default function AddLineForm({ orderId, orderNumber, currency, product, w
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-medium text-slate-400">
-          Planned warehouse (optional)
-          <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500">
-            <option value="">No preference</option>
-            {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
-          </select>
-        </label>
-        <label className="block text-xs font-medium text-slate-400">
-          Line note (optional)
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500" />
-        </label>
-      </div>
+      <label className="block text-xs font-medium text-slate-400">
+        Line note (optional)
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500" />
+      </label>
 
       <p className="text-sm text-slate-300" data-testid="line-preview">
         Line total: <span className="font-mono font-semibold text-white">{preview ? formatMoney(preview, currency) : "—"}</span>

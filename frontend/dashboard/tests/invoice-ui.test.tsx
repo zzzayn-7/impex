@@ -34,7 +34,7 @@ const clients = [
 
 const billable = (extra: Record<string, unknown> = {}) => ({
   dispatch_line_id: BOLT_LINE, dispatch_id: DISPATCH, dispatch_number: "DS-000001", dispatch_date: "2026-11-05", delivery_list: { id: LIST, number: "DL-000001", status: "partially_dispatched" },
-  product_id: "b0000000-0000-4000-8000-000000000001", product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", warehouse_code: "MAIN", dispatched_quantity: "10.0000",
+  product_id: "b0000000-0000-4000-8000-000000000001", product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", dispatched_quantity: "10.0000",
   invoiced_quantity: "0.0000", in_drafts_quantity: "0.0000", remaining_quantity: "10.0000", ...extra,
 });
 const BILLABLE = [
@@ -85,7 +85,7 @@ function stub() {
   }));
 }
 const posts = (suffix: string) => calls.filter((c) => c.method === "POST" && c.url.endsWith(suffix));
-const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory|warehouses|movements)/.test(c.url));
+const stockCalls = () => calls.filter((c) => /\/api\/(stock|products|inventory|movements)/.test(c.url));
 
 beforeEach(() => { router.replace.mockReset(); router.refresh.mockReset(); router.push.mockReset(); stub(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

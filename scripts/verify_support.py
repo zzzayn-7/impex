@@ -529,10 +529,10 @@ def main() -> int:
         status, html, _l = tpage("c1", f"/support/{tc['id']}")
         check("C1 reads the Super Admin's answer before setup is finished", status == 200 and "64 and 4000 pixels" in html, status)
         check("C1's setup is still not finished (support did not complete or skip it)", psql("impex_organizations", f"SELECT setup_status FROM organizations WHERE id = '{org_ids['c']}'") != "completed")
-        for path in ("/products", "/warehouses", "/stock", "/scan", "/invoices", "/clients", "/delivery-lists", "/dispatches", "/suppliers", "/purchase-orders", "/goods-receipts"):
+        for path in ("/products", "/stock", "/scan", "/invoices", "/clients", "/delivery-lists", "/dispatches", "/suppliers", "/purchase-orders", "/goods-receipts"):
             status, html, loc = tpage("c1", path)
             check(f"{path} still redirects C1 to /setup", is_redirect(status) and loc.endswith("/setup"), (status, loc))
-        for path in ("/api/products", "/api/warehouses", "/api/stock/in", "/api/scan/resolve", "/api/sales/clients", "/api/sales/invoices", "/api/purchasing/suppliers", "/api/purchasing/purchase-orders"):
+        for path in ("/api/products", "/api/stock/in", "/api/scan/resolve", "/api/sales/clients", "/api/sales/invoices", "/api/purchasing/suppliers", "/api/purchasing/purchase-orders"):
             status, data, _, _, _h = tenant("c1", "GET", path)
             body = jbody(data)
             check(f"{path} is refused on the SERVER while setup is unfinished (403 setup_required), not merely hidden", status == 403 and body.get("code") == "setup_required", (status, body))

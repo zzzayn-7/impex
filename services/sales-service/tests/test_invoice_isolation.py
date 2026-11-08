@@ -18,11 +18,10 @@ def world(two_orgs, inventory):
     for who in ("alpha", "beta"):
         org = two_orgs[who]
         product = inventory.add_product(org.org_id, "SHARED-SKU", f"{who} gadget", "pcs")
-        warehouse = inventory.add_warehouse(org.org_id, "MAIN")
-        inventory.set_stock(product, warehouse, 100)
-        shop = {"gadget": product, "main": warehouse}
+        inventory.set_stock(product, 100)
+        shop = {"gadget": product}
         delivery_list = org.ready_list(shop, items=(("gadget", 10),), client_name=f"{who} client")
-        dispatch = org.confirmed_dispatch(shop, delivery_list, [("gadget", 10, "main")])
+        dispatch = org.confirmed_dispatch(shop, delivery_list, [("gadget", 10)])
         client_id = delivery_list["client"]["id"]
         draft = org.draft_invoice(client_id, [bill(dispatch, product, 3, "2")])
         issued = org.issued_invoice(client_id, [bill(dispatch, product, 4, "2")])

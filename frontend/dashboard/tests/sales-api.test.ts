@@ -16,7 +16,6 @@ import { POST as increaseItem } from "@/app/api/sales/delivery-lists/[id]/items/
 const ID = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718";
 const ITEM = "11111111-1111-4111-8111-111111111111";
 const PRODUCT = "22222222-2222-4222-8222-222222222222";
-const WAREHOUSE = "33333333-3333-4333-8333-333333333333";
 const TOKEN = "session-token-abc";
 const SALES = "http://sales-service:8003";
 
@@ -225,15 +224,15 @@ describe("delivery lists", () => {
 describe("items", () => {
   const ctx = { params: { id: ID } };
 
-  it("adds a product with an explicit quantity, forwarding ONLY the id, quantity and warehouse", async () => {
+  it("adds a product with an explicit quantity, forwarding ONLY the id and the quantity", async () => {
     stub(() => json(201, { item: { id: ITEM }, item_count: 1 }));
     const res = await addItem(request("POST", {
-      productId: PRODUCT, quantity: " 12.5 ", plannedWarehouseId: WAREHOUSE,
+      productId: PRODUCT, quantity: " 12.5 ", plannedWarehouseId: "11111111-1111-4111-8111-111111111111",
       productName: "Hacked", productSku: "X", unit: "kg", available_quantity: "9999", stock: { a: 1 }, organization_id: "evil",
     }), ctx);
     expect(res.status).toBe(201);
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/delivery-lists/${ID}/items`);
-    expect(sentBody()).toEqual({ product_id: PRODUCT, quantity: "12.5", planned_warehouse_id: WAREHOUSE });
+    expect(sentBody()).toEqual({ product_id: PRODUCT, quantity: "12.5" }); // a warehouse sent by the browser is dropped
   });
 
   it("keeps the quantity an exact string", async () => {
@@ -246,7 +245,7 @@ describe("items", () => {
     ["no quantity", { productId: PRODUCT }, "quantity"], ["zero", { productId: PRODUCT, quantity: "0" }, "quantity"], ["negative", { productId: PRODUCT, quantity: "-3" }, "quantity"],
     ["text", { productId: PRODUCT, quantity: "lots" }, "quantity"], ["a JSON number", { productId: PRODUCT, quantity: 5 }, "quantity"],
     ["too many decimals", { productId: PRODUCT, quantity: "1.00001" }, "quantity"], ["no product", { quantity: "1" }, "productId"],
-    ["bad product id", { productId: "nope", quantity: "1" }, "productId"], ["bad warehouse", { productId: PRODUCT, quantity: "1", plannedWarehouseId: "nope" }, "plannedWarehouseId"],
+    ["bad product id", { productId: "nope", quantity: "1" }, "productId"],
   ])("rejects %s without calling the service", async (_name, body, field) => {
     const res = await addItem(request("POST", body), ctx);
     expect(res.status).toBe(400);
@@ -278,9 +277,9 @@ describe("items", () => {
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/delivery-lists/${ID}/items/${ITEM}`);
     expect(sentBody()).toEqual({ quantity: "8" });
     fetchMock.mockClear();
-    await editItem(request("PATCH", { plannedWarehouseId: null }), both);
-    expect(sentBody()).toEqual({ planned_warehouse_id: null });
     fetchMock.mockClear();
+    expect((await editItem(request("PATCH", { plannedWarehouseId: null }), both)).status).toBe(400); // nothing left to change
+    expect(fetchMock).not.toHaveBeenCalled();
     await increaseItem(request("POST", { quantity: "3" }), both);
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/delivery-lists/${ID}/items/${ITEM}/increase`);
     expect(sentBody()).toEqual({ quantity: "3" });

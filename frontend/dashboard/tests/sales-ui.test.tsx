@@ -14,28 +14,25 @@ import DeliveryListDetail from "@/app/delivery-lists/[id]/delivery-list-detail";
 import DeliveryListIndex from "@/app/delivery-lists/delivery-list-index";
 import ClientManager from "@/app/clients/client-manager";
 import ScanProduct from "@/app/scan/scan-product";
-import type { Warehouse } from "@/lib/stock-validation";
 
 const now = "2026-11-05T10:00:00+00:00";
 const BOLT = "6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const FLOUR = "7a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
-const W_MAIN = "22222222-2222-4222-8222-222222222222";
 const L1 = "a0000000-0000-4000-8000-000000000001";
 const L2 = "a0000000-0000-4000-8000-000000000002";
 const C1 = "c0000000-0000-4000-8000-000000000001";
 const ITEM1 = "e0000000-0000-4000-8000-000000000001";
 
-const warehouses: Warehouse[] = [{ id: W_MAIN, code: "MAIN", name: "Main depot", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 1 }];
 const product = (id: string, sku: string, name: string, unit: string, extra: Record<string, unknown> = {}) => ({
   id, sku, name, description: null, category: "G", unit, unit_allows_fractions: unit === "kg", unit_locked: true, hs_code: null, cost_price: "1", selling_price: "2", currency_code: "USD",
   is_active: true, created_at: now, updated_at: now, ...extra,
 });
-const result = (p: ReturnType<typeof product>, available: string, total = available) => ({
+const result = (p: ReturnType<typeof product>, total: string) => ({
   matched_by: "sku", identifier_kind: null, product: p,
-  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: total, available_quantity: available, lines: [] },
+  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: total },
 });
 const CATALOG: Record<string, any> = {
-  "BOLT-1": result(product(BOLT, "BOLT-1", "Steel bolt", "pcs"), "40.0000", "50.0000"),
+  "BOLT-1": result(product(BOLT, "BOLT-1", "Steel bolt", "pcs"), "50.0000"),
   FLOUR: result(product(FLOUR, "FLOUR", "Flour", "kg"), "2.5000"),
   "OLD-1": result(product(BOLT, "OLD-1", "Old bolt", "pcs", { is_active: false }), "0"),
 };
@@ -94,7 +91,7 @@ async function scan(user: ReturnType<typeof userEvent.setup>, code: string) {
   await user.type(scanBox(), `${code}{Enter}`);
 }
 async function openDeliverables(user: ReturnType<typeof userEvent.setup>, code = "BOLT-1", props: Partial<React.ComponentProps<typeof ScanProduct>> = {}) {
-  render(<ScanProduct warehouses={warehouses} {...props} />);
+  render(<ScanProduct {...props} />);
   await scan(user, code);
   await screen.findByRole("region", { name: "Scanned product" });
   await user.click(screen.getByRole("button", { name: "Add to Deliverables" }));
@@ -102,31 +99,30 @@ async function openDeliverables(user: ReturnType<typeof userEvent.setup>, code =
 }
 
 describe("Scan Product: actions", () => {
-  it("prioritises Stock In, Stock Out, Add to Deliverables and Prepare Dispatch; transfers stay on the Stock page", async () => {
+  it("prioritises Stock In, Stock Out, Add to Deliverables and Prepare Dispatch; there are no transfers", async () => {
     const user = userEvent.setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await scan(user, "BOLT-1");
     const group = await screen.findByRole("group", { name: "Actions" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock In", "Stock Out", "Add to Deliverables", "Prepare Dispatch"]);
     expect(screen.queryByRole("button", { name: "Transfer" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Stock page" }).getAttribute("href")).toBe("/stock");
   });
 
   it("Add to Deliverables is not offered for an archived product", async () => {
     const user = userEvent.setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await scan(user, "OLD-1");
     await screen.findByText(/This product is archived/);
     expect(screen.queryByRole("button", { name: "Add to Deliverables" })).toBeNull();
   });
 
-  it("Add to Deliverables works even when there is no warehouse yet (it does not touch stock)", async () => {
+  it("every action is available straight away: nothing waits for a warehouse", async () => {
     const user = userEvent.setup();
-    render(<ScanProduct warehouses={[]} />);
+    render(<ScanProduct />);
     await scan(user, "BOLT-1");
     await screen.findByRole("region", { name: "Scanned product" });
     expect((screen.getByRole("button", { name: "Add to Deliverables" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "Stock In" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Stock In" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -143,7 +139,7 @@ describe("Scan Product: Add to Deliverables", () => {
     expect(calls.map((c) => c.url).filter((u) => u.startsWith("/api/sales"))).toEqual(["/api/sales/delivery-lists?status=draft&limit=100", "/api/sales/clients?status=active&limit=200"]);
   });
 
-  it("shows the product, its unit and the CURRENT available stock, and the 'not reserved' explanation", async () => {
+  it("shows the product, its unit and the CURRENT stock, and the 'not reserved' explanation", async () => {
     const user = userEvent.setup();
     const panel = await openDeliverables(user);
     await user.selectOptions(await within(panel).findByLabelText("Delivery list"), L1);
@@ -152,7 +148,7 @@ describe("Scan Product: Add to Deliverables", () => {
     expect(form.textContent).toContain("BOLT-1");
     expect(form.textContent).toContain("Unit: pcs");
     expect(form.textContent).toContain("whole numbers only");
-    expect(within(form).getByTestId("availability").textContent).toContain("Available now: 40 pcs (total 50 pcs)");
+    expect(within(form).getByTestId("availability").textContent).toContain("In stock now: 50 pcs");
     expect(form.textContent).toContain("Stock is not reserved");
     expect(form.textContent).toContain("never changes inventory");
   });
@@ -241,23 +237,23 @@ describe("Scan Product: Add to Deliverables", () => {
     expect(within(panel).queryByRole("alert")).toBeNull();
   });
 
-  it("warns when the quantity exceeds what is available, but still lets it be added", async () => {
+  it("warns when the quantity exceeds what is in stock, but still lets it be added", async () => {
     const user = userEvent.setup();
     const panel = await openDeliverables(user);
     await user.selectOptions(await within(panel).findByLabelText("Delivery list"), L1);
     await user.type(within(panel).getByLabelText(/^Quantity to deliver/), "100");
-    const warning = await within(panel).findByText(/is more than the 40 pcs available/);
-    expect(warning.textContent).toContain("short by 60");
+    const warning = await within(panel).findByText(/is more than the 50 pcs available/);
+    expect(warning.textContent).toContain("short by 50");
     expect(warning.textContent).toContain("not reserved");
     await user.click(within(panel).getByRole("button", { name: "Add to delivery list" }));
     await screen.findByText(/Added 100 pcs of Steel bolt/);
   });
 
-  it("does not warn when it fits (exactly the available amount)", async () => {
+  it("does not warn when it fits (exactly the amount in stock)", async () => {
     const user = userEvent.setup();
     const panel = await openDeliverables(user);
     await user.selectOptions(await within(panel).findByLabelText("Delivery list"), L1);
-    await user.type(within(panel).getByLabelText(/^Quantity to deliver/), "40");
+    await user.type(within(panel).getByLabelText(/^Quantity to deliver/), "50");
     expect(within(panel).queryByText(/is more than/)).toBeNull();
   });
 
@@ -411,7 +407,7 @@ describe("Scan Product: Add to Deliverables", () => {
     const original = globalThis.fetch;
     vi.stubGlobal("fetch", vi.fn(async (input: any, init: any) => (String(input).startsWith("/api/sales/delivery-lists?") ? json(401, { error: "Your session has expired. Please sign in again." }) : (original as any)(input, init))));
     const user = userEvent.setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await scan(user, "BOLT-1");
     await screen.findByRole("region", { name: "Scanned product" });
     await user.click(screen.getByRole("button", { name: "Add to Deliverables" }));
@@ -422,9 +418,9 @@ describe("Scan Product: Add to Deliverables", () => {
 // =============================================================================================================
 describe("Delivery list detail", () => {
   const item = (extra: Record<string, unknown> = {}) => ({
-    id: ITEM1, product_id: BOLT, product_sku: "BOLT-1", product_name: "Steel bolt", quantity: "12.0000", unit: "pcs", planned_warehouse_id: null, planned_warehouse_code: null,
+    id: ITEM1, product_id: BOLT, product_sku: "BOLT-1", product_name: "Steel bolt", quantity: "12.0000", unit: "pcs",
     created_at: now, updated_at: now,
-    stock: { total_quantity: "50.0000", available_quantity: "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: false, shortfall: "0" }, ...extra,
+    stock: { total_quantity: "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: false, shortfall: "0" }, ...extra,
   });
   const list = (extra: Record<string, unknown> = {}) => ({ ...summary(L1, "DL-000001", "Acme Ltd", 1), items: [item()], stock_status: "ok", items_exceeding_stock: 0, stock_notice: "Stock is not reserved by a delivery list.", ...extra });
 
@@ -439,7 +435,7 @@ describe("Delivery list detail", () => {
   });
 
   it("warns about lines that exceed availability, without blocking anything", () => {
-    const l = list({ items: [item({ stock: { total_quantity: "50", available_quantity: "5.0000", product_active: true, unit_allows_fractions: false, exceeds_available: true, shortfall: "7.0000" } })], items_exceeding_stock: 1 });
+    const l = list({ items: [item({ stock: { total_quantity: "5.0000", product_active: true, unit_allows_fractions: false, exceeds_available: true, shortfall: "7.0000" } })], items_exceeding_stock: 1 });
     render(<DeliveryListDetail list={l as any} />);
     expect(screen.getByText(/short by 7/)).toBeTruthy();
     expect(screen.getByText(/asks for more than is available/).textContent).toContain("nothing is reserved");
@@ -514,7 +510,7 @@ describe("Delivery list detail", () => {
   });
 
   it("flags an archived product on a line", () => {
-    render(<DeliveryListDetail list={list({ items: [item({ stock: { total_quantity: "0", available_quantity: "0", product_active: false, unit_allows_fractions: false, exceeds_available: true, shortfall: "12" } })] }) as any} />);
+    render(<DeliveryListDetail list={list({ items: [item({ stock: { total_quantity: "0", product_active: false, unit_allows_fractions: false, exceeds_available: true, shortfall: "12" } })] }) as any} />);
     expect(screen.getByText(/Archived product: remove it before marking the list Ready/)).toBeTruthy();
   });
 
@@ -525,7 +521,7 @@ describe("Delivery list detail", () => {
     await user.click(screen.getByRole("button", { name: "Type a SKU or barcode" }));
     await user.type(screen.getByLabelText("SKU or barcode"), "flour{Enter}");
     const form = await screen.findByRole("form", { name: "Add Flour to DL-000001" });
-    expect(form.textContent).toContain("Available now: 2.5 kg");
+    expect(form.textContent).toContain("In stock now: 2.5 kg");
     await user.type(within(form).getByLabelText(/^Quantity to deliver/), "1.5");
     await user.click(within(form).getByRole("button", { name: "Add to delivery list" }));
     await screen.findByText("Added 1.5 kg of Flour to DL-000001.");

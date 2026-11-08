@@ -170,15 +170,14 @@ class Directory:
 
 
 class FakeInventory:
-    """The Inventory Service as the Sales Service sees it. Products and warehouses belong to organizations; what a caller
+    """The Inventory Service as the Sales Service sees it. Products belong to organizations; what a caller
     can see is decided by their token, exactly like the real service. Every request is recorded, so tests can prove that
     Sales only ever READS from it (no stock is ever written)."""
 
     def __init__(self, directory: Directory):
         self.directory = directory
         self.products = {}  # org id -> {product id -> dict}
-        self.warehouses = {}  # org id -> {warehouse id -> dict}
-        self.stock = {}  # (product id, warehouse id) -> Decimal
+        self.stock = {}  # product id -> Decimal
         self.mode = None  # "down" | "500" | "401" | "403"
         self.requests = []  # (method, path, token)
         # --- dispatch postings (the one write Sales makes), like the real Inventory Service: atomic, idempotent by key, one ledger
@@ -194,18 +193,13 @@ class FakeInventory:
         self.post_calls = 0
 
     # -- building the world
-    def add_warehouse(self, org: str, code: str = "MAIN", active: bool = True) -> str:
-        wid = str(uuid.uuid4())
-        self.warehouses.setdefault(org, {})[wid] = {"id": wid, "code": code, "is_active": active}
-        return wid
-
     def add_product(self, org: str, sku: str, name: str, unit: str = "pcs", active: bool = True) -> str:
         pid = str(uuid.uuid4())
         self.products.setdefault(org, {})[pid] = {"id": pid, "sku": sku, "name": name, "unit": unit, "is_active": active}
         return pid
 
-    def set_stock(self, product: str, warehouse: str, quantity) -> None:
-        self.stock[(product, warehouse)] = Decimal(str(quantity))
+    def set_stock(self, product: str, quantity) -> None:
+        self.stock[product] = Decimal(str(quantity))
 
     def snapshot(self):
         """Every quantity in the fake: used to prove that delivery-list operations leave inventory untouched."""
@@ -217,14 +211,11 @@ class FakeInventory:
         return None if user is None else str(user.get("organization_id"))
 
     def _stock_item(self, org: str, product: dict) -> dict:
-        lines = [(w, q) for (p, w_id), q in self.stock.items() if p == product["id"] for w in [self.warehouses[org][w_id]] if q > 0]
-        total = sum((q for _, q in lines), Decimal(0))
-        available = sum((q for w, q in lines if w["is_active"]), Decimal(0))
+        total = max(self.stock.get(product["id"], Decimal(0)), Decimal(0))
         return {
             "product_id": product["id"], "sku": product["sku"], "name": product["name"], "category": "General", "unit": product["unit"],
             "unit_allows_fractions": product["unit"] in ("kg", "g", "l", "m"), "is_active": product["is_active"],
-            "total_quantity": format(total, "f"), "available_quantity": format(available, "f"),
-            "lines": [{"warehouse_id": w["id"], "warehouse_code": w["code"], "warehouse_name": f"{w['code']} warehouse", "warehouse_active": w["is_active"], "quantity": format(q, "f")} for w, q in lines],
+            "total_quantity": format(total, "f") if total > 0 else "0",
         }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -255,9 +246,6 @@ class FakeInventory:
             if found is None:
                 return httpx.Response(404, json={"detail": "No dispatch was posted with this key."})
             return httpx.Response(200, json={**found, "replayed": True})
-        if request.method == "GET" and path.startswith("/api/v1/inventory/warehouses/"):
-            warehouse = self.warehouses.get(org, {}).get(path.rsplit("/", 1)[1])
-            return httpx.Response(200, json=warehouse) if warehouse else httpx.Response(404, json={"detail": "Warehouse not found."})
         return httpx.Response(404, json={"detail": "not found"})
 
     def _post_dispatch(self, org: str, request: httpx.Request) -> httpx.Response:
@@ -280,10 +268,10 @@ class FakeInventory:
             movements = []
             for line in body["lines"]:
                 quantity = Decimal(line["quantity"])
-                balance = self.stock.get((line["product_id"], line["warehouse_id"]), Decimal(0)) - quantity
-                self.stock[(line["product_id"], line["warehouse_id"])] = balance
+                balance = self.stock.get(line["product_id"], Decimal(0)) - quantity
+                self.stock[line["product_id"]] = balance
                 movement = {"id": str(uuid.uuid4()), "line_id": line["line_id"], "product_id": line["product_id"],
-                            "warehouse_id": line["warehouse_id"], "quantity": format(quantity, "f"), "balance_after": format(balance, "f")}
+                            "quantity": format(quantity, "f"), "balance_after": format(balance, "f")}
                 movements.append(movement)
                 self.ledger.append({**movement, "source_reference": body["dispatch_number"], "org": org})
                 self.posted_lines.add((org, line["line_id"]))
@@ -305,10 +293,9 @@ class FakeInventory:
             product = self.products.get(org, {}).get(line["product_id"])
             if product is None:
                 return 404, "Product not found."
-            warehouse = self.warehouses.get(org, {}).get(line["warehouse_id"])
-            if warehouse is None:
-                return 404, "Warehouse not found."
-            if not product["is_active"] or not warehouse["is_active"]:
+            if "warehouse_id" in line:
+                return 422, "Extra inputs are not permitted"  # the real service no longer knows warehouses
+            if not product["is_active"]:
                 return 409, "archived"
             if product["unit"] != line["unit"]:
                 return 409, "A quantity is never converted"
@@ -316,15 +303,14 @@ class FakeInventory:
                 return 422, "Quantity must be a whole number"
             if (org, line["line_id"]) in self.posted_lines:
                 return 409, "One of these dispatch lines was already deducted from stock by an earlier posting."
-            key = (line["product_id"], line["warehouse_id"])
-            needed[key] = needed.get(key, Decimal(0)) + Decimal(line["quantity"])
-        for (product_id, warehouse_id), quantity in needed.items():
-            if self.stock.get((product_id, warehouse_id), Decimal(0)) < quantity:
-                return 409, "Insufficient stock: not enough of the product in the warehouse."
+            needed[line["product_id"]] = needed.get(line["product_id"], Decimal(0)) + Decimal(line["quantity"])
+        for product_id, quantity in needed.items():
+            if self.stock.get(product_id, Decimal(0)) < quantity:
+                return 409, "Insufficient stock: not enough of the product."
         return None
 
-    def quantity(self, product: str, warehouse: str) -> Decimal:
-        return self.stock.get((product, warehouse), Decimal(0))
+    def quantity(self, product: str) -> Decimal:
+        return self.stock.get(product, Decimal(0))
 
     def postings(self):
         """The dispatch POSTs made to the (fake) Inventory Service."""
@@ -422,8 +408,8 @@ class Api:
 
     # -- invoices and payments
     def confirmed_dispatch(self, shop, delivery_list, lines) -> dict:
-        """A CONFIRMED dispatch of these (product key, quantity, warehouse key) lines of a Ready / Partially Dispatched list."""
-        body = [sent(delivery_list, shop[product], quantity, shop[warehouse]) for product, quantity, warehouse in lines]
+        """A CONFIRMED dispatch of these (product key, quantity) lines of a Ready / Partially Dispatched list."""
+        body = [sent(delivery_list, shop[product], quantity) for product, quantity in lines]
         draft = self.draft(delivery_list["id"], body)
         confirmed = self.confirm(draft["id"])
         assert confirmed.status_code == 200, confirmed.text
@@ -479,9 +465,9 @@ def item_of(delivery_list, product_id) -> dict:
     return next(i for i in delivery_list["items"] if i["product_id"] == product_id)
 
 
-def sent(delivery_list, product_id, quantity, warehouse_id) -> dict:
+def sent(delivery_list, product_id, quantity) -> dict:
     """A dispatch line body for the list's item of this product."""
-    return {"delivery_list_item_id": item_of(delivery_list, product_id)["id"], "warehouse_id": warehouse_id, "quantity": str(quantity)}
+    return {"delivery_list_item_id": item_of(delivery_list, product_id)["id"], "quantity": str(quantity)}
 
 
 @pytest.fixture
@@ -499,12 +485,10 @@ def api(two_orgs):
 
 @pytest.fixture
 def shop(inventory, two_orgs):
-    """Alpha's inventory: a bolt (pieces) and flour (kg) with stock in two warehouses, one archived product."""
+    """Alpha's inventory: a bolt (pieces, 50 in stock) and flour (kg, 2.5 in stock), and one archived product."""
     org = two_orgs["alpha_id"]
-    main, annex = inventory.add_warehouse(org, "MAIN"), inventory.add_warehouse(org, "ANNEX", active=False)
     bolt, flour = inventory.add_product(org, "BOLT-1", "Steel bolt", "pcs"), inventory.add_product(org, "FLOUR", "Flour", "kg")
     old = inventory.add_product(org, "OLD-1", "Old widget", "pcs", active=False)
-    inventory.set_stock(bolt, main, 40)
-    inventory.set_stock(bolt, annex, 10)
-    inventory.set_stock(flour, main, "2.5")
-    return {"bolt": bolt, "flour": flour, "old": old, "main": main, "annex": annex, "org": org}
+    inventory.set_stock(bolt, 50)
+    inventory.set_stock(flour, "2.5")
+    return {"bolt": bolt, "flour": flour, "old": old, "org": org}

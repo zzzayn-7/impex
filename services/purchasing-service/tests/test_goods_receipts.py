@@ -21,16 +21,16 @@ def order(api, shop):
 
 @pytest.fixture
 def bolt_line(order, shop):
-    return lambda accepted, warehouse=None, **kw: received(order, shop["bolt"], accepted, warehouse or shop["main"], **kw)
+    return lambda accepted, **kw: received(order, shop["bolt"], accepted, **kw)
 
 
 @pytest.fixture
 def flour_line(order, shop):
-    return lambda accepted, warehouse=None, **kw: received(order, shop["flour"], accepted, warehouse or shop["main"], **kw)
+    return lambda accepted, **kw: received(order, shop["flour"], accepted, **kw)
 
 
-def stock(inventory, shop, product, warehouse="main") -> Decimal:
-    return inventory.quantity(shop[product], shop[warehouse])
+def stock(inventory, shop, product) -> Decimal:
+    return inventory.quantity(shop[product])
 
 
 # =====================================================================================================
@@ -75,12 +75,12 @@ def test_the_posting_carries_only_accepted_quantities_and_never_a_price(api, sho
         return original(org, request)
 
     monkeypatch.setattr(inventory, "_post_receipt", spy)
-    draft = api.draft(order["id"], [bolt_line(4, rejected=2), flour_line(0, rejected=1, warehouse=None)])
+    draft = api.draft(order["id"], [bolt_line(4, rejected=2), flour_line(0, rejected=1)])
     api.confirm(draft["id"])
     (body,) = seen
     assert set(body) == {"receipt_number", "purchase_order_number", "lines"}
     assert [(l["quantity"], l["unit"]) for l in body["lines"]] == [("4.0000", "pcs")]  # the flour line accepted nothing: not sent at all
-    assert all(set(l) == {"line_id", "product_id", "warehouse_id", "quantity", "unit"} for l in body["lines"])
+    assert all(set(l) == {"line_id", "product_id", "quantity", "unit"} for l in body["lines"])  # no warehouse, no price
 
 
 # =====================================================================================================
@@ -105,34 +105,32 @@ def test_partial_receipts_accumulate_until_the_order_is_complete(api, shop, inve
 
 def test_a_thirty_and_twenty_split_of_fifty(api, shop, inventory):
     big = api.ordered(shop, lines=(("bolt", 50),), supplier="Big")
-    first = api.draft(big["id"], [received(big, shop["bolt"], 30, shop["main"])])
+    first = api.draft(big["id"], [received(big, shop["bolt"], 30)])
     api.confirm(first["id"])
     mid = api.detail(big["id"])
     assert mid["status"] == "partially_received" and mid["lines"][0]["remaining_quantity"] == "20.0000"
-    second = api.draft(big["id"], [received(big, shop["bolt"], 20, shop["main"])])
+    second = api.draft(big["id"], [received(big, shop["bolt"], 20)])
     api.confirm(second["id"])
     assert api.detail(big["id"])["status"] == "received"
     assert stock(inventory, shop, "bolt") == 40 + 50
 
 
-def test_one_receipt_can_split_a_line_across_warehouses_only_through_separate_receipts(api, shop, inventory, order, bolt_line, flour_line):
-    """A receipt line has ONE warehouse; goods that go to two warehouses are two receipts - each with its own audit trail."""
-    first = api.draft(order["id"], [bolt_line(6, warehouse=shop["main"]), flour_line(5, warehouse=shop["shelf"])])
-    second = api.draft(order["id"], [bolt_line(4, warehouse=shop["shelf"])])
+def test_two_receipts_for_one_order_add_up_in_one_stock_figure(api, shop, inventory, order, bolt_line, flour_line):
+    first = api.draft(order["id"], [bolt_line(6), flour_line(5)])
+    second = api.draft(order["id"], [bolt_line(4)])
     api.confirm(first["id"])
     api.confirm(second["id"])
-    assert stock(inventory, shop, "bolt", "main") == 46 and stock(inventory, shop, "bolt", "shelf") == 4
-    assert stock(inventory, shop, "flour", "shelf") == 5 and stock(inventory, shop, "flour", "main") == d("2.5")
+    assert stock(inventory, shop, "bolt") == 50 and stock(inventory, shop, "flour") == d("7.5")
     assert api.detail(order["id"])["status"] == "received"
 
 
 def test_every_accepted_line_makes_a_traceable_movement(api, shop, inventory, order, bolt_line, flour_line):
-    draft = api.draft(order["id"], [bolt_line(10, warehouse=shop["shelf"]), flour_line(2)])
+    draft = api.draft(order["id"], [bolt_line(10), flour_line(2)])
     confirmed = api.confirm(draft["id"]).json()
     assert len(inventory.ledger) == 2
     by_product = {m["product_id"]: m for m in inventory.ledger}
-    assert by_product[shop["bolt"]]["source_reference"] == "GR-000001" and by_product[shop["bolt"]]["warehouse_id"] == shop["shelf"]
-    assert by_product[shop["bolt"]]["balance_after"] == "10.0000" and by_product[shop["flour"]]["balance_after"] == "4.5000"
+    assert by_product[shop["bolt"]]["source_reference"] == "GR-000001"
+    assert by_product[shop["bolt"]]["balance_after"] == "50.0000" and by_product[shop["flour"]]["balance_after"] == "4.5000"
     assert {l["inventory_movement_id"] for l in confirmed["lines"]} == {m["id"] for m in inventory.ledger}
 
 
@@ -421,27 +419,16 @@ def test_bad_quantities_are_refused(api, order, bolt_line, accepted):
     assert api.receipt(order["id"], [line]).status_code == 422
 
 
-def test_accepted_goods_need_a_warehouse(api, order, bolt_line):
-    line = bolt_line(2)
-    line["warehouse_id"] = None
-    response = api.receipt(order["id"], [line])
-    assert response.status_code == 422 and "Choose the warehouse" in response.json()["detail"]
+def test_a_line_that_names_a_warehouse_is_refused(api, order, bolt_line):
+    response = api.receipt(order["id"], [bolt_line(2, warehouse_id=str(uuid.uuid4()))])
+    assert response.status_code == 422  # there is no warehouse to name any more
 
 
-def test_a_warehouse_of_nobody_or_somebody_else_is_not_found(api, two_orgs, inventory, order, bolt_line):
-    theirs = inventory.add_warehouse(two_orgs["beta_id"], "THEIRS")
-    for warehouse in (str(uuid.uuid4()), theirs):
-        response = api.receipt(order["id"], [bolt_line(1, warehouse=warehouse)])
-        assert (response.status_code, response.json()["detail"]) == (404, "Warehouse not found.")
-
-
-def test_archived_warehouses_and_products_are_refused(api, shop, inventory, order, bolt_line):
-    archived = api.receipt(order["id"], [bolt_line(1, warehouse=shop["annex"])])
-    assert archived.status_code == 409 and "archived" in archived.json()["detail"]
+def test_archived_products_are_refused(api, shop, inventory, order, bolt_line):
     inventory.products[shop["org"]][shop["bolt"]]["is_active"] = False
     product = api.receipt(order["id"], [bolt_line(1)])
     assert product.status_code == 409 and "Steel bolt is archived" in product.json()["detail"]
-    rejected_only = api.receipt(order["id"], [bolt_line(0, rejected=1, warehouse=None)])  # nothing goes to stock: allowed to note it
+    rejected_only = api.receipt(order["id"], [bolt_line(0, rejected=1)])  # nothing goes to stock: allowed to note it
     assert rejected_only.status_code == 201
 
 
@@ -464,7 +451,7 @@ def test_a_unit_changed_since_ordering_is_refused_and_never_converted(api, shop,
 
 def test_a_product_that_is_not_on_the_order_is_refused(api, shop, order, bolt_line):
     other = api.ordered(shop, lines=(("bolt", 3),), supplier="Other")
-    foreign = received(other, shop["bolt"], 1, shop["main"])  # the line id of ANOTHER order
+    foreign = received(other, shop["bolt"], 1)  # the line id of ANOTHER order
     response = api.receipt(order["id"], [foreign])
     assert response.status_code == 404 and response.json()["detail"] == "That product is not on this purchase order."
     assert api.receipt(order["id"], [{**bolt_line(1), "purchase_order_line_id": str(uuid.uuid4())}]).json()["detail"] == response.json()["detail"]
@@ -500,7 +487,7 @@ def test_a_rejected_quantity_is_recorded_but_never_becomes_stock(api, shop, inve
 
 
 def test_a_receipt_that_accepts_nothing_cannot_be_confirmed(api, shop, inventory, order, bolt_line):
-    draft = api.draft(order["id"], [bolt_line(0, rejected=4, warehouse=None)])
+    draft = api.draft(order["id"], [bolt_line(0, rejected=4)])
     response = api.confirm(draft["id"])
     assert response.status_code == 422 and "Nothing is accepted" in response.json()["detail"]
     empty = api.draft(order["id"], [])
@@ -522,7 +509,7 @@ def test_goods_are_received_only_against_ordered_or_partially_received_orders(ap
     assert "cancelled" in api.receipt(cancelled["id"], []).json()["detail"]
 
     done = api.ordered(shop, lines=(("bolt", 2),), supplier="Done")
-    api.confirm(api.draft(done["id"], [received(done, shop["bolt"], 2, shop["main"])])["id"])
+    api.confirm(api.draft(done["id"], [received(done, shop["bolt"], 2)])["id"])
     assert "already fully received" in api.receipt(done["id"], []).json()["detail"]
 
 
@@ -562,7 +549,7 @@ def test_cancelling_an_order_cancels_its_draft_receipts_but_never_hides_received
     assert api.get_receipt(draft["id"])["status"] == "cancelled"
 
     received_order = api.ordered(shop, lines=(("bolt", 5),), supplier="Half")
-    api.confirm(api.draft(received_order["id"], [received(received_order, shop["bolt"], 2, shop["main"])])["id"])
+    api.confirm(api.draft(received_order["id"], [received(received_order, shop["bolt"], 2)])["id"])
     blocked = api.action(received_order["id"], "cancel")
     assert blocked.status_code == 409 and "already has goods received" in blocked.json()["detail"]
     assert api.detail(received_order["id"])["status"] == "partially_received"
@@ -605,10 +592,10 @@ def test_the_only_write_ever_made_is_the_posting_of_a_confirmed_receipt(api, sho
 
 def test_prices_history_and_other_stock_are_untouched(api, shop, inventory, order, bolt_line):
     product = inventory.products[shop["org"]][shop["bolt"]]
-    before = (product["selling_price"], product["cost_price"], inventory.snapshot()[(shop["flour"], shop["main"])])
+    before = (product["selling_price"], product["cost_price"], inventory.snapshot()[shop["flour"]])
     order_before = api.detail(order["id"])
     api.confirm(api.draft(order["id"], [bolt_line(10)])["id"])
-    assert (product["selling_price"], product["cost_price"], inventory.snapshot()[(shop["flour"], shop["main"])]) == before
+    assert (product["selling_price"], product["cost_price"], inventory.snapshot()[shop["flour"]]) == before
     after = api.detail(order["id"])
     assert [(l["unit_price"], l["line_total"], l["quantity"], l["product_name"]) for l in after["lines"]] == [
         (l["unit_price"], l["line_total"], l["quantity"], l["product_name"]) for l in order_before["lines"]
@@ -629,9 +616,9 @@ def test_existing_orders_keep_their_status_and_lines(api, shop, order):
 def test_numbers_run_per_organization(api, two_orgs, inventory, order, bolt_line):
     assert [api.draft(order["id"], [bolt_line(1)])["number"] for _ in range(3)] == ["GR-000001", "GR-000002", "GR-000003"]
     beta = two_orgs["beta"]
-    product, warehouse = inventory.add_product(two_orgs["beta_id"], "B-1", "Beta thing"), inventory.add_warehouse(two_orgs["beta_id"], "BMAIN")
+    product = inventory.add_product(two_orgs["beta_id"], "B-1", "Beta thing")
     placed = beta.ordered({"thing": product}, lines=(("thing", 4),))
-    assert beta.draft(placed["id"], [received(placed, product, 1, warehouse)])["number"] == "GR-000001"
+    assert beta.draft(placed["id"], [received(placed, product, 1)])["number"] == "GR-000001"
 
 
 def test_a_repeated_creation_returns_the_same_draft(api, order, bolt_line):
@@ -678,8 +665,8 @@ def test_creation_requires_a_well_formed_key(api, order):
 # =====================================================================================================
 def test_the_list_filters_and_searches(api, shop, inventory, order, bolt_line, flour_line):
     other = api.ordered(shop, lines=(("bolt", 9),), supplier="Zenith Ltd")
-    first = api.confirm(api.draft(order["id"], [bolt_line(5, warehouse=shop["shelf"])], supplier_reference="DN-777", received_date="2026-11-02")["id"]).json()
-    second = api.draft(other["id"], [received(other, shop["bolt"], 2, shop["main"])], received_date="2026-11-03")
+    first = api.confirm(api.draft(order["id"], [bolt_line(5)], supplier_reference="DN-777", received_date="2026-11-02")["id"]).json()
+    second = api.draft(other["id"], [received(other, shop["bolt"], 2)], received_date="2026-11-03")
     cancelled = api.draft(order["id"], [flour_line(1)], received_date="2026-11-04")
     api.cancel_receipt(cancelled["id"])
 
@@ -691,7 +678,7 @@ def test_the_list_filters_and_searches(api, shop, inventory, order, bolt_line, f
     assert ids(status="confirmed") == [first["id"]] and ids(status="draft") == [second["id"]] and ids(status="cancelled") == [cancelled["id"]]
     assert ids(purchase_order_id=other["id"]) == [second["id"]]
     assert ids(supplier_id=other["supplier"]["id"]) == [second["id"]]
-    assert ids(warehouse_id=shop["shelf"]) == [first["id"]] and ids(product_id=shop["flour"]) == [cancelled["id"]]
+    assert ids(product_id=shop["bolt"]) == [second["id"], first["id"]] and ids(product_id=shop["flour"]) == [cancelled["id"]]
     assert ids(q="DN-777") == [first["id"]] and ids(q="zenith") == [second["id"]] and ids(q="GR-000002") == [second["id"]] and ids(q="PO-000002") == [second["id"]]
     assert ids(date_from="2026-11-03", date_to="2026-11-03") == [second["id"]]
     page = api.client.get(RECEIPTS, params={"limit": 2, "offset": 2}, headers=api.headers).json()

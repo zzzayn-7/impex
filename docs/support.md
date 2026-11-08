@@ -99,7 +99,7 @@ The Super Admin and Organization portals reach the service through `SUPPORT_SERV
 * **Support during first-time setup.** An administrator who has not finished the setup wizard can still open *Help & Support* (and see the
   Super Admin's answers), because setup is exactly where people get stuck. Setup itself is unchanged and still mandatory.
 * **Business APIs are gated on the server** (see [`onboarding.md`](onboarding.md)): until the organization *and* the administrator are set
-  up, the portal's product/warehouse/stock/scan/sales/purchasing routes answer `403 setup_required`; authentication, setup, Help & Support,
+  up, the portal's product/stock/scan/sales/purchasing routes answer `403 setup_required`; authentication, setup, Help & Support,
   the logo and health endpoints stay reachable.
 
 ## Run it

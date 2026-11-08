@@ -42,7 +42,7 @@ const receiptDetail = (summary: ReturnType<typeof receipt>, product: string, ext
   ...summary,
   lines: [{
     id: crypto.randomUUID(), purchase_order_line_id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: product, unit: "pcs",
-    ordered_quantity: "50.0000", received_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", receivable_quantity: "50.0000", warehouse_id: W1, warehouse_code: "MAIN",
+    ordered_quantity: "50.0000", received_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", receivable_quantity: "50.0000",
     accepted_quantity: "30.0000", rejected_quantity: "2.0000", notes: null, inventory_movement_id: "c3c3c3c3-aaaa-4bbb-8ccc-123456789abc",
   }],
   posting: { attempts: 1, started_at: now, last_attempt_at: now, last_error: null }, inventory_operation_id: crypto.randomUUID(), editable: false,
@@ -53,7 +53,7 @@ const orderDetail = (id: string, number: string, supplier: ReturnType<typeof sup
   total_amount: "62.5000", created_by_email: "a@b.c", ordered_at: now, ordered_by_email: "a@b.c", cancelled_at: null, cancelled_by_email: null, created_at: now, updated_at: now,
   lines: [{
     id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: product, unit: "pcs", quantity: "50.0000", unit_price: "1.2500", line_total: "62.5000",
-    planned_warehouse_id: null, planned_warehouse_code: null, notes: null, created_at: now, updated_at: now, received_quantity: "30.0000", pending_quantity: "0.0000", remaining_quantity: "20.0000",
+    notes: null, created_at: now, updated_at: now, received_quantity: "30.0000", pending_quantity: "0.0000", remaining_quantity: "20.0000",
   }],
   frozen: true, receipts: [], can_receive: true, stock_notice: "x", ...extra,
 });
@@ -90,7 +90,6 @@ function stubWorld(options: { status?: number } = {}) {
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return users[token] ? json(200, users[token]) : json(401, {});
       if (url.endsWith("/api/v1/tenant/organization")) return users[token] ? json(200, alphaOrg) : json(401, {}); // the layout asks for the organization (its setup and its modules)
-      if (url.includes("/api/v1/inventory/")) return json(200, { items: [{ id: W1, code: "MAIN", name: "Main depot", is_active: true }], total: 1, limit: 200, offset: 0 });
       if (!url.includes("/api/v1/purchasing/")) return json(404, {});
       if (options.status) return json(options.status, { detail: "x" });
       const org = (orgs as any)[token];
@@ -125,7 +124,7 @@ describe("Goods Receipts page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(GoodsReceiptsPage({ searchParams: {} }));
-    for (const expected of ["Goods Receipts", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All statuses", "All suppliers", "All warehouses", "Showing 1–2 of 2", "stock is added only when a receipt is confirmed"]) {
+    for (const expected of ["Goods Receipts", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All statuses", "All suppliers", "Showing 1–2 of 2", "stock is added only when a receipt is confirmed"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/goods-receipts/${A_RECEIPT}"`);
@@ -149,7 +148,7 @@ describe("Goods Receipts page", () => {
     await GoodsReceiptsPage({ searchParams: { q: "dn", status: "confirmed", supplier: A_SUPPLIER, warehouse: W1, from: "2026-11-01", to: "2026-11-30", page: "2", organization_id: B_SUPPLIER, sort: "x" } });
     const call = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!;
     expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({
-      q: "dn", status: "confirmed", supplier_id: A_SUPPLIER, warehouse_id: W1, date_from: "2026-11-01", date_to: "2026-11-30", limit: "25", offset: "25",
+      q: "dn", status: "confirmed", supplier_id: A_SUPPLIER, date_from: "2026-11-01", date_to: "2026-11-30", limit: "25", offset: "25",
     });
     calls = [];
     await GoodsReceiptsPage({ searchParams: { status: "shipped", supplier: "' OR 1=1", warehouse: "x", from: "yesterday", to: "../", page: "banana" } });
@@ -183,11 +182,11 @@ describe("Goods Receipts page", () => {
 describe("one goods receipt", () => {
   const page = (id: string) => render(GoodsReceiptPage({ params: { id } }));
 
-  it("shows the order, the accepted and rejected quantities, the warehouse and the stock movement", async () => {
+  it("shows the order, the accepted and rejected quantities and the stock movement", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_RECEIPT);
-    for (const expected of ["GR-000001", "Confirmed", "PO-000001", "Alpha Metals", "Alpha steel bolt", "SKU-1", "MAIN", "30", "Rejected", "#c3c3c3c3", "confirmed by a@b.c", "does not change your stock"]) {
+    for (const expected of ["GR-000001", "Confirmed", "PO-000001", "Alpha Metals", "Alpha steel bolt", "SKU-1", "30", "Rejected", "#c3c3c3c3", "confirmed by a@b.c", "does not change your stock"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/movements?product=`);
@@ -237,14 +236,14 @@ describe("one goods receipt", () => {
 describe("Receive goods page", () => {
   const page = (id: string, searchParams: Record<string, string> = {}) => render(ReceiveGoodsPage({ params: { id }, searchParams }));
 
-  it("shows what is ordered, received and remaining, with the accepted / rejected / warehouse inputs and the 'no stock yet' notice", async () => {
+  it("shows what is ordered, received and remaining, with the accepted / rejected inputs and the 'no stock yet' notice", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_ORDER);
-    for (const expected of ["Receive goods", "PO-000001", "Alpha steel bolt", "Ordered", "Received", "Remaining", "Accepted now", "Rejected now", "Warehouse", "Review receipt", "Find a product on this order", "does not change your stock"]) {
+    for (const expected of ["Receive goods", "PO-000001", "Alpha steel bolt", "Ordered", "Received", "Remaining", "Accepted now", "Rejected now", "Review receipt", "Find a product on this order", "does not change your stock"]) {
       expect(html, expected).toContain(expected);
     }
-    expect(html).toContain("MAIN — Main depot");
+    expect(html.toLowerCase()).not.toContain("warehouse");
   });
 
   it.each([
@@ -278,18 +277,6 @@ describe("Receive goods page", () => {
     expect(purchasingCalls()).toHaveLength(0);
     delete jar[TENANT_SESSION_COOKIE];
     await expect(page(A_ORDER)).rejects.toThrow("REDIRECT:/login");
-  });
-
-  it("warns when there is no active warehouse", async () => {
-    stubWorld();
-    jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    vi.stubGlobal("fetch", vi.fn(async (input: any, init: any = {}) => {
-      const url = String(input);
-      if (url.endsWith("/api/v1/auth/me")) return json(200, orgAdmin);
-      if (url.includes("/api/v1/inventory/")) return json(200, { items: [], total: 0, limit: 200, offset: 0 });
-      return json(200, orgs["token-alpha"].orders[A_ORDER]);
-    }));
-    expect(await page(A_ORDER)).toContain("You have no active warehouse");
   });
 });
 
@@ -333,6 +320,6 @@ describe("navigation", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (GoodsReceiptsLayout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Goods Receipts");
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
   });
 });

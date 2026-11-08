@@ -152,7 +152,7 @@ def test_a_change_takes_effect_on_the_very_next_request(client, directory, two_o
 def stuck(api, directory, inventory, shop, two_orgs):
     """A dispatch left `posting` because Inventory did not answer (15 bolts are already deducted there)."""
     delivery_list = api.ready_list(shop)
-    draft = api.draft(delivery_list["id"], [sent(delivery_list, shop["bolt"], 15, shop["main"])])
+    draft = api.draft(delivery_list["id"], [sent(delivery_list, shop["bolt"], 15)])
     inventory.post_modes = ["timeout_after"]
     inventory.lookup_mode = "500"
     assert api.confirm(draft["id"]).status_code == 202
@@ -162,17 +162,17 @@ def stuck(api, directory, inventory, shop, two_orgs):
 
 def test_a_dispatch_that_is_posting_can_still_be_finished_after_the_module_is_switched_off(client, directory, two_orgs, api, inventory, stuck):
     shop, draft = stuck["shop"], stuck["dispatch"]
-    assert inventory.quantity(shop["bolt"], shop["main"]) == 25
+    assert inventory.quantity(shop["bolt"]) == 35
     modules_of(directory, two_orgs["alpha_id"], ["inventory"])
     refused(client.get(f"{DISPATCHES}/{draft['id']}", headers=api.headers))  # nothing can be read...
     finished = api.confirm(draft["id"])  # ...but the half-done operation can be completed, exactly once
     assert finished.status_code == 200 and finished.json()["status"] == "confirmed"
-    assert inventory.quantity(shop["bolt"], shop["main"]) == 25 and len(inventory.ledger) == 1
+    assert inventory.quantity(shop["bolt"]) == 35 and len(inventory.ledger) == 1
     refused(api.confirm(draft["id"]))  # finished: nothing more can be done through the disabled module
 
 
 def test_recovery_is_only_for_a_posting_dispatch(client, directory, two_orgs, api, inventory, shop, stuck):
-    other = api.draft(stuck["list"]["id"], [sent(stuck["list"], shop["flour"], 1, shop["main"])])
+    other = api.draft(stuck["list"]["id"], [sent(stuck["list"], shop["flour"], 1)])
     modules_of(directory, two_orgs["alpha_id"], ["inventory"])
     refused(api.confirm(other["id"]))  # a DRAFT cannot be confirmed through a disabled module
     refused(client.post(f"{DISPATCHES}/{other['id']}/cancel", headers=api.headers))

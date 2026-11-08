@@ -159,8 +159,6 @@ class PurchaseOrderLine(TenantOwnedMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    planned_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
-    planned_warehouse_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # snapshot, for display
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -257,7 +255,7 @@ class GoodsReceiptRequest(TenantOwnedMixin, Base):
 
 
 class GoodsReceiptLine(TenantOwnedMixin, Base):
-    """What arrived of one purchase-order line: the accepted quantity (the only one that becomes stock) into one warehouse, and
+    """What arrived of one purchase-order line: the accepted quantity (the only one that becomes stock), and
     an optional informational rejected quantity (never stock). Product, SKU, name and unit are copied from the order line and
     can never differ from it (database-enforced): a quantity is never converted between units."""
 
@@ -271,7 +269,6 @@ class GoodsReceiptLine(TenantOwnedMixin, Base):
         CheckConstraint("accepted_quantity >= 0", name="accepted_non_negative"),
         CheckConstraint("rejected_quantity >= 0", name="rejected_non_negative"),
         CheckConstraint("accepted_quantity + rejected_quantity > 0", name="something_received"),
-        CheckConstraint("accepted_quantity = 0 OR warehouse_id IS NOT NULL", name="warehouse_when_accepted"),
         CheckConstraint("inventory_movement_id IS NULL OR accepted_quantity > 0", name="movement_only_when_accepted"),
         Index("ix_goods_receipt_lines_organization_id_goods_receipt_id", "organization_id", "goods_receipt_id"),
         Index("ix_goods_receipt_lines_organization_id_purchase_order_line_id", "organization_id", "purchase_order_line_id"),
@@ -284,8 +281,6 @@ class GoodsReceiptLine(TenantOwnedMixin, Base):
     product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
-    warehouse_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # snapshot, for display
     accepted_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
     rejected_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

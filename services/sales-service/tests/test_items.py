@@ -25,7 +25,7 @@ def test_adding_a_product_takes_its_details_from_the_inventory_service(api, shop
     item = body["item"]
     assert (item["product_id"], item["product_sku"], item["product_name"], item["unit"], item["quantity"]) == (shop["bolt"], "BOLT-1", "Steel bolt", "pcs", "12.0000")
     assert body["item_count"] == 1 and "not reserved" in body["stock_notice"]
-    assert (item["stock"]["available_quantity"], item["stock"]["total_quantity"], item["stock"]["exceeds_available"]) == ("40", "50", False)
+    assert (item["stock"]["total_quantity"], item["stock"]["exceeds_available"]) == ("50", False) and "available_quantity" not in item["stock"]
     with session_factory() as db:
         (row,) = db.scalars(select(DeliveryListItem)).all()
     assert str(row.organization_id) == api.org_id and (row.product_sku, row.product_name, row.unit) == ("BOLT-1", "Steel bolt", "pcs")
@@ -42,8 +42,8 @@ def test_several_products_on_one_client_list(api, shop, draft):
 
 def test_the_browser_cannot_dictate_product_details_stock_or_ownership(api, shop, draft):
     base = {"product_id": shop["bolt"], "quantity": "1"}
-    for extra in ({"product_name": "Hacked"}, {"product_sku": "X"}, {"unit": "kg"}, {"available_quantity": "999999"}, {"stock": {"available": 5}},
-                  {"organization_id": str(uuid.uuid4())}, {"delivery_list_id": str(uuid.uuid4())}, {"planned_warehouse_code": "NOPE"}):
+    for extra in ({"product_name": "Hacked"}, {"product_sku": "X"}, {"unit": "kg"}, {"total_quantity": "999999"}, {"stock": {"available": 5}},
+                  {"organization_id": str(uuid.uuid4())}, {"delivery_list_id": str(uuid.uuid4())}, {"planned_warehouse_id": str(uuid.uuid4())}):
         assert api.client.post(f"{LISTS}/{draft['id']}/items", json={**base, **extra}, headers=api.headers).status_code == 422
     assert api.detail(draft["id"])["item_count"] == 0
 
@@ -165,7 +165,7 @@ def test_an_item_of_another_list_is_not_reachable_through_this_one(api, shop):
     assert api.detail(one["id"])["items"][0]["quantity"] == "5.0000"
 
 
-# --- unknown, archived, warehouses ---------------------------------------------------------------------------------------------
+# --- unknown, archived ---------------------------------------------------------------------------------------------
 def test_an_unknown_product_is_404(api, shop, draft):
     response = api.add(draft["id"], str(uuid.uuid4()), 1)
     assert response.status_code == 404 and response.json()["detail"] == "Product not found."
@@ -196,23 +196,19 @@ def test_an_inactive_client_blocks_adding_but_not_removing(api, shop, draft):
     assert api.client.delete(item_url(draft, item["id"]), headers=api.headers).status_code == 204
 
 
-def test_a_planned_warehouse_is_validated_and_snapshotted(api, shop, draft):
-    ok = api.add(draft["id"], shop["bolt"], 5, planned_warehouse_id=shop["main"]).json()["item"]
-    assert (ok["planned_warehouse_id"], ok["planned_warehouse_code"]) == (shop["main"], "MAIN")
-    assert api.add(draft["id"], shop["flour"], 1, planned_warehouse_id=str(uuid.uuid4())).status_code == 404
-    archived = api.add(draft["id"], shop["flour"], 1, planned_warehouse_id=shop["annex"])
-    assert archived.status_code == 409 and "archived" in archived.json()["detail"]
-    cleared = api.client.patch(item_url(draft, ok["id"]), json={"planned_warehouse_id": None}, headers=api.headers)
-    assert cleared.status_code == 200 and cleared.json()["item"]["planned_warehouse_id"] is None
-    assert api.client.patch(item_url(draft, ok["id"]), json={"planned_warehouse_id": shop["main"]}, headers=api.headers).json()["item"]["planned_warehouse_code"] == "MAIN"
+def test_an_item_has_no_planned_warehouse(api, shop, draft):
+    ok = api.add(draft["id"], shop["bolt"], 5).json()["item"]
+    assert "planned_warehouse_id" not in ok and "planned_warehouse_code" not in ok
+    assert api.add(draft["id"], shop["flour"], 1, planned_warehouse_id=str(uuid.uuid4())).status_code == 422
+    assert api.client.patch(item_url(draft, ok["id"]), json={"planned_warehouse_id": None}, headers=api.headers).status_code == 422
 
 
 # --- stock is information, never a limit -------------------------------------------------------------------------------------------
 def test_more_than_available_is_allowed_but_flagged(api, shop, draft):
-    response = api.add(draft["id"], shop["bolt"], 100)  # only 40 are available (the archived warehouse's 10 do not count)
+    response = api.add(draft["id"], shop["bolt"], 100)  # only 50 are in stock
     assert response.status_code == 201
     stock = response.json()["item"]["stock"]
-    assert (stock["exceeds_available"], stock["shortfall"], stock["available_quantity"]) == (True, "60.0000", "40")
+    assert (stock["exceeds_available"], stock["shortfall"], stock["total_quantity"]) == (True, "50.0000", "50")
     detail = api.detail(draft["id"])
     assert detail["items_exceeding_stock"] == 1 and "not reserved" in detail["stock_notice"] and "may change before dispatch" in detail["stock_notice"]
     assert api.status(draft["id"], "ready").status_code == 200  # a shortage warns, it does not block
@@ -221,16 +217,16 @@ def test_more_than_available_is_allowed_but_flagged(api, shop, draft):
 def test_a_product_with_no_stock_can_still_be_listed(api, inventory, shop, draft):
     empty = inventory.add_product(shop["org"], "EMPTY", "Out of stock", "pcs")
     response = api.add(draft["id"], empty, 3)
-    assert response.status_code == 201 and response.json()["item"]["stock"]["available_quantity"] == "0"
+    assert response.status_code == 201 and response.json()["item"]["stock"]["total_quantity"] == "0"
     assert response.json()["item"]["stock"]["exceeds_available"] is True
 
 
 def test_the_stock_shown_is_live_not_remembered(api, shop, draft, inventory):
     api.add(draft["id"], shop["bolt"], 30)
     assert api.detail(draft["id"])["items"][0]["stock"]["exceeds_available"] is False
-    inventory.set_stock(shop["bolt"], shop["main"], 10)  # someone shipped goods meanwhile
+    inventory.set_stock(shop["bolt"], 10)  # someone shipped goods meanwhile
     shown = api.detail(draft["id"])["items"][0]["stock"]
-    assert (shown["available_quantity"], shown["exceeds_available"], shown["shortfall"]) == ("10", True, "20.0000")
+    assert (shown["total_quantity"], shown["exceeds_available"], shown["shortfall"]) == ("10", True, "20.0000")
 
 
 def test_the_list_still_opens_when_the_inventory_service_is_down(api, shop, draft, inventory):

@@ -39,9 +39,9 @@ const summary = (id: string, number: string, c: ReturnType<typeof client>, extra
 const detail = (s: ReturnType<typeof summary>, productName: string, exceeds = false) => ({
   ...s,
   items: [{
-    id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: productName, quantity: "12.0000", unit: "pcs", planned_warehouse_id: null, planned_warehouse_code: null,
+    id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: productName, quantity: "12.0000", unit: "pcs",
     created_at: now, updated_at: now,
-    stock: { total_quantity: "50.0000", available_quantity: exceeds ? "5.0000" : "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: exceeds, shortfall: exceeds ? "7.0000" : "0" },
+    stock: { total_quantity: exceeds ? "5.0000" : "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: exceeds, shortfall: exceeds ? "7.0000" : "0" },
   }],
   stock_status: "ok", items_exceeding_stock: exceeds ? 1 : 0,
   stock_notice: "Stock is not reserved by a delivery list. Saving it, marking it Ready or cancelling it never changes inventory, and the quantities on hand may change before dispatch.",
@@ -184,7 +184,7 @@ describe("Delivery list detail page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(ALPHA_LIST);
-    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "Available now", "short by 7", "Mark Ready", "Cancel list", "Scan products for this list",
+    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "In stock now", "short by 7", "Mark Ready", "Cancel list", "Scan products for this list",
       "Stock is not reserved", "never changes inventory", "may change before dispatch", "asks for more than is available"]) {
       expect(html, expected).toContain(expected);
     }
@@ -282,7 +282,7 @@ describe("navigation and layouts", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (layout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe(label);
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
   });
 });
 

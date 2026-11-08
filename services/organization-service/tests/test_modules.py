@@ -110,7 +110,7 @@ def apply(client, org_id, changes, revision=None, reason=None, token="super"):
 class TestRegistry:
     def test_the_four_modules_and_their_features(self):
         assert list(REGISTRY) == ["inventory", "purchasing", "sales", "finance"]
-        assert REGISTRY["inventory"].features == ("Products", "Warehouses", "Stock", "Scanning", "Movements")
+        assert REGISTRY["inventory"].features == ("Products", "Stock", "Scanning", "Movements")
         assert REGISTRY["purchasing"].features == ("Suppliers", "Purchase Orders", "Goods Receipts")
         assert REGISTRY["sales"].features == ("Clients", "Delivery Lists", "Dispatches", "Invoices and Payments")
         assert REGISTRY["finance"].available is True and REGISTRY["finance"].requires == () and REGISTRY["finance"].default_for_new is False

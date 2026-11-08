@@ -36,7 +36,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(stock_router)  # warehouses and stock
+app.include_router(stock_router)  # stock
 app.include_router(scan_router)  # scannable codes, labels and scan lookup
 
 # Every product endpoint depends on this: an ACTIVE organization administrator whose organization is active.

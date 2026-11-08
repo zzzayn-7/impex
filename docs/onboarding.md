@@ -47,7 +47,7 @@ reversible; nothing is deleted or reset. Organizations that existed before have 
 
 Hiding pages is not enough: typing an API address, or calling it from a script with a valid session, must not bypass first-time setup. The
 Organization Portal's `middleware.ts` therefore checks the setup state (Auth Service `/auth/me` + Organization Service `/tenant/organization`,
-through the same `setupNeed` rule the pages use) before every business route (`/api/products`, `/api/warehouses`, `/api/stock`, `/api/scan`,
+through the same `setupNeed` rule the pages use) before every business route (`/api/products`, `/api/stock`, `/api/scan`,
 `/api/sales`, `/api/purchasing`):
 
 * setup not finished → `403` with `code: "setup_required"`;
@@ -128,7 +128,7 @@ The other live scripts mark their own throwaway organizations as already set up 
 
 ## What was deliberately left alone
 
-Super Admin registration, invitation and activation, email/password login, session tokens, roles, DEMO_MODE, products, warehouses, scanning,
+Super Admin registration, invitation and activation, email/password login, session tokens, roles, DEMO_MODE, products, scanning,
 suppliers, purchasing, goods receiving, clients, delivery lists, dispatches, invoices and payments, and every existing API. The dark portal theme is unchanged
 (only the setup screens use the ivory/sage palette). The services behind the pages (inventory, sales, purchasing) are unchanged: tenant isolation and
 authorization work as before. The portal's business routes are refused on the server until setup is finished (see "Setup is enforced on the server").

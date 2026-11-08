@@ -30,7 +30,6 @@ const B_DISPATCH = "b2222222-2222-4222-8222-bbbbbbbbbbbb";
 const A_DRAFT = "a1111111-1111-4111-8111-dddddddddddd";
 const A_CLIENT = "a1111111-1111-4111-8111-111111111111";
 const B_CLIENT = "b2222222-2222-4222-8222-222222222222";
-const W1 = "22222222-2222-4222-8222-222222222222";
 
 const client = (id: string, name: string) => ({ id, name, is_active: true });
 const dispatchSummary = (id: string, number: string, list: string, listNumber: string, c: ReturnType<typeof client>, extra: Record<string, unknown> = {}) => ({
@@ -42,8 +41,8 @@ const dispatchDetail = (summary: ReturnType<typeof dispatchSummary>, product: st
   ...summary, delivery_address: "1 Dock Rd", transport_details: "Truck 4", notes: null,
   lines: [{
     id: crypto.randomUUID(), delivery_list_item_id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: product, unit: "pcs",
-    requested_quantity: "15.0000", dispatched_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", dispatchable_quantity: "15.0000", warehouse_id: W1, warehouse_code: "MAIN",
-    quantity: "10.0000", inventory_movement_id: "c3c3c3c3-aaaa-4bbb-8ccc-123456789abc", available_in_warehouse: null,
+    requested_quantity: "15.0000", dispatched_elsewhere_quantity: "0.0000", pending_elsewhere_quantity: "0.0000", dispatchable_quantity: "15.0000",
+    quantity: "10.0000", inventory_movement_id: "c3c3c3c3-aaaa-4bbb-8ccc-123456789abc", available_quantity: null,
   }],
   posting: { attempts: 1, started_at: now, last_attempt_at: now, last_error: null }, inventory_operation_id: crypto.randomUUID(), editable: false, stock_status: "not-needed",
   lines_exceeding_stock: 0, stock_notice: "Preparing, saving or reviewing a dispatch does not change your stock. Stock is deducted only when you confirm the dispatch, and only the quantities on its lines.", ...extra,
@@ -51,7 +50,7 @@ const dispatchDetail = (summary: ReturnType<typeof dispatchSummary>, product: st
 const listDetail = (id: string, number: string, c: ReturnType<typeof client>, product: string, extra: Record<string, unknown> = {}) => ({
   id, number, client: c, external_reference: null, status: "partially_dispatched", notes: null, item_count: 1, created_by_email: "a@b.c", created_at: now, updated_at: now,
   items: [{
-    id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: product, quantity: "15.0000", unit: "pcs", planned_warehouse_id: null, planned_warehouse_code: null,
+    id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "SKU-1", product_name: product, quantity: "15.0000", unit: "pcs",
     created_at: now, updated_at: now, stock: null, dispatched_quantity: "10.0000", pending_quantity: "0.0000", remaining_quantity: "5.0000",
   }],
   stock_status: "ok", items_exceeding_stock: 0, stock_notice: "x", dispatches: [], can_dispatch: true, ...extra,
@@ -89,7 +88,6 @@ function stubWorld(options: { status?: number } = {}) {
       const token = (headers.Authorization ?? "").replace("Bearer ", "");
       if (url.endsWith("/api/v1/auth/me")) return users[token] ? json(200, users[token]) : json(401, {});
       if (url.endsWith("/api/v1/tenant/organization")) return users[token] ? json(200, alphaOrg) : json(401, {}); // the layout asks for the organization (its setup and its modules)
-      if (url.includes("/api/v1/inventory/")) return json(200, { items: [{ id: W1, code: "MAIN", name: "Main depot", is_active: true }], total: 1, limit: 200, offset: 0 });
       if (!url.includes("/api/v1/sales/")) return json(404, {});
       if (options.status) return json(options.status, { detail: "x" });
       const org = (orgs as any)[token];
@@ -183,11 +181,11 @@ describe("Dispatches page", () => {
 describe("one dispatch", () => {
   const page = (id: string) => render(DispatchPage({ params: { id } }));
 
-  it("shows the list, the client, the quantities, the warehouse and the stock movement", async () => {
+  it("shows the list, the client, the quantities and the stock movement", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_DISPATCH);
-    for (const expected of ["DS-000001", "Confirmed", "DL-000001", "Alpha Metals", "Alpha steel bolt", "SKU-1", "MAIN", "Requested", "Dispatched", "#c3c3c3c3", "confirmed by a@b.c", "Deliver to: 1 Dock Rd", "Transport: Truck 4", "does not change your stock"]) {
+    for (const expected of ["DS-000001", "Confirmed", "DL-000001", "Alpha Metals", "Alpha steel bolt", "SKU-1", "Requested", "Dispatched", "#c3c3c3c3", "confirmed by a@b.c", "Deliver to: 1 Dock Rd", "Transport: Truck 4", "does not change your stock"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/movements?product=`);
@@ -203,7 +201,7 @@ describe("one dispatch", () => {
     expect(html).toContain(`/delivery-lists/${A_LIST}/dispatch?dispatch=${A_DRAFT}`);
   });
 
-  it("a draft that asks for more than the warehouse holds cannot be confirmed from here", async () => {
+  it("a draft that asks for more than is in stock cannot be confirmed from here", async () => {
     orgs["token-alpha"].details[A_DRAFT] = { ...orgs["token-alpha"].details[A_DRAFT], lines_exceeding_stock: 1, stock_status: "ok" };
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
@@ -246,7 +244,7 @@ describe("one dispatch", () => {
 describe("Prepare dispatch page", () => {
   const page = (id: string, searchParams: Record<string, string> = {}) => render(PrepareDispatchPage({ params: { id }, searchParams }));
 
-  it("shows requested, dispatched, in progress and remaining per product, with the warehouse and quantity inputs", async () => {
+  it("shows requested, dispatched, in progress and remaining per product, with the quantity inputs", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_LIST);
@@ -352,6 +350,6 @@ describe("navigation", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (DispatchesLayout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Dispatches");
-    for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements", "/delivery-lists", "/dispatches", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/dispatches", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
   });
 });

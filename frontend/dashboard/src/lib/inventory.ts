@@ -7,7 +7,6 @@ import {
   type MovementType,
   type StockFieldErrors,
   type StockProduct,
-  type Warehouse,
 } from "@/lib/stock-validation";
 
 // Server-side only. Talks to the Inventory Service with the signed-in administrator's own session token
@@ -109,7 +108,7 @@ export function failureResponse(result: InventoryResult) {
 
 
 // ======================================================================================================
-// Warehouses and stock (Step 14). Same rules as above: server-side only, the administrator's own token,
+// Stock (Step 14). Same rules as above: server-side only, the administrator's own token,
 // and not one place where an organization is named.
 // ======================================================================================================
 type Failure = { ok: false; reason: "unauthorized" | "forbidden" | "unavailable" };
@@ -127,46 +126,31 @@ const pageParams = (page: number, status?: string) => {
   return params;
 };
 
-export type WarehouseFilters = { q: string; status: "active" | "archived" | "all"; page: number };
-export function listWarehouses(token: string, filters: WarehouseFilters) {
-  const params = pageParams(filters.page, filters.status);
-  if (filters.q) params.set("q", filters.q);
-  return getPaged<Warehouse>("/api/v1/inventory/warehouses", params, token);
-}
-
-// Every active warehouse, for the pickers in the stock forms and the filters (the service allows up to 200 per call).
-export async function listWarehouseChoices(token: string, status: "active" | "all" = "active"): Promise<Warehouse[]> {
-  const result = await getPaged<Warehouse>("/api/v1/inventory/warehouses", new URLSearchParams({ status, limit: "200" }), token);
-  return result.ok ? result.items : [];
-}
-
 // Products for the pickers: the product list already says whether a unit may be counted in fractions.
 export async function listProductChoices(token: string, status: "active" | "all" = "active"): Promise<Product[]> {
   const result = await getPaged<Product>("/api/v1/inventory/products", new URLSearchParams({ status, limit: "200" }), token);
   return result.ok ? result.items : [];
 }
 
-export type StockFilters = { q: string; category: string; warehouseId: string; inStockOnly: boolean; status: "active" | "archived" | "all"; page: number };
+export type StockFilters = { q: string; category: string; inStockOnly: boolean; status: "active" | "archived" | "all"; page: number };
 export function listStock(token: string, filters: StockFilters) {
   const params = pageParams(filters.page, filters.status);
   if (filters.q) params.set("q", filters.q);
   if (filters.category) params.set("category", filters.category);
-  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
   if (filters.inStockOnly) params.set("in_stock_only", "true");
   return getPaged<StockProduct>("/api/v1/inventory/stock", params, token);
 }
 
-export type MovementFilters = { productId: string; warehouseId: string; type: MovementType | ""; page: number };
+export type MovementFilters = { productId: string; type: MovementType | ""; page: number };
 export function listMovements(token: string, filters: MovementFilters) {
   const params = pageParams(filters.page);
   if (filters.productId) params.set("product_id", filters.productId);
-  if (filters.warehouseId) params.set("warehouse_id", filters.warehouseId);
   if (filters.type) params.set("type", filters.type);
   return getPaged<Movement>("/api/v1/inventory/stock/movements", params, token);
 }
 
-// ---- failures from warehouse / stock write calls ---------------------------------------------------------
-// The service's messages here are written for people ("Insufficient stock: 5 pcs of Bolt available in MAIN, 6
+// ---- failures from stock write calls ---------------------------------------------------------
+// The service's messages here are written for people ("Insufficient stock: 5 pcs of Bolt available, 6
 // requested."), so they are passed on; anything unexpected becomes a generic message.
 export type StockFailure = { status: number; message: string; fieldErrors?: Record<string, string> };
 
@@ -259,7 +243,7 @@ export async function loadCodes(token: string, productId: string): Promise<Codes
 }
 
 
-// Stock per warehouse for these products (information for the dispatch form; nothing is reserved). Product id -> stock.
+// Stock on hand for these products (information for the dispatch form; nothing is reserved). Product id -> stock.
 export async function loadStockSummary(token: string, productIds: string[]): Promise<Record<string, StockProduct>> {
   if (productIds.length === 0) return {};
   const params = new URLSearchParams();

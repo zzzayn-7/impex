@@ -36,11 +36,8 @@ def test_the_sales_service_only_ever_reads_from_the_inventory_service(api, shop,
     run_a_whole_life(api, shop)
     assert inventory.requests, "the inventory service should have been asked about products"
     assert inventory.writes() == []  # not one POST / PATCH / PUT / DELETE
-    assert {(m, p) for m, p, _ in inventory.requests} <= {
-        ("GET", "/api/v1/inventory/stock/summary"),
-        *{("GET", f"/api/v1/inventory/warehouses/{w}") for w in (shop["main"], shop["annex"])},
-    }
-    assert not any("/stock/in" in p or "/stock/out" in p or "/stock/transfer" in p or "/stock/opening" in p for _, p, _ in inventory.requests)
+    assert {(m, p) for m, p, _ in inventory.requests} <= {("GET", "/api/v1/inventory/stock/summary")}
+    assert not any("/stock/in" in p or "/stock/out" in p or "/stock/opening" in p for _, p, _ in inventory.requests)
 
 
 def test_no_endpoint_of_the_service_can_move_stock(client):

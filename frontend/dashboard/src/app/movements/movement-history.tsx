@@ -5,21 +5,18 @@ import { useRouter } from "next/navigation";
 
 import type { MovementFilters, PagedResult } from "@/lib/inventory";
 import type { Product } from "@/lib/product-validation";
-import { MOVEMENT_LABELS, MOVEMENT_TYPES, Movement, MovementType, Warehouse, formatQuantity, isDebit } from "@/lib/stock-validation";
+import { MOVEMENT_LABELS, MOVEMENT_TYPES, Movement, MovementType, formatQuantity, isDebit } from "@/lib/stock-validation";
 
 type Props = {
   list: PagedResult<Movement>;
   filters: MovementFilters;
   products: Product[];
-  warehouses: Warehouse[];
 };
 
 const BADGE: Record<MovementType, string> = {
   opening: "border-sky-500/20 bg-sky-500/10 text-sky-300",
   in: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
   out: "border-red-500/20 bg-red-500/10 text-red-300",
-  transfer_in: "border-indigo-500/20 bg-indigo-500/10 text-indigo-300",
-  transfer_out: "border-amber-500/20 bg-amber-500/10 text-amber-300",
 };
 
 const when = (iso: string) => {
@@ -27,7 +24,7 @@ const when = (iso: string) => {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
 };
 
-export default function MovementHistory({ list, filters, products, warehouses }: Props) {
+export default function MovementHistory({ list, filters, products }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -35,14 +32,13 @@ export default function MovementHistory({ list, filters, products, warehouses }:
     const merged = { ...filters, page: 1, ...next };
     const params = new URLSearchParams();
     if (merged.productId) params.set("product", merged.productId);
-    if (merged.warehouseId) params.set("warehouse", merged.warehouseId);
     if (merged.type) params.set("type", merged.type);
     if (merged.page > 1) params.set("page", String(merged.page));
     const query = params.toString();
     startTransition(() => router.push(query ? `/movements?${query}` : "/movements"));
   }
 
-  const filtered = Boolean(filters.productId || filters.warehouseId || filters.type);
+  const filtered = Boolean(filters.productId || filters.type);
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.items.length : 0;
@@ -67,13 +63,6 @@ export default function MovementHistory({ list, filters, products, warehouses }:
             </select>
           </label>
           <label className="text-xs font-medium text-slate-400">
-            Warehouse
-            <select value={filters.warehouseId} onChange={(e) => navigate({ warehouseId: e.target.value })} className={selectClass}>
-              <option value="">All warehouses</option>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}{w.is_active ? "" : " (archived)"}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-slate-400">
             Type
             <select value={filters.type} onChange={(e) => navigate({ type: e.target.value as MovementFilters["type"] })} className={selectClass}>
               <option value="">All types</option>
@@ -81,7 +70,7 @@ export default function MovementHistory({ list, filters, products, warehouses }:
             </select>
           </label>
           {filtered && (
-            <button type="button" onClick={() => navigate({ productId: "", warehouseId: "", type: "" })} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
+            <button type="button" onClick={() => navigate({ productId: "", type: "" })} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
               Clear filters
             </button>
           )}
@@ -98,7 +87,7 @@ export default function MovementHistory({ list, filters, products, warehouses }:
             </div>
           ) : list.items.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">
-              {filtered ? "No movements match these filters." : "No stock movements yet. They appear here as soon as you add, remove or transfer stock."}
+              {filtered ? "No movements match these filters." : "No stock movements yet. They appear here as soon as you add or remove stock."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -108,7 +97,6 @@ export default function MovementHistory({ list, filters, products, warehouses }:
                     <th className="px-4 py-3 font-semibold">When</th>
                     <th className="px-4 py-3 font-semibold">Type</th>
                     <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 font-semibold">Warehouse</th>
                     <th className="px-4 py-3 font-semibold text-right">Quantity</th>
                     <th className="px-4 py-3 font-semibold text-right">Balance after</th>
                     <th className="px-4 py-3 font-semibold">Reason</th>
@@ -126,7 +114,6 @@ export default function MovementHistory({ list, filters, products, warehouses }:
                         <div className="font-medium text-white">{m.product_name}</div>
                         <div className="font-mono text-xs text-indigo-300">{m.product_sku}</div>
                       </td>
-                      <td className="px-4 py-3 text-xs" title={m.warehouse_name}>{m.warehouse_code}</td>
                       <td className={`px-4 py-3 text-right font-mono text-xs whitespace-nowrap ${isDebit(m.movement_type) ? "text-red-300" : "text-emerald-400"}`}>
                         {isDebit(m.movement_type) ? "−" : "+"}{formatQuantity(m.quantity)} <span className="text-slate-500">{m.product_unit}</span>
                       </td>

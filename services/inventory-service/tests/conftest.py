@@ -91,7 +91,7 @@ def database(engine, session_factory):
     """Every test starts with empty inventory tables and uses the test database. (TRUNCATE does not fire the
     append-only row trigger, which is why it can reset the ledger here without the maintenance flag.)"""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE product_identifiers, stock_movements, stock_balances, stock_operations, warehouses, products"))
+        conn.execute(text("TRUNCATE TABLE product_identifiers, stock_movements, stock_balances, stock_operations, products"))
 
     def override_get_db():
         db = session_factory()
@@ -187,9 +187,8 @@ def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-# --- helpers for the warehouse / stock tests -----------------------------------------------------------
+# --- helpers for the stock tests -----------------------------------------------------------
 PRODUCTS_URL = "/api/v1/inventory/products"
-WAREHOUSES_URL = "/api/v1/inventory/warehouses"
 STOCK_URL = "/api/v1/inventory/stock"
 
 
@@ -209,30 +208,21 @@ class Api:
         assert response.status_code == 201, response.text
         return response.json()
 
-    def warehouse(self, code="MAIN", name=None, **extra) -> dict:
-        response = self.client.post(WAREHOUSES_URL, json={"code": code, "name": name or f"{code} warehouse", **extra}, headers=self.headers)
-        assert response.status_code == 201, response.text
-        return response.json()
-
     def change(self, action, key=None, **body):
         """POST /stock/<action> with a fresh Idempotency-Key unless one is given."""
         headers = {**self.headers, "Idempotency-Key": key or f"key-{uuid.uuid4()}"}
         return self.client.post(f"{STOCK_URL}/{action}", json=body, headers=headers)
 
-    def add(self, product, warehouse, quantity, action="in", **extra):
-        response = self.change(action, product_id=product["id"], warehouse_id=warehouse["id"], quantity=str(quantity), **extra)
+    def add(self, product, quantity, action="in", **extra):
+        response = self.change(action, product_id=product["id"], quantity=str(quantity), **extra)
         assert response.status_code == 201, response.text
         return response.json()
 
-    def transfer(self, product, source, destination, quantity, key=None, **extra):
-        return self.change("transfer", key=key, product_id=product["id"], from_warehouse_id=source["id"],
-                           to_warehouse_id=destination["id"], quantity=str(quantity), **extra)
-
-    def quantity(self, product, warehouse) -> str:
-        """The balance of one product in one warehouse as the overview shows it ("0" when there is none)."""
+    def quantity(self, product) -> str:
+        """What the stock overview shows for one product ("0" when there is none)."""
         body = self.client.get(STOCK_URL, params={"q": product["sku"], "status": "all"}, headers=self.headers).json()
         (item,) = [i for i in body["items"] if i["product_id"] == product["id"]]
-        return next((line["quantity"] for line in item["lines"] if line["warehouse_id"] == warehouse["id"]), "0")
+        return item["total_quantity"]
 
     def movements(self, **params) -> dict:
         return self.client.get(f"{STOCK_URL}/movements", params=params, headers=self.headers).json()

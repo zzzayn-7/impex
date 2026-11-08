@@ -145,14 +145,12 @@ class ItemCreate(BaseModel):
 
     product_id: uuid.UUID
     quantity: Quantity
-    planned_warehouse_id: Optional[uuid.UUID] = None
 
 
 class ItemUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     quantity: Optional[Quantity] = None
-    planned_warehouse_id: Optional[uuid.UUID] = None  # send null to clear it
 
     @model_validator(mode="after")
     def _valid(self):
@@ -175,7 +173,6 @@ class ItemStock(BaseModel):
     """What the Inventory Service says right now. Information only: stock is NOT reserved."""
 
     total_quantity: Decimal
-    available_quantity: Decimal
     product_active: bool
     unit_allows_fractions: bool
     exceeds_available: bool
@@ -191,8 +188,6 @@ class ItemResponse(BaseModel):
     product_name: str
     quantity: Decimal
     unit: str
-    planned_warehouse_id: Optional[uuid.UUID]
-    planned_warehouse_code: Optional[str]
     created_at: datetime
     updated_at: datetime
     stock: Optional[ItemStock] = None
@@ -264,12 +259,11 @@ DISPATCH_NOTICE = (
 
 
 class DispatchLineInput(BaseModel):
-    """A quantity of one delivery-list item leaving one warehouse. Product, SKU, name and unit come from the item, never from the caller."""
+    """A quantity of one delivery-list item leaving stock. Product, SKU, name and unit come from the item, never from the caller."""
 
     model_config = ConfigDict(extra="forbid")
 
     delivery_list_item_id: uuid.UUID
-    warehouse_id: uuid.UUID
     quantity: Quantity
 
 
@@ -333,11 +327,9 @@ class DispatchLineResponse(BaseModel):
     dispatched_elsewhere_quantity: Decimal  # confirmed on OTHER dispatches of the list
     pending_elsewhere_quantity: Decimal  # being posted on other dispatches (reserved)
     dispatchable_quantity: Decimal  # the most this dispatch may carry: requested - dispatched elsewhere - pending elsewhere
-    warehouse_id: uuid.UUID
-    warehouse_code: Optional[str]
     quantity: Decimal
     inventory_movement_id: Optional[uuid.UUID]  # the Inventory Service's stock movement, once confirmed
-    available_in_warehouse: Optional[Decimal] = None  # live stock of this product there (information only: not reserved)
+    available_quantity: Optional[Decimal] = None  # live stock of this product (information only: not reserved)
 
 
 class PostingInfo(BaseModel):
@@ -374,7 +366,7 @@ class DispatchDetail(DispatchSummary):
     inventory_operation_id: Optional[uuid.UUID]
     editable: bool  # only a draft can be edited
     stock_status: Literal["ok", "unavailable", "not-needed"]  # whether the live stock shown on the lines could be read
-    lines_exceeding_stock: int  # lines whose quantity is more than the warehouse holds right now (a draft only)
+    lines_exceeding_stock: int  # lines whose quantity is more than is in stock right now (a draft only)
     stock_notice: str = DISPATCH_NOTICE
 
 
@@ -613,7 +605,6 @@ class BillableLine(BaseModel):
     product_sku: str
     product_name: str
     unit: str
-    warehouse_code: Optional[str]
     dispatched_quantity: Decimal
     invoiced_quantity: Decimal
     in_drafts_quantity: Decimal

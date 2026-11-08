@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string; lineId: string } };
 
-// CHANGE the quantity, price, planned warehouse or note of a line of a draft order. The line total is recalculated by the
+// CHANGE the quantity, price or note of a line of a draft order. The line total is recalculated by the
 // Purchasing Service; the browser's own preview is never sent.
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const token = sessionToken(req);
@@ -26,11 +26,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const price = checkPrice(body.unitPrice);
     if (!price.ok) return fail(price.message, 400, { fieldErrors: { unitPrice: price.message } });
     change.unit_price = price.value;
-  }
-  if (body.plannedWarehouseId !== undefined) {
-    if (body.plannedWarehouseId === null || body.plannedWarehouseId === "") change.planned_warehouse_id = null;
-    else if (checkUuid(body.plannedWarehouseId)) change.planned_warehouse_id = body.plannedWarehouseId;
-    else return fail("Choose a valid warehouse.", 400, { fieldErrors: { plannedWarehouseId: "Choose a valid warehouse." } });
   }
   if (body.notes !== undefined) {
     const notes = text(body.notes) ?? "";

@@ -17,39 +17,28 @@ import CameraScanner from "@/app/scan/camera-scanner";
 import ScanProduct from "@/app/scan/scan-product";
 import CodesManager from "@/app/products/[id]/codes/codes-manager";
 import StockForm from "@/app/stock/stock-form";
-import type { Warehouse } from "@/lib/stock-validation";
 
 const BOLT_ID = "6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const FLOUR_ID = "7a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
-const W_MAIN = "22222222-2222-4222-8222-222222222222";
-const W_ANNEX = "33333333-3333-4333-8333-333333333333";
 const now = "2026-11-05T10:00:00+00:00";
-
-const warehouses: Warehouse[] = [
-  { id: W_MAIN, code: "MAIN", name: "Main depot", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 1 },
-  { id: W_ANNEX, code: "ANNEX", name: "Annex", address: null, is_active: true, created_at: now, updated_at: now, products_in_stock: 0 },
-];
 
 const product = (id: string, sku: string, name: string, unit: string, extra: Record<string, unknown> = {}) => ({
   id, sku, name, description: null, category: "General", unit, unit_allows_fractions: unit === "kg", unit_locked: true, hs_code: null,
   cost_price: "1.0000", selling_price: "2.0000", currency_code: "USD", is_active: true, created_at: now, updated_at: now, ...extra,
 });
-const scanResult = (p: ReturnType<typeof product>, lines: any[], extra: Record<string, unknown> = {}) => ({
+const scanResult = (p: ReturnType<typeof product>, quantity: string, extra: Record<string, unknown> = {}) => ({
   matched_by: "identifier", identifier_kind: "generated", product: p,
   stock: {
     product_id: p.id, sku: p.sku, name: p.name, category: "General", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active,
-    total_quantity: lines.reduce((sum, l) => sum + Number(l.quantity), 0).toFixed(4),
-    available_quantity: lines.filter((l) => l.warehouse_active).reduce((sum, l) => sum + Number(l.quantity), 0).toFixed(4),
-    lines,
+    total_quantity: quantity,
   },
   ...extra,
 });
-const line = (id: string, code: string, name: string, quantity: string, active = true) => ({ warehouse_id: id, warehouse_code: code, warehouse_name: name, warehouse_active: active, quantity });
 
 const bolt = product(BOLT_ID, "BOLT-1", "Steel bolt", "pcs");
-const BOLT = scanResult(bolt, [line(W_MAIN, "MAIN", "Main depot", "40.0000"), line(W_ANNEX, "ANNEX", "Annex", "10.0000", false)]);
-const FLOUR = scanResult(product(FLOUR_ID, "FLOUR", "Flour", "kg"), [line(W_MAIN, "MAIN", "Main depot", "2.5000")], { matched_by: "sku", identifier_kind: null });
-const ARCHIVED = scanResult(product(BOLT_ID, "OLD-1", "Old bolt", "pcs", { is_active: false }), [line(W_MAIN, "MAIN", "Main depot", "3.0000")]);
+const BOLT = scanResult(bolt, "50.0000");
+const FLOUR = scanResult(product(FLOUR_ID, "FLOUR", "Flour", "kg"), "2.5000", { matched_by: "sku", identifier_kind: null });
+const ARCHIVED = scanResult(product(BOLT_ID, "OLD-1", "Old bolt", "pcs", { is_active: false }), "3.0000");
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -100,7 +89,7 @@ afterEach(() => {
 // =============================================================================================================
 describe("Scan Product: the scan box", () => {
   it("is focused when the page opens, so a USB/Bluetooth scanner can type straight into it", () => {
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     expect(document.activeElement).toBe(scanBox());
     expect(scanBox().autocomplete).toBe("off");
     expect(screen.getByText(/USB and Bluetooth scanners work as keyboards/)).toBeTruthy();
@@ -108,7 +97,7 @@ describe("Scan Product: the scan box", () => {
 
   it("looks a product up when a keyboard-emulating scanner 'types' the code and presses Enter", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "bolt-1{Enter}"); // a scanner is exactly this, only faster
     await screen.findByText("Steel bolt");
     expect(resolveCalls().map((c) => c.url)).toEqual(["/api/scan/resolve?code=BOLT-1"]);
@@ -117,7 +106,7 @@ describe("Scan Product: the scan box", () => {
 
   it("also works with the Look up button, for manual entry of a SKU or barcode", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "flour");
     await user.click(screen.getByRole("button", { name: "Look up" }));
     await screen.findByText("Flour");
@@ -125,13 +114,13 @@ describe("Scan Product: the scan box", () => {
   });
 
   it("disables Look up while the box is empty", () => {
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     expect((screen.getByRole("button", { name: "Look up" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("ignores a repeated scanner event: the same code twice in a row looks up once", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     await user.type(scanBox(), "BOLT-1{Enter}");
     await screen.findByText("Steel bolt");
@@ -140,7 +129,7 @@ describe("Scan Product: the scan box", () => {
 
   it("looks up again for a different code", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     await screen.findByText("Steel bolt");
     await user.type(scanBox(), "FLOUR{Enter}");
@@ -151,26 +140,24 @@ describe("Scan Product: the scan box", () => {
 });
 
 describe("Scan Product: what is shown after a scan", () => {
-  it("shows name, SKU, unit, stock per warehouse, total, available and the three actions", async () => {
+  it("shows name, SKU, unit, the stock on hand and the actions, and nothing about warehouses", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "IMX-ABC234DEFGHJ{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
     const text = card.textContent!;
-    for (const expected of ["Steel bolt", "BOLT-1", "Unit: pcs", "whole numbers only", "Impex label", "Total stock", "Available stock", "MAIN", "Main depot", "ANNEX", "(archived)"]) {
+    for (const expected of ["Steel bolt", "BOLT-1", "Unit: pcs", "whole numbers only", "Impex label", "In stock"]) {
       expect(text, expected).toContain(expected);
     }
-    expect(text).toContain("50 pcs"); // total: 40 + 10
-    expect(within(card).getByText("Available stock").parentElement!.textContent).toContain("40 pcs"); // the archived warehouse's 10 is excluded
-    expect(text).toContain("in active warehouses only");
-    for (const name of ["Stock In", "Stock Out", "Add to Deliverables"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
-    expect(within(card).queryByRole("button", { name: "Transfer" })).toBeNull(); // transfers stay on the Stock page
-    expect(within(card).getByRole("link", { name: "Stock page" }).getAttribute("href")).toBe("/stock");
+    expect(within(card).getByText("In stock").parentElement!.textContent).toContain("50 pcs");
+    expect(text.toLowerCase()).not.toContain("warehouse");
+    for (const name of ["Stock In", "Stock Out", "Add to Deliverables", "Prepare Dispatch"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Transfer" })).toBeNull(); // there are no transfers any more
   });
 
   it("explains decimals for a measurable unit and a SKU match", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "FLOUR{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
     expect(card.textContent).toContain("decimal quantities allowed");
@@ -180,7 +167,7 @@ describe("Scan Product: what is shown after a scan", () => {
 
   it("NEVER changes inventory just because a code was scanned", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     for (const code of ["BOLT-1", "FLOUR", "NOPE", "OLD-1", "BOLT-1"]) await user.type(scanBox(), `${code}{Enter}`);
     expect(stockCalls()).toHaveLength(0);
     expect(calls.every((c) => c.url.startsWith("/api/scan/resolve"))).toBe(true);
@@ -189,7 +176,7 @@ describe("Scan Product: what is shown after a scan", () => {
 
   it("says so for an unknown code, and shows no product", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "NOT-A-PRODUCT{Enter}");
     expect((await screen.findByRole("alert")).textContent).toContain("No product in your catalog matches this code.");
     expect(screen.queryByRole("region", { name: "Scanned product" })).toBeNull();
@@ -197,7 +184,7 @@ describe("Scan Product: what is shown after a scan", () => {
 
   it("clears an earlier result when the next scan finds nothing (no stale product to act on)", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     await screen.findByText("Steel bolt");
     await user.type(scanBox(), "NOT-A-PRODUCT{Enter}");
@@ -213,7 +200,7 @@ describe("Scan Product: what is shown after a scan", () => {
   ])("shows a clear message for HTTP %i", async (status, body, expected) => {
     stubServer({ resolve: () => json(status as number, body) });
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     expect((await screen.findByRole("alert")).textContent).toContain(expected);
   });
@@ -221,14 +208,14 @@ describe("Scan Product: what is shown after a scan", () => {
   it("sends the user to sign in again if the session has ended", async () => {
     stubServer({ resolve: () => json(401, { error: "expired" }) });
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login"));
   });
 
   it("treats a scanned web address as text: refused, not opened, not even sent to the server", async () => {
     const user = setup();
-    const { container } = render(<ScanProduct warehouses={warehouses} />);
+    const { container } = render(<ScanProduct />);
     await user.type(scanBox(), "https://evil.example/pay{Enter}");
     expect((await screen.findByRole("alert")).textContent).toContain("not opened");
     expect(calls).toHaveLength(0);
@@ -238,7 +225,7 @@ describe("Scan Product: what is shown after a scan", () => {
 
   it("tells the user an archived product cannot be restocked from here", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "OLD-1{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
     expect(card.textContent).toContain("Archived");
@@ -247,27 +234,26 @@ describe("Scan Product: what is shown after a scan", () => {
     expect(card.textContent).toContain("3 pcs"); // but what is there is still reported
   });
 
-  it("asks for a warehouse first when the organization has none", async () => {
+  it("never asks for a warehouse: the stock buttons are usable straight away", async () => {
     const user = setup();
-    render(<ScanProduct warehouses={[]} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), "BOLT-1{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
-    expect(card.textContent).toContain("Create a warehouse first");
-    expect((within(card).getByRole("button", { name: "Stock In" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(card.textContent!.toLowerCase()).not.toContain("warehouse");
+    expect((within(card).getByRole("button", { name: "Stock In" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
 // =============================================================================================================
 describe("Scan Product: changing stock reuses the Step 14 flow, with confirmation", () => {
   async function openForm(user: ReturnType<typeof setup>, action: "Stock In" | "Stock Out", code = "BOLT-1") {
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.type(scanBox(), `${code}{Enter}`);
     await screen.findByRole("region", { name: "Scanned product" });
     await user.click(screen.getByRole("button", { name: action }));
     return screen.getByRole("form", { name: action === "Stock In" ? "Add stock" : "Remove stock" });
   }
-  const fill = async (user: ReturnType<typeof setup>, form: HTMLElement, quantity: string, warehouse = W_MAIN) => {
-    await user.selectOptions(within(form).getByLabelText("Warehouse"), warehouse);
+  const fill = async (user: ReturnType<typeof setup>, form: HTMLElement, quantity: string) => {
     await user.type(within(form).getByLabelText(/^Quantity/), quantity);
   };
 
@@ -277,7 +263,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Add stock", "Remove stock"]);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).disabled).toBe(true);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).value).toBe(BOLT_ID);
-    expect(within(form).getByLabelText("Warehouse").textContent).toContain("MAIN");
+    expect(within(form).queryByLabelText("Warehouse")).toBeNull();
   });
 
   it("asks for confirmation first: pressing Review sends NOTHING", async () => {
@@ -286,7 +272,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     await fill(user, form, "5");
     await user.click(within(form).getByRole("button", { name: "Review" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Confirm stock change" });
-    expect(dialog.textContent).toContain("Add 5 pcs of Steel bolt to MAIN?");
+    expect(dialog.textContent).toContain("Add 5 pcs of Steel bolt to stock?");
     expect(dialog.textContent).toContain("recorded in the stock history");
     expect(stockCalls()).toHaveLength(0);
   });
@@ -304,7 +290,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     expect(url).toBe("/api/stock/in");
     expect(init.method).toBe("POST");
     expect(init.headers["Idempotency-Key"]).toMatch(/^ui-[0-9a-f-]{36}$/);
-    expect(JSON.parse(init.body)).toEqual({ product_id: BOLT_ID, warehouse_id: W_MAIN, quantity: "5", reason: "Delivery note 42" });
+    expect(JSON.parse(init.body)).toEqual({ product_id: BOLT_ID, quantity: "5", reason: "Delivery note 42" });
     expect(init.body).not.toMatch(/organization|tenant/i);
     await waitFor(() => expect(resolveCalls().length).toBeGreaterThanOrEqual(2)); // the quantities are refreshed afterwards
   });
@@ -411,13 +397,12 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     const form = await openForm(user, "Stock In", "FLOUR");
     await fill(user, form, "1.25");
     await user.click(within(form).getByRole("button", { name: "Review" }));
-    expect((await screen.findByRole("alertdialog")).textContent).toContain("Add 1.25 kg of Flour to MAIN?");
+    expect((await screen.findByRole("alertdialog")).textContent).toContain("Add 1.25 kg of Flour to stock?");
   });
 
   it.each(["0", "-3", "abc", "1.00001", ""])("rejects the quantity %j before confirmation", async (quantity) => {
     const user = setup();
     const form = await openForm(user, "Stock In");
-    await user.selectOptions(within(form).getByLabelText("Warehouse"), W_MAIN);
     if (quantity) await user.type(within(form).getByLabelText(/^Quantity/), quantity);
     await user.click(within(form).getByRole("button", { name: "Review" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -425,7 +410,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
   });
 
   it("shows the server's refusal when a removal would make stock negative, and keeps the form", async () => {
-    const message = "Insufficient stock: 40 pcs of Steel bolt available in MAIN, 100 requested.";
+    const message = "Insufficient stock: 50 pcs of Steel bolt available, 100 requested.";
     stubServer({ stock: () => json(409, { error: message }) });
     const user = setup();
     const form = await openForm(user, "Stock Out");
@@ -463,7 +448,7 @@ describe("Scan Product: camera", () => {
   it("does not touch the camera until the user presses Start camera", async () => {
     const { getUserMedia } = fakeCamera();
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.click(screen.getByRole("button", { name: "Use camera" }));
     expect(screen.getByRole("button", { name: "Start camera" })).toBeTruthy();
     expect(screen.getByText(/Your browser will ask for permission when you press Start camera/)).toBeTruthy();
@@ -475,7 +460,7 @@ describe("Scan Product: camera", () => {
   it("reads a code with the camera, looks the product up, and switches the camera off", async () => {
     const { tracks } = fakeCamera();
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.click(screen.getByRole("button", { name: "Use camera" }));
     await user.click(screen.getByRole("button", { name: "Start camera" }));
     await screen.findByText("Steel bolt", {}, { timeout: 3000 });
@@ -490,7 +475,7 @@ describe("Scan Product: camera", () => {
     const { tracks } = fakeCamera();
     decoderState.code = null;
     const user = setup();
-    render(<ScanProduct warehouses={warehouses} />);
+    render(<ScanProduct />);
     await user.click(screen.getByRole("button", { name: "Use camera" }));
     await user.click(screen.getByRole("button", { name: "Start camera" }));
     await screen.findByRole("button", { name: "Stop camera" });
@@ -668,35 +653,26 @@ describe("Codes & labels page", () => {
 });
 
 
-// Transfers are not offered by the scanner any more, but the shared form (used by the Stock page) still does them.
-describe("StockForm: transfers (kept on the Stock page)", () => {
+// The shared stock form offers opening / add / remove only: there are no transfers any more.
+describe("StockForm: no transfers, no warehouses", () => {
   const renderForm = () =>
-    render(<StockForm initialAction="transfer" initialProductId={BOLT_ID} products={[bolt as any]} warehouses={warehouses} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
+    render(<StockForm initialAction="in" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
 
-  it("offers all four operations by default", () => {
+  it("offers the three operations by default", () => {
     renderForm();
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening balance", "Add stock", "Remove stock", "Transfer"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening balance", "Add stock", "Remove stock"]);
+    expect(screen.queryByLabelText("Warehouse")).toBeNull();
   });
 
-  it("transfers between two warehouses with a summary naming both", async () => {
+  it("records an opening balance for the product alone", async () => {
     const user = setup();
-    renderForm();
-    const form = screen.getByRole("form", { name: "Transfer" });
-    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
-    await user.selectOptions(within(form).getByLabelText("To warehouse"), W_ANNEX);
+    render(<StockForm initialAction="opening" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
+    const form = screen.getByRole("form", { name: "Opening balance" });
     await user.type(within(form).getByLabelText(/^Quantity/), "5");
     await user.click(within(form).getByRole("button", { name: "Review" }));
-    expect((await screen.findByRole("alertdialog")).textContent).toContain("Transfer 5 pcs of Steel bolt from MAIN to ANNEX?");
+    expect((await screen.findByRole("alertdialog")).textContent).toContain("Record an opening balance of 5 pcs of Steel bolt?");
     await user.click(screen.getByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/transfer"]));
-    expect(JSON.parse(stockCalls()[0].init.body)).toEqual({ product_id: BOLT_ID, from_warehouse_id: W_MAIN, to_warehouse_id: W_ANNEX, quantity: "5" });
-  });
-
-  it("will not transfer to the same warehouse", async () => {
-    const user = setup();
-    renderForm();
-    const form = screen.getByRole("form", { name: "Transfer" });
-    await user.selectOptions(within(form).getByLabelText("From warehouse"), W_MAIN);
-    expect(Array.from((within(form).getByLabelText("To warehouse") as HTMLSelectElement).options).map((o) => o.value)).not.toContain(W_MAIN);
+    await waitFor(() => expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/opening"]));
+    expect(JSON.parse(stockCalls()[0].init.body)).toEqual({ product_id: BOLT_ID, quantity: "5" });
   });
 });

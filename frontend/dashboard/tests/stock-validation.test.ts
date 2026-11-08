@@ -1,51 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ACTION_LABELS,
   EMPTY_STOCK_FORM,
-  EMPTY_WAREHOUSE,
   IDEMPOTENCY_KEY_RE,
+  MOVEMENT_LABELS,
   formatQuantity,
   newIdempotencyKey,
   normalizeStock,
-  normalizeWarehouse,
   toStockBody,
-  toWarehouseBody,
   validateQuantity,
   validateStock,
-  validateWarehouse,
 } from "@/lib/stock-validation";
 
 const P = "6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
-const W1 = "11111111-1111-4111-8111-111111111111";
-const W2 = "22222222-2222-4222-8222-222222222222";
-
-describe("warehouse validation", () => {
-  it("normalizes code (upper case) and name (single spaces) before checking", () => {
-    expect(normalizeWarehouse({ code: " main-01 ", name: "  Main   depot ", address: "  1 Dock Rd " })).toEqual({ code: "MAIN-01", name: "Main depot", address: "1 Dock Rd" });
-  });
-
-  it("requires code and name, but not the address", () => {
-    expect(Object.keys(validateWarehouse(EMPTY_WAREHOUSE)).sort()).toEqual(["code", "name"]);
-    expect(validateWarehouse({ code: "MAIN", name: "Main", address: "" })).toEqual({});
-  });
-
-  it.each(["has space", "-LEADING", "A".repeat(33), "bad/slash", "ünï"])("rejects the code %j", (code) => {
-    expect(validateWarehouse({ code, name: "X" }).code).toBeTruthy();
-  });
-
-  it("checks only the fields that are present when editing", () => {
-    expect(validateWarehouse({ name: "New name" }, false)).toEqual({});
-    expect(validateWarehouse({ code: "bad code" }, false).code).toBeTruthy();
-    expect(validateWarehouse({ name: "" }, false).name).toBeTruthy();
-  });
-
-  it("sends a blank address as null so editing can clear it, and never includes an organization", () => {
-    expect(toWarehouseBody({ code: "MAIN", name: "Main", address: "" })).toEqual({ code: "MAIN", name: "Main", address: null });
-    expect(toWarehouseBody({ name: "Only name" })).toEqual({ name: "Only name" });
-    expect(Object.keys(toWarehouseBody({ code: "A", name: "B", address: "C" })).join()).not.toMatch(/org|tenant/i);
-  });
-});
-
 describe("quantity validation", () => {
   it.each(["1", "12", "0.5", "2.5000", "99999999999999", "0.0001"])("accepts %s for a measurable unit", (q) => {
     expect(validateQuantity(q, true)).toBeUndefined();
@@ -75,21 +43,20 @@ describe("quantity validation", () => {
 });
 
 describe("stock form validation", () => {
-  const base = { ...EMPTY_STOCK_FORM, productId: P, warehouseId: W1, quantity: "5" };
+  const base = { ...EMPTY_STOCK_FORM, productId: P, quantity: "5" };
 
   it("accepts a valid add / remove / opening", () => {
     for (const action of ["in", "out", "opening"] as const) expect(validateStock(action, base, false)).toEqual({});
   });
 
   it("asks for the missing choices", () => {
-    expect(Object.keys(validateStock("in", EMPTY_STOCK_FORM, true)).sort()).toEqual(["productId", "quantity", "warehouseId"]);
-    expect(Object.keys(validateStock("transfer", EMPTY_STOCK_FORM, true)).sort()).toEqual(["fromWarehouseId", "productId", "quantity", "toWarehouseId"]);
+    expect(Object.keys(validateStock("in", EMPTY_STOCK_FORM, true)).sort()).toEqual(["productId", "quantity"]);
   });
 
-  it("refuses a transfer to the same warehouse", () => {
-    const errors = validateStock("transfer", { ...base, fromWarehouseId: W1, toWarehouseId: W1 }, true);
-    expect(errors.toWarehouseId).toContain("different");
-    expect(validateStock("transfer", { ...base, fromWarehouseId: W1, toWarehouseId: W2 }, true)).toEqual({});
+  it("has no warehouse or transfer anywhere in the form", () => {
+    expect(Object.keys(EMPTY_STOCK_FORM).sort()).toEqual(["productId", "quantity", "reason"]);
+    expect(Object.keys(ACTION_LABELS).sort()).toEqual(["in", "opening", "out"]);
+    expect(Object.keys(MOVEMENT_LABELS).sort()).toEqual(["in", "opening", "out"]);
   });
 
   it("applies the unit rule to the quantity", () => {
@@ -102,9 +69,9 @@ describe("stock form validation", () => {
   });
 
   it("builds bodies that never name an organization", () => {
-    expect(toStockBody("in", { ...base, reason: "Delivery" })).toEqual({ product_id: P, warehouse_id: W1, quantity: "5", reason: "Delivery" });
-    expect(toStockBody("transfer", { ...base, fromWarehouseId: W1, toWarehouseId: W2 })).toEqual({ product_id: P, from_warehouse_id: W1, to_warehouse_id: W2, quantity: "5" });
-    expect(JSON.stringify(toStockBody("out", base))).not.toMatch(/org|tenant/i);
+    expect(toStockBody("in", { ...base, reason: "Delivery" })).toEqual({ product_id: P, quantity: "5", reason: "Delivery" });
+    expect(toStockBody("out", base)).toEqual({ product_id: P, quantity: "5" });
+    expect(JSON.stringify(toStockBody("out", base))).not.toMatch(/org|tenant|warehouse/i);
   });
 
   it("keeps the quantity a string all the way", () => {

@@ -13,7 +13,6 @@ import { GET as listLists } from "@/app/api/sales/delivery-lists/route";
 const ID = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718";
 const ITEM = "11111111-1111-4111-8111-111111111111";
 const ITEM2 = "11111111-1111-4111-8111-222222222222";
-const WAREHOUSE = "33333333-3333-4333-8333-333333333333";
 const LIST = "44444444-4444-4444-8444-444444444444";
 const TOKEN = "session-token-abc";
 const SALES = "http://sales-service:8003";
@@ -54,21 +53,21 @@ describe("failure mapping for dispatches", () => {
     }
   });
   it("maps dispatch field names for the form", () => {
-    const failure = describeSalesFailure({ status: 422, data: { detail: [{ loc: ["body", "lines", 0, "warehouse_id"], msg: "bad" }, { loc: ["body", "dispatch_date"], msg: "Value error, worse" }] } });
-    expect(failure.fieldErrors).toEqual({ warehouseId: "bad", dispatchDate: "worse" });
+    const failure = describeSalesFailure({ status: 422, data: { detail: [{ loc: ["body", "lines", 0, "quantity"], msg: "bad" }, { loc: ["body", "dispatch_date"], msg: "Value error, worse" }] } });
+    expect(failure.fieldErrors).toEqual({ quantity: "bad", dispatchDate: "worse" });
   });
 });
 
-const lineBody = (extra: Record<string, unknown> = {}) => ({ deliveryListItemId: ITEM, warehouseId: WAREHOUSE, quantity: "10", ...extra });
+const lineBody = (extra: Record<string, unknown> = {}) => ({ deliveryListItemId: ITEM, quantity: "10", ...extra });
 
 describe("parseDispatchLines", () => {
-  it("keeps only the item, the warehouse and an exact quantity string", () => {
-    expect(parseDispatchLines([lineBody({ unit: "box", productName: "x", organizationId: "evil", status: "confirmed" })])).toEqual({
-      ok: true, lines: [{ delivery_list_item_id: ITEM, warehouse_id: WAREHOUSE, quantity: "10" }],
+  it("keeps only the item and an exact quantity string (a warehouse sent by the browser is dropped)", () => {
+    expect(parseDispatchLines([lineBody({ unit: "box", productName: "x", organizationId: "evil", status: "confirmed", warehouseId: "11111111-1111-4111-8111-111111111111" })])).toEqual({
+      ok: true, lines: [{ delivery_list_item_id: ITEM, quantity: "10" }],
     });
   });
   it.each([
-    ["not a list", "all"], ["a non-object line", [5]], ["a bad item id", [lineBody({ deliveryListItemId: "x" })]], ["a bad warehouse", [lineBody({ warehouseId: "x" })]],
+    ["not a list", "all"], ["a non-object line", [5]], ["a bad item id", [lineBody({ deliveryListItemId: "x" })]],
     ["a numeric quantity", [lineBody({ quantity: 10 })]], ["a zero quantity", [lineBody({ quantity: "0" })]], ["a negative quantity", [lineBody({ quantity: "-1" })]],
     ["too many decimals", [lineBody({ quantity: "1.00001" })]], ["an exponent", [lineBody({ quantity: "1e3" })]], ["501 lines", Array.from({ length: 501 }, () => lineBody())],
   ])("refuses %s", (_name, value) => {
@@ -89,7 +88,7 @@ describe("dispatches: creating a draft", () => {
     expect(upstream().init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Idempotency-Key": KEY });
     expect(sentBody()).toEqual({
       delivery_list_id: LIST, dispatch_date: "2026-11-07", delivery_address: "1 Dock Rd", transport_details: "Truck 4", tracking_reference: "TRK 9", notes: "n",
-      lines: [{ delivery_list_item_id: ITEM, warehouse_id: WAREHOUSE, quantity: "10" }],
+      lines: [{ delivery_list_item_id: ITEM, quantity: "10" }],
     });
   });
 
@@ -107,7 +106,6 @@ describe("dispatches: creating a draft", () => {
     ["a bad date", { deliveryListId: LIST, dispatchDate: "2026-13-45" }, KEY, 400],
     ["a bad quantity", { deliveryListId: LIST, lines: [lineBody({ quantity: "1e3" })] }, KEY, 400],
     ["a bad item id", { deliveryListId: LIST, lines: [lineBody({ deliveryListItemId: "x" })] }, KEY, 400],
-    ["a missing warehouse", { deliveryListId: LIST, lines: [lineBody({ warehouseId: "" })] }, KEY, 400],
     ["lines that are not a list", { deliveryListId: LIST, lines: "all" }, KEY, 400],
     ["too many lines", { deliveryListId: LIST, lines: Array.from({ length: 501 }, () => lineBody()) }, KEY, 400],
     ["a long note", { deliveryListId: LIST, notes: "x".repeat(2001) }, KEY, 400],
@@ -146,7 +144,7 @@ describe("dispatches: lines, header, reading", () => {
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/dispatches/${ID}/lines`);
     expect(upstream().init.method).toBe("PUT");
     expect(sentBody()).toEqual({ lines: [
-      { delivery_list_item_id: ITEM, warehouse_id: WAREHOUSE, quantity: "10" }, { delivery_list_item_id: ITEM2, warehouse_id: WAREHOUSE, quantity: "2.5" },
+      { delivery_list_item_id: ITEM, quantity: "10" }, { delivery_list_item_id: ITEM2, quantity: "2.5" },
     ] });
   });
 
@@ -180,9 +178,9 @@ describe("dispatches: lines, header, reading", () => {
 
   it("lists with whitelisted parameters only", async () => {
     stub(() => json(200, { items: [], total: 0, limit: 50, offset: 0 }));
-    await listDispatches(request("GET", undefined, { query: `?status=confirmed&clientId=${ID}&warehouseId=${WAREHOUSE}&deliveryListId=${LIST}&dateFrom=2026-11-01&dateTo=2026-11-30&q=%20trk&organization_id=evil&sort=x` }));
+    await listDispatches(request("GET", undefined, { query: `?status=confirmed&clientId=${ID}&warehouseId=11111111-1111-4111-8111-111111111111&deliveryListId=${LIST}&dateFrom=2026-11-01&dateTo=2026-11-30&q=%20trk&organization_id=evil&sort=x` }));
     expect(Object.fromEntries(new URL(upstream().url).searchParams)).toEqual({
-      status: "confirmed", client_id: ID, warehouse_id: WAREHOUSE, delivery_list_id: LIST, date_from: "2026-11-01", date_to: "2026-11-30", q: "trk", limit: "50", offset: "0",
+      status: "confirmed", client_id: ID, delivery_list_id: LIST, date_from: "2026-11-01", date_to: "2026-11-30", q: "trk", limit: "50", offset: "0",
     });
     fetchMock.mockClear();
     await listDispatches(request("GET", undefined, { query: "?status=bogus" }));

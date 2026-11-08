@@ -10,12 +10,12 @@ The rules that matter most:
                                  second dispatch cannot take them, and the dispatch is frozen.
         2. (NO transaction)     the Inventory Service is asked, with the stable Idempotency-Key  dispatch-<dispatch id>.
         3. (short transaction)  only when its answer is VERIFIED (the right operation, one movement per line, the right
-                                 product / warehouse / quantity) does the dispatch become confirmed, and the list Partially
+                                 product / quantity) does the dispatch become confirmed, and the list Partially
                                  Dispatched / Dispatched.
     If anything is uncertain - timeout, outage, crash, garbled answer - the dispatch STAYS `posting`. Retrying confirm (from any
     process, after any restart) asks again with the same key: the Inventory Service replays the first result instead of
     deducting the goods twice. A dispatch is never called confirmed on hope.
-  * If the Inventory Service definitively refuses (not enough stock, an archived warehouse, a changed unit...), nothing was
+  * If the Inventory Service definitively refuses (not enough stock, an archived product, a changed unit...), nothing was
     deducted and the dispatch returns to draft with the reason, so it can be fixed and confirmed again.
   * No over-dispatch: the quantities of confirmed + posting dispatches can never exceed what the client requested (checked under
     a lock on the delivery list, and again by a database trigger). Two people dispatching at once cannot both take the last units.
@@ -100,7 +100,7 @@ def dispatch_lines(db: Session, tenant: TenantContext, dispatch_id: uuid.UUID) -
         db.scalars(
             scoped_select(DispatchLine, tenant)
             .where(DispatchLine.dispatch_id == dispatch_id)
-            .order_by(DispatchLine.created_at, DispatchLine.product_name, DispatchLine.warehouse_code, DispatchLine.id)
+            .order_by(DispatchLine.created_at, DispatchLine.product_name, DispatchLine.id)
         )
     )
 
@@ -199,7 +199,7 @@ def dispatches_of_list(db: Session, tenant: TenantContext, list_id: uuid.UUID) -
 
 
 def detail(db: Session, tenant: TenantContext, gateway: Optional[InventoryGateway], dispatch: Dispatch) -> DispatchDetail:
-    """The dispatch with its lines. For a draft or a posting dispatch the LIVE stock of each line's warehouse is shown (information
+    """The dispatch with its lines. For a draft or a posting dispatch the LIVE stock of each line's product is shown (information
     only); if the Inventory Service cannot be asked the dispatch is still shown with stock_status = 'unavailable'."""
     (summary,) = summaries(db, tenant, [dispatch])
     lines = dispatch_lines(db, tenant, dispatch.id)
@@ -214,22 +214,19 @@ def detail(db: Session, tenant: TenantContext, gateway: Optional[InventoryGatewa
         except InventoryUnavailable:
             stock_status = "unavailable"
     rows, exceeding = [], 0
-    needed: Dict[Tuple[uuid.UUID, uuid.UUID], Decimal] = {}
-    for l in lines:
-        needed[(l.product_id, l.warehouse_id)] = needed.get((l.product_id, l.warehouse_id), ZERO) + l.quantity
     for l in lines:
         requested = items[l.delivery_list_item_id].quantity
         confirmed, pending = elsewhere.get(l.delivery_list_item_id, (ZERO, ZERO))
         info = infos.get(l.product_id)
-        available = info.in_warehouse(l.warehouse_id) if info is not None else None
-        if available is not None and needed[(l.product_id, l.warehouse_id)] > available:
+        available = info.total if info is not None else None
+        if available is not None and l.quantity > available:  # a product appears once per list, so a line is the whole need
             exceeding += 1
         rows.append(
             DispatchLineResponse(
                 id=l.id, delivery_list_item_id=l.delivery_list_item_id, product_id=l.product_id, product_sku=l.product_sku, product_name=l.product_name,
                 unit=l.unit, requested_quantity=requested, dispatched_elsewhere_quantity=confirmed, pending_elsewhere_quantity=pending,
-                dispatchable_quantity=max(requested - confirmed - pending, ZERO), warehouse_id=l.warehouse_id, warehouse_code=l.warehouse_code,
-                quantity=l.quantity, inventory_movement_id=l.inventory_movement_id, available_in_warehouse=available,
+                dispatchable_quantity=max(requested - confirmed - pending, ZERO),
+                quantity=l.quantity, inventory_movement_id=l.inventory_movement_id, available_quantity=available,
             )
         )
     return DispatchDetail(
@@ -247,17 +244,16 @@ def detail(db: Session, tenant: TenantContext, gateway: Optional[InventoryGatewa
 class Row:
     """One dispatch line, validated, as plain values (no ORM objects, so no database session is needed to hold it)."""
 
-    def __init__(self, item: DeliveryListItem, warehouse_id: uuid.UUID, quantity: Decimal):
+    def __init__(self, item: DeliveryListItem, quantity: Decimal):
         self.item_id, self.product_id, self.sku, self.name, self.unit = item.id, item.product_id, item.product_sku, item.product_name, item.unit
         self.requested = item.quantity
-        self.warehouse_id, self.quantity = warehouse_id, quantity
-        self.warehouse_code: Optional[str] = None
+        self.quantity = quantity
 
 
 def row_from_line(line: DispatchLine, requested: Decimal) -> Row:
     row = Row.__new__(Row)
     row.item_id, row.product_id, row.sku, row.name, row.unit = line.delivery_list_item_id, line.product_id, line.product_sku, line.product_name, line.unit
-    row.requested, row.warehouse_id, row.quantity, row.warehouse_code = requested, line.warehouse_id, line.quantity, line.warehouse_code
+    row.requested, row.quantity = requested, line.quantity
     return row
 
 
@@ -269,30 +265,24 @@ def local_rows(db: Session, tenant: TenantContext, delivery_list: DeliveryList, 
         item = items.get(entry.delivery_list_item_id)
         if item is None:  # an item of another list or organization looks exactly like one that does not exist
             raise HTTPException(status.HTTP_404_NOT_FOUND, "That product is not on this delivery list.")
-        if (item.id, entry.warehouse_id) in seen:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{item.product_name} appears more than once for the same warehouse.")
-        seen.add((item.id, entry.warehouse_id))
-        rows.append(Row(item, entry.warehouse_id, entry.quantity))
+        if item.id in seen:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{item.product_name} appears more than once on this dispatch.")
+        seen.add(item.id)
+        rows.append(Row(item, entry.quantity))
     return rows
 
 
 def remote_checks(gateway: InventoryGateway, rows: List[Row], *, require_stock: bool = False) -> None:
-    """Ask the Inventory Service (caller's own token) whether the products and warehouses can serve this. Called with no
+    """Ask the Inventory Service (caller's own token) whether the products can serve this. Called with no
     transaction open. Archived or unknown things are refused; a product whose unit is no longer the listed one is refused.
-    With require_stock the warehouses must also hold the quantities (checked again, authoritatively, by the Inventory Service)."""
+    With require_stock the stock must also hold the quantities (checked again, authoritatively, by the Inventory Service)."""
     if not rows:
         return
     try:
         products: Dict[uuid.UUID, ProductInfo] = gateway.products([r.product_id for r in rows])
-        warehouses: Dict[uuid.UUID, dict] = {}
-        for warehouse_id in dict.fromkeys(r.warehouse_id for r in rows):
-            found = gateway.warehouse(warehouse_id)
-            if found is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "Warehouse not found.")
-            warehouses[warehouse_id] = found
     except InventoryUnavailable:
         raise unavailable_error()
-    needed: Dict[Tuple[uuid.UUID, uuid.UUID], Decimal] = {}
+    needed: Dict[uuid.UUID, Decimal] = {}
     for r in rows:
         info = products.get(r.product_id)
         if info is None:
@@ -306,21 +296,16 @@ def remote_checks(gateway: InventoryGateway, rows: List[Row], *, require_stock: 
             )
         if not info.allows_fractions and r.quantity != r.quantity.to_integral_value():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The quantity must be a whole number: {info.name} is counted in '{info.unit}'.")
-        warehouse = warehouses[r.warehouse_id]
-        r.warehouse_code = warehouse["code"]
-        if not warehouse["is_active"]:
-            raise conflict(f"Warehouse {warehouse['code']} is archived. Choose an active warehouse.")
-        key = (r.product_id, r.warehouse_id)
-        needed[key] = needed.get(key, ZERO) + r.quantity
+        needed[r.product_id] = needed.get(r.product_id, ZERO) + r.quantity
     if require_stock:
-        by_key = {(r.product_id, r.warehouse_id): r for r in rows}
-        for (product_id, warehouse_id), quantity in needed.items():
-            available = products[product_id].in_warehouse(warehouse_id)
+        by_product = {r.product_id: r for r in rows}
+        for product_id, quantity in needed.items():
+            available = products[product_id].total
             if quantity > available:
-                r = by_key[(product_id, warehouse_id)]
+                r = by_product[product_id]
                 raise conflict(
-                    f"Not enough stock: {human(available)} {r.unit} of {r.name} in {r.warehouse_code}, {human(quantity)} to dispatch. "
-                    "Nothing was deducted; reduce the quantity or choose another warehouse.",
+                    f"Not enough stock: {human(available)} {r.unit} of {r.name} in stock, {human(quantity)} to dispatch. "
+                    "Nothing was deducted; reduce the quantity.",
                     code="insufficient_stock",
                 )
 
@@ -422,7 +407,7 @@ def _write_lines(db: Session, tenant: TenantContext, dispatch: Dispatch, rows: L
         db.add(
             DispatchLine(
                 organization_id=tenant.organization_id, dispatch_id=dispatch.id, delivery_list_item_id=r.item_id, product_id=r.product_id,
-                product_sku=r.sku, product_name=r.name, unit=r.unit, warehouse_id=r.warehouse_id, warehouse_code=r.warehouse_code, quantity=r.quantity,
+                product_sku=r.sku, product_name=r.name, unit=r.unit, quantity=r.quantity,
             )
         )
     db.flush()
@@ -516,7 +501,7 @@ def posting_body(dispatch: Dispatch, list_number: str, lines: List[DispatchLine]
         "dispatch_number": dispatch.number,
         "delivery_list_number": list_number,
         "lines": [
-            {"line_id": str(l.id), "product_id": str(l.product_id), "warehouse_id": str(l.warehouse_id), "quantity": format(l.quantity, "f"), "unit": l.unit}
+            {"line_id": str(l.id), "product_id": str(l.product_id), "quantity": format(l.quantity, "f"), "unit": l.unit}
             for l in lines
         ],
     }
@@ -524,7 +509,7 @@ def posting_body(dispatch: Dispatch, list_number: str, lines: List[DispatchLine]
 
 def verify_posting(number: str, body: dict, data: Optional[dict]) -> Tuple[uuid.UUID, Dict[uuid.UUID, uuid.UUID]]:
     """Accept the Inventory Service's answer only if it says exactly what we asked for: this dispatch, one movement per line,
-    each for the right product, warehouse and quantity. Returns (operation id, dispatch line id -> movement id)."""
+    each for the right product and quantity. Returns (operation id, dispatch line id -> movement id)."""
     try:
         if not isinstance(data, dict) or data.get("dispatch_number") != number:
             raise Mismatch()
@@ -537,7 +522,6 @@ def verify_posting(number: str, body: dict, data: Optional[dict]) -> Tuple[uuid.
             if (
                 expected is None or line_id in movements
                 or str(uuid.UUID(str(movement["product_id"]))) != expected["product_id"]
-                or str(uuid.UUID(str(movement["warehouse_id"]))) != expected["warehouse_id"]
                 or Decimal(str(movement["quantity"])) != Decimal(expected["quantity"])
             ):
                 raise Mismatch()

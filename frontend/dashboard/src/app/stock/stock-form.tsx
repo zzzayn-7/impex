@@ -12,7 +12,6 @@ import {
   StockAction,
   StockFieldErrors,
   StockFormValues,
-  Warehouse,
   newIdempotencyKey,
   normalizeStock,
   toStockBody,
@@ -23,10 +22,9 @@ type Props = {
   initialAction: StockAction;
   initialProductId?: string;
   products: Product[]; // active products
-  warehouses: Warehouse[]; // active warehouses
   onDone: (message: string) => void;
   onCancel: () => void;
-  /** Which operations to offer (default: all four). The Scan Product page offers in / out / transfer. */
+  /** Which operations to offer (default: all three). The Scan Product page offers in / out. */
   actions?: StockAction[];
   /** Ask "are you sure?" with a plain-language summary before anything is sent. */
   requireConfirmation?: boolean;
@@ -39,14 +37,13 @@ const selectClass =
 const fieldBorder = (error?: string) => (error ? "border-red-500/60 focus:border-red-500 focus:ring-red-500" : "border-slate-800 focus:border-indigo-500 focus:ring-indigo-500");
 
 const HELP: Record<StockAction, string> = {
-  opening: "The starting quantity of a product in a warehouse. Only possible before any other movement there.",
-  in: "Stock received into a warehouse.",
-  out: "Stock leaving a warehouse. Refused if the warehouse does not hold enough.",
-  transfer: "Move stock between two warehouses. Both sides are recorded together or not at all.",
+  opening: "The starting quantity of a product. Only possible before any other movement of it.",
+  in: "Stock received.",
+  out: "Stock leaving. Refused if there is not enough in stock.",
 };
 
 export default function StockForm({
-  initialAction, initialProductId, products, warehouses, onDone, onCancel, actions = STOCK_ACTIONS, requireConfirmation = false, lockProduct = false,
+  initialAction, initialProductId, products, onDone, onCancel, actions = STOCK_ACTIONS, requireConfirmation = false, lockProduct = false,
 }: Props) {
   const router = useRouter();
   const [action, setAction] = useState<StockAction>(initialAction);
@@ -78,15 +75,12 @@ export default function StockForm({
     attempt.current = null;
   }
 
-  const warehouseLabel = (id: string) => warehouses.find((w) => w.id === id)?.code ?? "the warehouse";
-
   function summary(normalized: StockFormValues): string {
     const what = `${normalized.quantity} ${product?.unit ?? ""} of ${product?.name ?? "the product"}`.replace(/\s+/g, " ");
     switch (action) {
-      case "in": return `Add ${what} to ${warehouseLabel(normalized.warehouseId)}?`;
-      case "out": return `Remove ${what} from ${warehouseLabel(normalized.warehouseId)}?`;
-      case "opening": return `Record an opening balance of ${what} in ${warehouseLabel(normalized.warehouseId)}?`;
-      case "transfer": return `Transfer ${what} from ${warehouseLabel(normalized.fromWarehouseId)} to ${warehouseLabel(normalized.toWarehouseId)}?`;
+      case "in": return `Add ${what} to stock?`;
+      case "out": return `Remove ${what} from stock?`;
+      case "opening": return `Record an opening balance of ${what}?`;
     }
   }
 
@@ -154,7 +148,7 @@ export default function StockForm({
     }
   }
 
-  const noOptions = products.length === 0 || warehouses.length === 0;
+  const noOptions = products.length === 0;
 
   return (
     <form onSubmit={onSubmit} noValidate aria-label={ACTION_LABELS[action].title} className="space-y-4 rounded-xl border border-indigo-500/30 bg-slate-900/60 p-5">
@@ -188,36 +182,6 @@ export default function StockForm({
           </select>
           {errors.productId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.productId}</span>}
         </label>
-
-        {action === "transfer" ? (
-          <>
-            <label className="text-xs font-medium text-slate-400">
-              From warehouse
-              <select value={values.fromWarehouseId} onChange={(e) => update("fromWarehouseId", e.target.value)} aria-invalid={Boolean(errors.fromWarehouseId)} className={`${selectClass} ${fieldBorder(errors.fromWarehouseId)}`}>
-                <option value="">Choose…</option>
-                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
-              </select>
-              {errors.fromWarehouseId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.fromWarehouseId}</span>}
-            </label>
-            <label className="text-xs font-medium text-slate-400">
-              To warehouse
-              <select value={values.toWarehouseId} onChange={(e) => update("toWarehouseId", e.target.value)} aria-invalid={Boolean(errors.toWarehouseId)} className={`${selectClass} ${fieldBorder(errors.toWarehouseId)}`}>
-                <option value="">Choose…</option>
-                {warehouses.filter((w) => w.id !== values.fromWarehouseId).map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
-              </select>
-              {errors.toWarehouseId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.toWarehouseId}</span>}
-            </label>
-          </>
-        ) : (
-          <label className="text-xs font-medium text-slate-400 sm:col-span-2">
-            Warehouse
-            <select value={values.warehouseId} onChange={(e) => update("warehouseId", e.target.value)} aria-invalid={Boolean(errors.warehouseId)} className={`${selectClass} ${fieldBorder(errors.warehouseId)}`}>
-              <option value="">Choose a warehouse…</option>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
-            </select>
-            {errors.warehouseId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.warehouseId}</span>}
-          </label>
-        )}
 
         <label className="text-xs font-medium text-slate-400">
           Quantity{product ? ` (${product.unit})` : ""}

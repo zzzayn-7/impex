@@ -249,7 +249,7 @@ def main() -> int:
         files_before = volume_files()
         s, html, loc = page("a1", "/")
         check("the dashboard redirects to /setup (a real HTTP redirect, before anything is shown)", is_redirect(s) and loc.endswith("/setup"), (s, loc))
-        for path in ("/products", "/warehouses", "/stock", "/scan", "/movements", "/clients", "/delivery-lists", "/dispatches", "/invoices", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
+        for path in ("/products", "/stock", "/scan", "/movements", "/clients", "/delivery-lists", "/dispatches", "/invoices", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
             s, html, loc = page("a1", path)
             check(f"typing {path} in the address bar is redirected to /setup, not shown", is_redirect(s) and loc.endswith("/setup"), (s, loc))
         s, html, loc = page("a1", "/login")

@@ -36,7 +36,7 @@ def tenant_routes():
 
 
 def test_the_service_has_routes_to_check():
-    assert len(tenant_routes()) >= 25
+    assert len(tenant_routes()) >= 20
 
 
 @pytest.mark.parametrize("method,path,name", tenant_routes(), ids=lambda v: v if isinstance(v, str) else None)
@@ -47,7 +47,7 @@ def test_every_inventory_route_refuses_an_organization_without_the_module(client
 
 
 def test_the_same_routes_work_when_the_module_is_enabled(client, two_orgs):
-    for path in ("/products", "/warehouses", "/stock", "/stock/movements"):
+    for path in ("/products", "/stock", "/stock/movements"):
         assert client.get(PREFIX + path, headers=two_orgs["alpha"].headers).status_code == 200, path
 
 
@@ -70,7 +70,7 @@ def test_inventory_needs_only_itself(client, directory, two_orgs, modules, allow
 def test_when_the_entitlement_cannot_be_read_nothing_is_allowed(client, directory, two_orgs, mode):
     directory.org_mode = mode
     assert client.get(f"{PREFIX}/products", headers=two_orgs["alpha"].headers).status_code == 503
-    assert client.post(f"{PREFIX}/warehouses", json={"code": "X", "name": "X"}, headers=two_orgs["alpha"].headers).status_code == 503
+    assert client.get(f"{PREFIX}/stock", headers=two_orgs["alpha"].headers).status_code == 503
 
 
 def test_nothing_the_browser_sends_can_switch_a_module_on(client, directory, two_orgs):
@@ -101,22 +101,22 @@ def test_super_admins_never_pass(client, directory):
 
 def test_switching_the_module_off_hides_stock_and_products_and_switching_it_on_restores_them(client, directory, two_orgs, session_factory):
     api, org = two_orgs["alpha"], two_orgs["alpha_id"]
-    bolt, depot = api.product(sku="BOLT-1"), api.warehouse("MAIN")
-    api.add(bolt, depot, 40)
+    bolt = api.product(sku="BOLT-1")
+    api.add(bolt, 40)
 
     def rows():
         with session_factory() as db:
-            return [db.execute(text(f"SELECT count(*) FROM {t} WHERE organization_id = :o"), {"o": org}).scalar() for t in ("products", "warehouses", "stock_movements")]
+            return [db.execute(text(f"SELECT count(*) FROM {t} WHERE organization_id = :o"), {"o": org}).scalar() for t in ("products", "stock_movements")]
 
     before = rows()
-    assert before[0] == 1 and before[1] == 1 and before[2] >= 1
+    assert before[0] == 1 and before[1] >= 1
     modules_of(directory, org, ["purchasing", "sales"])
     refused(client.get(f"{PREFIX}/products/{bolt['id']}", headers=api.headers))
-    refused(api.change("out", product_id=bolt["id"], warehouse_id=depot["id"], quantity="5"))  # stock cannot move while it is off
+    refused(api.change("out", product_id=bolt["id"], quantity="5"))  # stock cannot move while it is off
     refused(client.get(f"{PREFIX}/stock", headers=api.headers))
     assert rows() == before  # not one record was touched
     modules_of(directory, org, ["inventory"])
-    assert api.quantity(bolt, depot) in ("40", "40.0000")
+    assert api.quantity(bolt) in ("40", "40.0000")
     assert client.get(f"{PREFIX}/products/{bolt['id']}", headers=api.headers).json()["sku"] == "BOLT-1"
 
 

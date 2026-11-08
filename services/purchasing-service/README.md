@@ -38,8 +38,8 @@ through the Inventory Service's own audited, idempotent operation:
 | `PATCH /purchase-orders/{id}` | edit the header (draft only) |
 | `POST /purchase-orders/{id}/order` | place the order: Draft to **Ordered** (freezes it) |
 | `POST /purchase-orders/{id}/cancel` | Draft or Ordered (with nothing received) to **Cancelled** (kept for history; its draft receipts are cancelled with it) |
-| `POST /purchase-orders/{id}/lines` | add an existing product: only `product_id`, `quantity`, `unit_price`, optional `planned_warehouse_id` and `notes` |
-| `PATCH /purchase-orders/{id}/lines/{line_id}` | change quantity / price / planned warehouse / note (the total is recalculated here) |
+| `POST /purchase-orders/{id}/lines` | add an existing product: only `product_id`, `quantity`, `unit_price` and optional `notes` |
+| `PATCH /purchase-orders/{id}/lines/{line_id}` | change quantity / price / note (the total is recalculated here) |
 | `DELETE /purchase-orders/{id}/lines/{line_id}` | remove a line from a draft |
 
 ### Life cycle
@@ -68,10 +68,10 @@ change of a line's `id`, `organization_id` or `purchase_order_id`, so a line of 
 | Method & path | Purpose |
 | :--- | :--- |
 | `POST /goods-receipts` | start a **draft** receipt against an Ordered / Partially Received order, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
-| `GET /goods-receipts?purchase_order_id=&supplier_id=&status=&warehouse_id=&product_id=&q=&date_from=&date_to=` | list / filter / search |
+| `GET /goods-receipts?purchase_order_id=&supplier_id=&status=&product_id=&q=&date_from=&date_to=` | list / filter / search |
 | `GET /goods-receipts/{id}` | the receipt, its lines (ordered / received elsewhere / receivable), posting bookkeeping and stock movements |
 | `PATCH /goods-receipts/{id}` | edit the date, the supplier's reference or the notes (draft only) |
-| `PUT /goods-receipts/{id}/lines` | replace the draft's lines: per order line the **accepted** quantity, an optional **rejected** quantity, the **warehouse**, a note |
+| `PUT /goods-receipts/{id}/lines` | replace the draft's lines: per order line the **accepted** quantity, an optional **rejected** quantity, a note |
 | `POST /goods-receipts/{id}/confirm` | add the accepted quantities to stock. `200` confirmed (also if it already was); `202` the posting could not be verified yet - call it again |
 | `POST /goods-receipts/{id}/cancel` | discard a draft (kept for history) |
 
@@ -86,11 +86,11 @@ or `cancelled`. A `posting` receipt returns to `draft` only after the Inventory 
 1. **The intent is saved first** (short transaction): `draft -> posting`, with an attempt counter. From that moment the receipt is frozen and its quantities are reserved.
 2. **No database transaction is open while the Inventory Service is called.** The call carries the **stable `Idempotency-Key` `goods-receipt-<receipt id>`** (a check constraint ties the key to the id), the caller's own token and all accepted lines at once.
    The Inventory Service posts them in one transaction, once per key, and also refuses a receipt line it has already posted under any other key.
-3. **Only a verified answer confirms.** The answer must name this receipt, one movement per accepted line, each for the right product, warehouse and quantity. Then, in one short transaction, the movement ids are stored on the lines,
+3. **Only a verified answer confirms.** The answer must name this receipt, one movement per accepted line, each for the right product and quantity. Then, in one short transaction, the movement ids are stored on the lines,
    the receipt becomes `confirmed` and the order `Partially Received` / `Received`. The database refuses to confirm a receipt whose accepted lines lack their movement.
 4. **When the outcome is unknown** (timeout, connection lost, 5xx, an answer that does not match) the receipt stays `posting` and `confirm` answers `202`. Before giving up, the service asks the Inventory Service whether the posting happened
    (`GET /goods-receipts/by-key/{key}`) and finishes the job if it did. Calling `confirm` again - from any process, after any restart - repeats the posting with the same key; the Inventory Service replays the first result, so the goods are never added twice.
-5. **A definitive refusal** (archived product, a unit that changed, an unknown warehouse...) is confirmed with the same status lookup, then the receipt returns to `draft` with the reason, and nothing was added.
+5. **A definitive refusal** (archived product, a unit that changed...) is confirmed with the same status lookup, then the receipt returns to `draft` with the reason, and nothing was added.
 
 There is no background worker: recovery is the retry of `confirm`, which needs an administrator's token (the Inventory Service is always asked as the person who uses the portal). A receipt left in `posting` is listed with a *Retry posting* button.
 
@@ -106,7 +106,6 @@ Also enforced here: the unit of a receipt line is the order line's unit and is n
 * No product records are created or copied: a line points at the existing product (and keeps display snapshots).
 * Whole numbers only for units that are not measurable (pieces, boxes, ...), as decided by the Inventory Service.
 * One line per product per order (database `UNIQUE`); adding it again answers `409 duplicate_line` with the existing line.
-* A planned warehouse is optional and validated against the Inventory Service (must be the caller's and active).
 
 ### Reliability
 

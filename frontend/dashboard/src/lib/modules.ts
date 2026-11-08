@@ -11,7 +11,7 @@ export const MODULE_KEYS: ModuleKey[] = ["inventory", "purchasing", "sales", "fi
 export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory", purchasing: "Purchasing", sales: "Sales", finance: "Finance" };
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
-  inventory: "Products, warehouses and stock, with scanning and a full movement history.",
+  inventory: "Products and stock, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock.",
   sales: "Selling to clients: delivery lists, dispatches from stock, invoices and payments.",
   finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
@@ -24,7 +24,6 @@ export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], 
 export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> = {
   inventory: [
     { label: "Products", href: "/products" },
-    { label: "Warehouses", href: "/warehouses" },
     { label: "Stock", href: "/stock" },
     { label: "Scan Product", href: "/scan" },
     { label: "Movements", href: "/movements" },
@@ -50,7 +49,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
 
 // Header navigation keys -> module. A key that is not here (dashboard, support) is always available.
 export const NAV_MODULE: Record<string, ModuleKey> = {
-  products: "inventory", warehouses: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
+  products: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
   deliveries: "sales", dispatches: "sales", invoices: "sales", clients: "sales",
   finance: "finance",
@@ -58,7 +57,7 @@ export const NAV_MODULE: Record<string, ModuleKey> = {
 
 // The portal's business API routes -> module (the same routes the setup gate covers).
 const API_MODULES: [RegExp, ModuleKey][] = [
-  [/^\/api\/(products|warehouses|stock|scan)(\/|$)/, "inventory"],
+  [/^\/api\/(products|stock|scan)(\/|$)/, "inventory"],
   [/^\/api\/purchasing(\/|$)/, "purchasing"],
   [/^\/api\/sales(\/|$)/, "sales"],
   [/^\/api\/finance(\/|$)/, "finance"],

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 // ADD an existing product to a DRAFT order with the ordered quantity and the unit purchase price.
 //
-// Only the product id, the quantity and the price (exact strings, never numbers), an optional planned warehouse and a note
+// Only the product id, the quantity and the price (exact strings, never numbers) and an optional note
 // are read from the browser. The product's name, SKU and unit are fetched by the Purchasing Service from the Inventory
 // Service, and the line total is calculated there; anything else in the request is dropped here. If the product is already on
 // the order the answer is 409 "duplicate_line" with the existing line.
@@ -24,12 +24,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!quantity.ok) return fail(quantity.message, 400, { fieldErrors: { quantity: quantity.message } });
   const price = checkPrice(body.unitPrice);
   if (!price.ok) return fail(price.message, 400, { fieldErrors: { unitPrice: price.message } });
-  let warehouseId: string | undefined;
-  if (body.plannedWarehouseId !== undefined && body.plannedWarehouseId !== null && body.plannedWarehouseId !== "") {
-    const valid = checkUuid(body.plannedWarehouseId);
-    if (!valid) return fail("Choose a valid warehouse.", 400, { fieldErrors: { plannedWarehouseId: "Choose a valid warehouse." } });
-    warehouseId = valid;
-  }
   const notes = text(body.notes) ?? "";
   if (notes.length > 500) return fail("Use 500 characters or fewer.", 400, { fieldErrors: { notes: "Use 500 characters or fewer." } });
 
@@ -37,7 +31,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     product_id: productId,
     quantity: quantity.value,
     unit_price: price.value,
-    ...(warehouseId ? { planned_warehouse_id: warehouseId } : {}),
     ...(notes ? { notes } : {}),
   });
   if (!result || result.status !== 201) return purchasingFailureResponse(result, "Purchase order not found.");

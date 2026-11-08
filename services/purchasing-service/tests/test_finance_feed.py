@@ -24,7 +24,7 @@ def feed(client, org, **params):
 
 def test_only_a_confirmed_receipt_is_an_event_valued_at_what_was_accepted(client, api, shop, two_orgs):
     order = api.ordered(shop)  # PO-000001: 10 bolts and 5 kg flour at 2.00
-    draft = api.draft(order["id"], [received(order, shop["bolt"], 8, shop["main"], rejected="2"), received(order, shop["flour"], 0, shop["main"], rejected="5")])
+    draft = api.draft(order["id"], [received(order, shop["bolt"], 8, rejected="2"), received(order, shop["flour"], 0, rejected="5")])
     assert feed(client, two_orgs["alpha_id"])["events"] == []  # an order is a plan and a draft receipt is a plan: neither is an obligation
     assert api.confirm(draft["id"]).status_code in (200, 202)
     (event,) = feed(client, two_orgs["alpha_id"])["events"]
@@ -36,7 +36,7 @@ def test_only_a_confirmed_receipt_is_an_event_valued_at_what_was_accepted(client
 
 def test_the_order_alone_and_an_unconfirmed_posting_receipt_create_no_event(client, api, shop, two_orgs, inventory):
     order = api.ordered(shop)
-    draft = api.draft(order["id"], [received(order, shop["bolt"], 10, shop["main"])])
+    draft = api.draft(order["id"], [received(order, shop["bolt"], 10)])
     inventory.post_modes = ["timeout_after"]
     inventory.lookup_mode = "500"
     assert api.confirm(draft["id"]).status_code == 202  # left `posting`: not confirmed yet
@@ -48,7 +48,7 @@ def test_the_order_alone_and_an_unconfirmed_posting_receipt_create_no_event(clie
 
 def test_the_feed_never_changes_anything(client, api, shop, two_orgs, session_factory):
     order = api.ordered(shop)
-    api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 10, shop["main"])])["id"])
+    api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 10)])["id"])
     sql = "SELECT (SELECT count(*) FROM purchase_orders) || '/' || (SELECT max(updated_at)::text FROM goods_receipts) || '/' || (SELECT count(*) FROM goods_receipt_lines)"
     with session_factory() as db:
         before = db.execute(text(sql)).scalar()
@@ -61,7 +61,7 @@ def test_the_feed_never_changes_anything(client, api, shop, two_orgs, session_fa
 def test_since_limit_and_has_more(client, api, shop, two_orgs):
     for n in range(2):
         order = api.ordered(shop, supplier=f"Supplier {n}")
-        api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 1, shop["main"])])["id"])
+        api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 1)])["id"])
     assert len(feed(client, two_orgs["alpha_id"])["events"]) == 2
     page = feed(client, two_orgs["alpha_id"], limit=1)
     assert len(page["events"]) == 1 and page["has_more"] is True
@@ -71,7 +71,7 @@ def test_since_limit_and_has_more(client, api, shop, two_orgs):
 
 def test_each_organization_gets_only_its_own_events(client, api, shop, two_orgs):
     order = api.ordered(shop)
-    api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 10, shop["main"])])["id"])
+    api.confirm(api.draft(order["id"], [received(order, shop["bolt"], 10)])["id"])
     assert len(feed(client, two_orgs["alpha_id"])["events"]) == 1
     assert feed(client, two_orgs["beta_id"]) == {"events": [], "has_more": False}
     assert feed(client, str(uuid.uuid4())) == {"events": [], "has_more": False}

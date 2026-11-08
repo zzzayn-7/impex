@@ -9,24 +9,23 @@ from conftest import RECEIPTS, bearer, received
 
 @pytest.fixture
 def world(two_orgs, inventory):
-    """Each organization: a product with the SAME SKU, a warehouse, a placed order for 10, a DRAFT receipt and a CONFIRMED one."""
+    """Each organization: a product with the SAME SKU, a placed order for 10, a DRAFT receipt and a CONFIRMED one."""
     data = {}
     for who in ("alpha", "beta"):
         org = two_orgs[who]
         product = inventory.add_product(org.org_id, "SHARED-SKU", f"{who} gadget", "pcs")
-        warehouse = inventory.add_warehouse(org.org_id, "MAIN")
         order = org.ordered({"gadget": product}, lines=(("gadget", 10),))
-        confirmed = org.draft(order["id"], [received(order, product, 3, warehouse)])
+        confirmed = org.draft(order["id"], [received(order, product, 3)])
         assert org.confirm(confirmed["id"]).status_code == 200
-        draft = org.draft(order["id"], [received(order, product, 2, warehouse)])
-        data[who] = {"product": product, "warehouse": warehouse, "order": order, "confirmed": confirmed, "draft": draft}
+        draft = org.draft(order["id"], [received(order, product, 2)])
+        data[who] = {"product": product, "order": order, "confirmed": confirmed, "draft": draft}
     return data
 
 
 def snapshot(session_factory):
     with session_factory() as db:
         receipts = db.execute(text("SELECT id, organization_id, number, status, notes, received_date FROM goods_receipts ORDER BY id")).all()
-        lines = db.execute(text("SELECT id, organization_id, goods_receipt_id, accepted_quantity, rejected_quantity, warehouse_id FROM goods_receipt_lines ORDER BY id")).all()
+        lines = db.execute(text("SELECT id, organization_id, goods_receipt_id, accepted_quantity, rejected_quantity FROM goods_receipt_lines ORDER BY id")).all()
         orders = db.execute(text("SELECT id, status FROM purchase_orders ORDER BY id")).all()
     return [tuple(r) for r in receipts], [tuple(l) for l in lines], [tuple(o) for o in orders]
 
@@ -45,7 +44,7 @@ def test_searching_and_filtering_cannot_reach_the_other_organization(two_orgs, w
     alpha, theirs = two_orgs["alpha"], world["beta"]
     for params in (
         {"purchase_order_id": theirs["order"]["id"]}, {"supplier_id": theirs["order"]["supplier"]["id"]},
-        {"warehouse_id": theirs["warehouse"]}, {"product_id": theirs["product"]}, {"q": "beta"},
+        {"product_id": theirs["product"]}, {"q": "beta"},
     ):
         assert alpha.client.get(RECEIPTS, params=params, headers=alpha.headers).json()["total"] == 0, params
 
@@ -71,15 +70,12 @@ def test_a_receipt_cannot_be_started_against_another_organizations_order(two_org
     assert mine["purchase_order"]["number"] == "PO-000001"
 
 
-def test_another_organizations_lines_warehouses_and_products_are_not_found(two_orgs, world):
+def test_another_organizations_lines_and_products_are_not_found(two_orgs, world):
     alpha, mine, theirs = two_orgs["alpha"], world["alpha"], world["beta"]
-    their_line = received(theirs["order"], theirs["product"], 1, mine["warehouse"])
+    their_line = received(theirs["order"], theirs["product"], 1)
     stolen_line = alpha.receipt(mine["order"]["id"], [their_line])
     ghost_line = alpha.receipt(mine["order"]["id"], [{**their_line, "purchase_order_line_id": str(uuid.uuid4())}])
     assert stolen_line.status_code == ghost_line.status_code == 404 and stolen_line.json() == ghost_line.json()
-    stolen_warehouse = alpha.receipt(mine["order"]["id"], [received(mine["order"], mine["product"], 1, theirs["warehouse"])])
-    ghost_warehouse = alpha.receipt(mine["order"]["id"], [received(mine["order"], mine["product"], 1, str(uuid.uuid4()))])
-    assert stolen_warehouse.status_code == ghost_warehouse.status_code == 404 and stolen_warehouse.json() == ghost_warehouse.json()
 
 
 @pytest.mark.parametrize("attacker,victim", [("alpha", "beta"), ("beta", "alpha")])

@@ -11,7 +11,6 @@ import { POST as receiptAction } from "@/app/api/purchasing/goods-receipts/[id]/
 const ID = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718";
 const LINE = "11111111-1111-4111-8111-111111111111";
 const LINE2 = "11111111-1111-4111-8111-222222222222";
-const WAREHOUSE = "33333333-3333-4333-8333-333333333333";
 const ORDER = "44444444-4444-4444-8444-444444444444";
 const TOKEN = "session-token-abc";
 const PURCHASING = "http://purchasing-service:8004";
@@ -61,7 +60,7 @@ describe("failure mapping for receipts", () => {
   });
 });
 
-const lineBody = (extra: Record<string, unknown> = {}) => ({ purchaseOrderLineId: LINE, acceptedQuantity: "10", rejectedQuantity: "1", warehouseId: WAREHOUSE, notes: "  two dented  ", ...extra });
+const lineBody = (extra: Record<string, unknown> = {}) => ({ purchaseOrderLineId: LINE, acceptedQuantity: "10", rejectedQuantity: "1", notes: "  two dented  ", ...extra });
 
 describe("goods receipts: creating a draft", () => {
   it("sends only the allowed fields, the caller's token and the idempotency key", async () => {
@@ -77,16 +76,16 @@ describe("goods receipts: creating a draft", () => {
     expect(upstream().init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Idempotency-Key": KEY });
     expect(sentBody()).toEqual({
       purchase_order_id: ORDER, received_date: "2026-11-07", supplier_reference: "DN 42", notes: "n",
-      lines: [{ purchase_order_line_id: LINE, accepted_quantity: "10", rejected_quantity: "1", warehouse_id: WAREHOUSE, notes: "two dented" }],
+      lines: [{ purchase_order_line_id: LINE, accepted_quantity: "10", rejected_quantity: "1", notes: "two dented" }],
     });
   });
 
   it("quantities stay exact strings, a blank rejected quantity is zero, a number is refused", async () => {
     stub(() => json(201, {}));
-    await createReceipt(request("POST", { purchaseOrderId: ORDER, lines: [{ purchaseOrderLineId: LINE, acceptedQuantity: "2.5000", warehouseId: WAREHOUSE }] }, { key: KEY }));
-    expect(sentBody().lines[0]).toEqual({ purchase_order_line_id: LINE, accepted_quantity: "2.5000", rejected_quantity: "0", warehouse_id: WAREHOUSE });
+    await createReceipt(request("POST", { purchaseOrderId: ORDER, lines: [{ purchaseOrderLineId: LINE, acceptedQuantity: "2.5000", warehouseId: "11111111-1111-4111-8111-111111111111" }] }, { key: KEY }));
+    expect(sentBody().lines[0]).toEqual({ purchase_order_line_id: LINE, accepted_quantity: "2.5000", rejected_quantity: "0" }); // a warehouse sent by the browser is dropped
     fetchMock.mockClear();
-    const res = await createReceipt(request("POST", { purchaseOrderId: ORDER, lines: [{ purchaseOrderLineId: LINE, acceptedQuantity: 2.5, warehouseId: WAREHOUSE }] }, { key: KEY }));
+    const res = await createReceipt(request("POST", { purchaseOrderId: ORDER, lines: [{ purchaseOrderLineId: LINE, acceptedQuantity: 2.5 }] }, { key: KEY }));
     expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -105,7 +104,6 @@ describe("goods receipts: creating a draft", () => {
     ["a bad date", { purchaseOrderId: ORDER, receivedDate: "2026-13-45" }, KEY, 400],
     ["a bad quantity", { purchaseOrderId: ORDER, lines: [lineBody({ acceptedQuantity: "1e3" })] }, KEY, 400],
     ["a bad line id", { purchaseOrderId: ORDER, lines: [lineBody({ purchaseOrderLineId: "x" })] }, KEY, 400],
-    ["a bad warehouse", { purchaseOrderId: ORDER, lines: [lineBody({ warehouseId: "x" })] }, KEY, 400],
     ["lines that are not a list", { purchaseOrderId: ORDER, lines: "all" }, KEY, 400],
     ["too many lines", { purchaseOrderId: ORDER, lines: Array.from({ length: 501 }, () => lineBody()) }, KEY, 400],
     ["a long note", { purchaseOrderId: ORDER, notes: "x".repeat(2001) }, KEY, 400],
@@ -138,13 +136,13 @@ describe("goods receipts: creating a draft", () => {
 describe("goods receipts: lines, header, reading", () => {
   it("replaces the lines with a PUT of exactly the allowed fields", async () => {
     stub(() => json(200, { id: ID }));
-    const res = await saveLines(request("PUT", { lines: [lineBody(), lineBody({ purchaseOrderLineId: LINE2, acceptedQuantity: "0", rejectedQuantity: "3", warehouseId: "", notes: "" })], organization_id: "evil" }), params());
+    const res = await saveLines(request("PUT", { lines: [lineBody(), lineBody({ purchaseOrderLineId: LINE2, acceptedQuantity: "0", rejectedQuantity: "3", notes: "" })], organization_id: "evil" }), params());
     expect(res.status).toBe(200);
     expect(upstream().url).toBe(`${PURCHASING}/api/v1/purchasing/goods-receipts/${ID}/lines`);
     expect(upstream().init.method).toBe("PUT");
     expect(sentBody()).toEqual({
       lines: [
-        { purchase_order_line_id: LINE, accepted_quantity: "10", rejected_quantity: "1", warehouse_id: WAREHOUSE, notes: "two dented" },
+        { purchase_order_line_id: LINE, accepted_quantity: "10", rejected_quantity: "1", notes: "two dented" },
         { purchase_order_line_id: LINE2, accepted_quantity: "0", rejected_quantity: "3" },
       ],
     });
@@ -181,9 +179,9 @@ describe("goods receipts: lines, header, reading", () => {
 
   it("lists with whitelisted parameters only", async () => {
     stub(() => json(200, { items: [], total: 0, limit: 50, offset: 0 }));
-    await listReceipts(request("GET", undefined, { query: `?status=confirmed&supplierId=${ID}&warehouseId=${WAREHOUSE}&purchaseOrderId=${ORDER}&dateFrom=2026-11-01&dateTo=2026-11-30&q=%20dn&organization_id=evil&sort=x` }));
+    await listReceipts(request("GET", undefined, { query: `?status=confirmed&supplierId=${ID}&warehouseId=11111111-1111-4111-8111-111111111111&purchaseOrderId=${ORDER}&dateFrom=2026-11-01&dateTo=2026-11-30&q=%20dn&organization_id=evil&sort=x` }));
     expect(Object.fromEntries(new URL(upstream().url).searchParams)).toEqual({
-      status: "confirmed", supplier_id: ID, warehouse_id: WAREHOUSE, purchase_order_id: ORDER, date_from: "2026-11-01", date_to: "2026-11-30", q: "dn", limit: "50", offset: "0",
+      status: "confirmed", supplier_id: ID, purchase_order_id: ORDER, date_from: "2026-11-01", date_to: "2026-11-30", q: "dn", limit: "50", offset: "0",
     });
     fetchMock.mockClear();
     await listReceipts(request("GET", undefined, { query: "?status=bogus" }));

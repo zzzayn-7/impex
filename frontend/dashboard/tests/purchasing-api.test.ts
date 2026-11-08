@@ -15,7 +15,6 @@ import { DELETE as removeLine, PATCH as editLine } from "@/app/api/purchasing/pu
 const ID = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718";
 const LINE = "11111111-1111-4111-8111-111111111111";
 const PRODUCT = "22222222-2222-4222-8222-222222222222";
-const WAREHOUSE = "33333333-3333-4333-8333-333333333333";
 const TOKEN = "session-token-abc";
 const PURCHASING = "http://purchasing-service:8004";
 const KEY = "ui-3f2b8c1e-0000-4000-8000-000000000001";
@@ -271,15 +270,15 @@ describe("orders: reading, editing, placing, cancelling", () => {
 describe("lines", () => {
   const ctx = { params: { id: ID } };
 
-  it("adds an existing product: forwards ONLY id, quantity, price, warehouse and note", async () => {
+  it("adds an existing product: forwards ONLY id, quantity, price and note", async () => {
     stub(() => json(201, { line: { id: LINE }, line_count: 1, total_amount: "62.5000" }));
     const res = await addLine(request("POST", {
-      productId: PRODUCT, quantity: " 50 ", unitPrice: " 1.25 ", plannedWarehouseId: WAREHOUSE, notes: " pallet ",
+      productId: PRODUCT, quantity: " 50 ", unitPrice: " 1.25 ", plannedWarehouseId: "11111111-1111-4111-8111-111111111111", notes: " pallet ",
       productName: "Hacked", productSku: "X", unit: "kg", lineTotal: "0.01", line_total: "0.01", total_amount: "0", selling_price: "0.01", organization_id: "evil",
     }), ctx);
     expect(res.status).toBe(201);
     expect(upstream().url).toBe(`${PURCHASING}/api/v1/purchasing/purchase-orders/${ID}/lines`);
-    expect(sentBody()).toEqual({ product_id: PRODUCT, quantity: "50", unit_price: "1.25", planned_warehouse_id: WAREHOUSE, notes: "pallet" });
+    expect(sentBody()).toEqual({ product_id: PRODUCT, quantity: "50", unit_price: "1.25", notes: "pallet" }); // a warehouse sent by the browser is dropped
   });
 
   it("keeps quantity and price exact strings", async () => {
@@ -295,7 +294,7 @@ describe("lines", () => {
     ["a JSON number quantity", { productId: PRODUCT, quantity: 5, unitPrice: "1" }, "quantity"], ["text quantity", { productId: PRODUCT, quantity: "lots", unitPrice: "1" }, "quantity"],
     ["no price", { productId: PRODUCT, quantity: "1" }, "unitPrice"], ["negative price", { productId: PRODUCT, quantity: "1", unitPrice: "-1" }, "unitPrice"],
     ["a JSON number price", { productId: PRODUCT, quantity: "1", unitPrice: 1.25 }, "unitPrice"], ["5-decimal price", { productId: PRODUCT, quantity: "1", unitPrice: "1.00001" }, "unitPrice"],
-    ["bad warehouse", { productId: PRODUCT, quantity: "1", unitPrice: "1", plannedWarehouseId: "nope" }, "plannedWarehouseId"], ["long note", { productId: PRODUCT, quantity: "1", unitPrice: "1", notes: "x".repeat(501) }, "notes"],
+    ["long note", { productId: PRODUCT, quantity: "1", unitPrice: "1", notes: "x".repeat(501) }, "notes"],
   ])("rejects %s without calling the service", async (_name, body, field) => {
     const res = await addLine(request("POST", body), ctx);
     expect(res.status).toBe(400);
@@ -331,9 +330,9 @@ describe("lines", () => {
     expect(upstream().url).toBe(`${PURCHASING}/api/v1/purchasing/purchase-orders/${ID}/lines/${LINE}`);
     expect(sentBody()).toEqual({ quantity: "8", unit_price: "2.5" });
     fetchMock.mockClear();
-    await editLine(request("PATCH", { plannedWarehouseId: null }), both);
-    expect(sentBody()).toEqual({ planned_warehouse_id: null });
     fetchMock.mockClear();
+    expect((await editLine(request("PATCH", { plannedWarehouseId: null }), both)).status).toBe(400); // nothing left to change
+    expect(fetchMock).not.toHaveBeenCalled();
     expect((await removeLine(request("DELETE"), both)).status).toBe(200);
     expect(upstream().init.method).toBe("DELETE");
   });

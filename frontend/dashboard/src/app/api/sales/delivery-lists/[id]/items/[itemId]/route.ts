@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string; itemId: string } };
 
-// SET the quantity (and/or planned warehouse) of a line of a draft list.
+// SET the quantity of a line of a draft list.
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const token = sessionToken(req);
   if (!token) return fail("You are not signed in.", 401);
@@ -20,11 +20,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const quantity = checkQuantity(body.quantity);
     if (!quantity.ok) return fail(quantity.message, 400, { fieldErrors: { quantity: quantity.message } });
     change.quantity = quantity.value;
-  }
-  if (body.plannedWarehouseId !== undefined) {
-    if (body.plannedWarehouseId === null || body.plannedWarehouseId === "") change.planned_warehouse_id = null;
-    else if (checkUuid(body.plannedWarehouseId)) change.planned_warehouse_id = body.plannedWarehouseId;
-    else return fail("Choose a valid warehouse.", 400, { fieldErrors: { plannedWarehouseId: "Choose a valid warehouse." } });
   }
   if (Object.keys(change).length === 0) return fail("Nothing to change.", 400);
 

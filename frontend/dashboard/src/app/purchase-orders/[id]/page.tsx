@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { listWarehouseChoices } from "@/lib/inventory";
 import { getPurchaseOrder, listSupplierChoices } from "@/lib/purchasing";
 import { UUID_RE } from "@/lib/stock-validation";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
@@ -37,11 +36,11 @@ export default async function PurchaseOrderPage({ params }: { params: { id: stri
   }
   // Pickers are only needed while the order can still be edited.
   const editable = result.order.status === "draft";
-  const [warehouses, suppliers] = editable ? await Promise.all([listWarehouseChoices(token, "active"), listSupplierChoices(token, "active")]) : [[], []];
+  const suppliers = editable ? await listSupplierChoices(token, "active") : [];
   return (
     <div className="space-y-5">
       {back}
-      <OrderDetail order={result.order} warehouses={warehouses} suppliers={suppliers} />
+      <OrderDetail order={result.order} suppliers={suppliers} />
     </div>
   );
 }

@@ -165,7 +165,7 @@ describe("the business APIs wait for setup (middleware)", () => {
       return json(404, {});
     });
   const api = (path: string, cookie: string | null = `impex_tenant_session=${TOKEN}`) => new NextRequest(`http://localhost:3001${path}`, { method: "POST", headers: cookie ? { cookie } : {} });
-  const gated = ["/api/products", "/api/products/abc", "/api/warehouses", "/api/stock/in", "/api/scan/resolve", "/api/sales/invoices", "/api/sales/dispatches/x/confirm", "/api/purchasing/orders", "/api/purchasing/receipts/x"];
+  const gated = ["/api/products", "/api/products/abc", "/api/stock/in", "/api/scan/resolve", "/api/sales/invoices", "/api/sales/dispatches/x/confirm", "/api/purchasing/orders", "/api/purchasing/receipts/x"];
 
   it.each(gated)("%s answers 403 setup_required while the company is not set up", async (path) => {
     world({ setup: "pending" });

@@ -5,10 +5,9 @@ Guarantees (each is also backed by a database constraint, so a bug here cannot s
   * A balance never goes negative.      CHECK (quantity >= 0), plus the row is locked while it is read and changed.
   * Every change is in the ledger.      One movement row per change, written in the SAME transaction as the balance.
   * The ledger is append-only.          A trigger rejects UPDATE/DELETE; there is no API for either.
-  * A transfer is atomic.               Both balances and both movements commit together or not at all.
   * Retries are safe.                   Each request carries an Idempotency-Key; a repeat replays the first result.
-  * Tenants never mix.                  Every query is tenant-scoped, and composite foreign keys tie a stock row,
-                                        its product and its warehouse to the same organization in the database.
+  * Tenants never mix.                  Every query is tenant-scoped, and composite foreign keys tie a stock row
+                                        and its product to the same organization in the database.
   * Quantities are exact decimals, whole numbers for indivisible units (pieces, boxes, ...).
 """
 import hashlib
@@ -24,7 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext
-from app.models import Product, StockBalance, StockMovement, StockOperation, Warehouse
+from app.models import Product, StockBalance, StockMovement, StockOperation
 from app.schemas import (
     MovementList,
     MovementResponse,
@@ -34,11 +33,9 @@ from app.schemas import (
     ReceiptPost,
     ReceiptPosting,
     StockChange,
-    StockLine,
     StockOperationResult,
     StockOverview,
     StockProduct,
-    StockTransfer,
 )
 from app.search import like_pattern
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
@@ -46,7 +43,7 @@ from app.units import allows_fractions
 
 QUANT = Decimal("0.0001")
 ZERO = Decimal("0")
-DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "transfer": "Stock transfer", "receipt": "Goods receipt", "dispatch": "Client dispatch"}
+DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "receipt": "Goods receipt", "dispatch": "Client dispatch"}
 
 
 # --- small helpers -----------------------------------------------------------------------------------
@@ -86,12 +83,9 @@ def _load_product_locked(db: Session, tenant: TenantContext, product_id: uuid.UU
     return product
 
 
-def _require_active(product: Product, *warehouses: Warehouse) -> None:
+def _require_active(product: Product) -> None:
     if not product.is_active:
         raise HTTPException(status.HTTP_409_CONFLICT, f"{product.name} is archived. Restore it before changing its stock.")
-    for warehouse in warehouses:
-        if not warehouse.is_active:
-            raise HTTPException(status.HTTP_409_CONFLICT, f"Warehouse {warehouse.code} is archived. Restore it before changing its stock.")
 
 
 def _check_quantity_for_unit(product: Product, quantity: Decimal) -> None:
@@ -102,11 +96,10 @@ def _check_quantity_for_unit(product: Product, quantity: Decimal) -> None:
         )
 
 
-def _insufficient(product: Product, warehouse: Warehouse, available: Decimal, requested: Decimal) -> HTTPException:
+def _insufficient(product: Product, available: Decimal, requested: Decimal) -> HTTPException:
     return HTTPException(
         status.HTTP_409_CONFLICT,
-        f"Insufficient stock: {human(available)} {product.unit} of {product.name} available in {warehouse.code}, "
-        f"{human(requested)} requested.",
+        f"Insufficient stock: {human(available)} {product.unit} of {product.name} available, {human(requested)} requested.",
     )
 
 
@@ -114,13 +107,12 @@ def _insufficient(product: Product, warehouse: Warehouse, available: Decimal, re
 def _movement_query(tenant: TenantContext):
     return (
         scoped_select(StockMovement, tenant)
-        .add_columns(Product, Warehouse)
+        .add_columns(Product)
         .join(Product, and_(Product.id == StockMovement.product_id, Product.organization_id == StockMovement.organization_id))
-        .join(Warehouse, and_(Warehouse.id == StockMovement.warehouse_id, Warehouse.organization_id == StockMovement.organization_id))
     )
 
 
-def _to_response(movement: StockMovement, product: Product, warehouse: Warehouse) -> MovementResponse:
+def _to_response(movement: StockMovement, product: Product) -> MovementResponse:
     return MovementResponse(
         id=movement.id,
         operation_id=movement.operation_id,
@@ -129,14 +121,10 @@ def _to_response(movement: StockMovement, product: Product, warehouse: Warehouse
         product_name=product.name,
         product_unit=product.unit,
         unit_allows_fractions=allows_fractions(product.unit),
-        warehouse_id=warehouse.id,
-        warehouse_code=warehouse.code,
-        warehouse_name=warehouse.name,
         movement_type=movement.movement_type,
         quantity=movement.quantity,
         balance_after=movement.balance_after,
         reason=movement.reason,
-        transfer_id=movement.transfer_id,
         created_by_email=movement.created_by_email,
         source_type=movement.source_type,
         source_reference=movement.source_reference,
@@ -181,22 +169,20 @@ def _replay(db: Session, tenant: TenantContext, key: str, kind: str, request_has
 
 
 # --- balances and the ledger -----------------------------------------------------------------------------
-def _lock_balances(db: Session, tenant: TenantContext, product_id: uuid.UUID, warehouse_ids: Sequence[uuid.UUID]) -> Dict[uuid.UUID, StockBalance]:
-    """Make sure a balance row exists for each warehouse, then lock them (in a fixed order, so two transfers
-    in opposite directions can never deadlock). Nobody else can change these balances until we commit."""
-    for warehouse_id in warehouse_ids:
+def _lock_balances(db: Session, tenant: TenantContext, product_ids: Sequence[uuid.UUID]) -> Dict[uuid.UUID, StockBalance]:
+    """Make sure each product has a balance row, then lock them (in a fixed order, so two postings touching the same goods
+    can never deadlock). Nobody else can change these balances until we commit."""
+    ordered = sorted(set(product_ids), key=str)
+    for product_id in ordered:
         db.execute(
             pg_insert(StockBalance)
-            .values(organization_id=tenant.organization_id, product_id=product_id, warehouse_id=warehouse_id, quantity=0)
-            .on_conflict_do_nothing(index_elements=["organization_id", "product_id", "warehouse_id"])
+            .values(organization_id=tenant.organization_id, product_id=product_id, quantity=0)
+            .on_conflict_do_nothing(index_elements=["organization_id", "product_id"])
         )
     rows = db.scalars(
-        scoped_select(StockBalance, tenant)
-        .where(StockBalance.product_id == product_id, StockBalance.warehouse_id.in_(list(warehouse_ids)))
-        .order_by(StockBalance.warehouse_id)
-        .with_for_update()
+        scoped_select(StockBalance, tenant).where(StockBalance.product_id.in_(ordered)).order_by(StockBalance.product_id).with_for_update()
     ).all()
-    return {row.warehouse_id: row for row in rows}
+    return {row.product_id: row for row in rows}
 
 
 def _add_movement(
@@ -204,12 +190,10 @@ def _add_movement(
     tenant: TenantContext,
     operation: uuid.UUID,
     product: Product,
-    warehouse: Warehouse,
     movement_type: str,
     quantity: Decimal,
     balance_after: Decimal,
     reason: str,
-    transfer_id: Optional[uuid.UUID] = None,
     source_reference: Optional[str] = None,
     source_line_id: Optional[uuid.UUID] = None,
     source_type: str = "goods_receipt",
@@ -219,12 +203,10 @@ def _add_movement(
         tenant,
         operation_id=operation,
         product_id=product.id,
-        warehouse_id=warehouse.id,
         movement_type=movement_type,
         quantity=quantity,
         balance_after=balance_after,
         reason=reason,
-        transfer_id=transfer_id,
         source_type=source_type if source_line_id is not None else None,
         source_reference=source_reference,
         source_line_id=source_line_id,
@@ -239,7 +221,7 @@ def _add_movement(
 # --- opening balance, stock in, stock out ----------------------------------------------------------------
 def execute_change(db: Session, tenant: TenantContext, kind: str, payload: StockChange, key: str) -> StockOperationResult:
     reason = payload.reason or DEFAULT_REASONS[kind]
-    request_hash = fingerprint(kind, product=payload.product_id, warehouse=payload.warehouse_id, quantity=canonical(payload.quantity), reason=reason)
+    request_hash = fingerprint(kind, product=payload.product_id, quantity=canonical(payload.quantity), reason=reason)
     try:
         operation = _start_operation(db, tenant, kind, key, request_hash)
         if operation is None:
@@ -247,25 +229,24 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
             return _replay(db, tenant, key, kind, request_hash)
 
         product = _load_product_locked(db, tenant, payload.product_id)
-        warehouse = get_scoped_or_404(db, Warehouse, tenant, payload.warehouse_id, "Warehouse")
-        _require_active(product, warehouse)
+        _require_active(product)
         _check_quantity_for_unit(product, payload.quantity)
 
-        balance = _lock_balances(db, tenant, product.id, [warehouse.id])[warehouse.id]
+        balance = _lock_balances(db, tenant, [product.id])[product.id]
         if kind == "opening":
-            history = scoped_count(StockMovement, tenant, StockMovement.product_id == product.id, StockMovement.warehouse_id == warehouse.id)
+            history = scoped_count(StockMovement, tenant, StockMovement.product_id == product.id)
             if db.scalar(history) > 0:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
-                    f"{product.name} already has stock history in {warehouse.code}. An opening balance can only be recorded "
+                    f"{product.name} already has stock history. An opening balance can only be recorded "
                     "before any other movement; use Add stock or Remove stock instead.",
                 )
         new_balance = balance.quantity + payload.quantity if kind in ("opening", "in") else balance.quantity - payload.quantity
         if new_balance < ZERO:
-            raise _insufficient(product, warehouse, balance.quantity, payload.quantity)
+            raise _insufficient(product, balance.quantity, payload.quantity)
 
         balance.quantity = new_balance
-        _add_movement(db, tenant, operation, product, warehouse, kind, payload.quantity, new_balance, reason)
+        _add_movement(db, tenant, operation, product, kind, payload.quantity, new_balance, reason)
         db.commit()
     except Exception:
         db.rollback()
@@ -273,48 +254,10 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
     return _result(db, tenant, operation, kind, replayed=False)
 
 
-# --- transfer between warehouses ---------------------------------------------------------------------------
-def execute_transfer(db: Session, tenant: TenantContext, payload: StockTransfer, key: str) -> StockOperationResult:
-    if payload.from_warehouse_id == payload.to_warehouse_id:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose two different warehouses.")
-    reason = payload.reason or DEFAULT_REASONS["transfer"]
-    request_hash = fingerprint(
-        "transfer", product=payload.product_id, source=payload.from_warehouse_id, destination=payload.to_warehouse_id,
-        quantity=canonical(payload.quantity), reason=reason,
-    )
-    try:
-        operation = _start_operation(db, tenant, "transfer", key, request_hash)
-        if operation is None:
-            db.rollback()
-            return _replay(db, tenant, key, "transfer", request_hash)
-
-        product = _load_product_locked(db, tenant, payload.product_id)
-        source = get_scoped_or_404(db, Warehouse, tenant, payload.from_warehouse_id, "Warehouse")
-        destination = get_scoped_or_404(db, Warehouse, tenant, payload.to_warehouse_id, "Warehouse")
-        _require_active(product, source, destination)
-        _check_quantity_for_unit(product, payload.quantity)
-
-        balances = _lock_balances(db, tenant, product.id, [source.id, destination.id])
-        source_balance, destination_balance = balances[source.id], balances[destination.id]
-        if source_balance.quantity < payload.quantity:
-            raise _insufficient(product, source, source_balance.quantity, payload.quantity)
-
-        source_balance.quantity = source_balance.quantity - payload.quantity
-        destination_balance.quantity = destination_balance.quantity + payload.quantity
-        transfer_id = uuid.uuid4()
-        _add_movement(db, tenant, operation, product, source, "transfer_out", payload.quantity, source_balance.quantity, reason, transfer_id)
-        _add_movement(db, tenant, operation, product, destination, "transfer_in", payload.quantity, destination_balance.quantity, reason, transfer_id)
-        db.commit()  # both balances and both movements, or nothing
-    except Exception:
-        db.rollback()
-        raise
-    return _result(db, tenant, operation, "transfer", replayed=False)
-
-
 # --- goods receipt: several accepted quantities of purchased goods, atomically ---------------------------------
 def _receipt_fingerprint(payload: ReceiptPost) -> str:
     lines = sorted(
-        ({"line": str(l.line_id), "product": str(l.product_id), "warehouse": str(l.warehouse_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
+        ({"line": str(l.line_id), "product": str(l.product_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
         key=lambda item: item["line"],
     )
     body = json.dumps({"kind": "receipt", "receipt": payload.receipt_number, "order": payload.purchase_order_number or "", "lines": lines}, sort_keys=True)
@@ -331,8 +274,7 @@ def _receipt_result(db: Session, tenant: TenantContext, operation: uuid.UUID, re
         replayed=replayed,
         movements=[
             ReceiptMovement(
-                id=m.id, line_id=m.source_line_id, product_id=m.product_id, warehouse_id=m.warehouse_id,
-                quantity=m.quantity, balance_after=m.balance_after,
+                id=m.id, line_id=m.source_line_id, product_id=m.product_id, quantity=m.quantity, balance_after=m.balance_after,
             )
             for m in rows
         ],
@@ -351,7 +293,7 @@ def execute_receipt(db: Session, tenant: TenantContext, payload: ReceiptPost, ke
     """Add the accepted quantities of one goods receipt to stock: ALL lines or none, once per Idempotency-Key.
 
     A receipt line can produce at most one movement ever (unique index), whatever key the caller uses. The product's unit
-    must equal the unit on the line - a quantity is never reinterpreted - and archived products or warehouses are refused.
+    must equal the unit on the line - a quantity is never reinterpreted - and archived products are refused.
     """
     request_hash = _receipt_fingerprint(payload)
     try:
@@ -361,19 +303,16 @@ def execute_receipt(db: Session, tenant: TenantContext, payload: ReceiptPost, ke
             return _replay_receipt(db, tenant, key, request_hash)
 
         reason = f"{DEFAULT_REASONS['receipt']} {payload.receipt_number}" + (f" ({payload.purchase_order_number})" if payload.purchase_order_number else "")
-        # Fixed lock order (product, then warehouse) so two receipts touching the same goods can never deadlock.
-        # The sort is stable: lines for the same product and warehouse keep the order they were sent in.
-        lines = sorted(payload.lines, key=lambda l: (str(l.product_id), str(l.warehouse_id)))
+        # Fixed lock order (by product) so two receipts touching the same goods can never deadlock.
+        # The sort is stable: lines for the same product keep the order they were sent in.
+        lines = sorted(payload.lines, key=lambda l: str(l.product_id))
         products: Dict[uuid.UUID, Product] = {}
-        warehouses: Dict[uuid.UUID, Warehouse] = {}
         for line in lines:
             if line.product_id not in products:
                 products[line.product_id] = _load_product_locked(db, tenant, line.product_id)
-            if line.warehouse_id not in warehouses:
-                warehouses[line.warehouse_id] = get_scoped_or_404(db, Warehouse, tenant, line.warehouse_id, "Warehouse")
         for line in lines:
-            product, warehouse = products[line.product_id], warehouses[line.warehouse_id]
-            _require_active(product, warehouse)
+            product = products[line.product_id]
+            _require_active(product)
             if product.unit != line.unit:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
@@ -382,15 +321,12 @@ def execute_receipt(db: Session, tenant: TenantContext, payload: ReceiptPost, ke
                 )
             _check_quantity_for_unit(product, line.quantity)
 
-        balances: Dict[uuid.UUID, Dict[uuid.UUID, StockBalance]] = {}
-        for product_id in products:
-            wanted = sorted({l.warehouse_id for l in lines if l.product_id == product_id}, key=str)
-            balances[product_id] = _lock_balances(db, tenant, product_id, wanted)
+        balances = _lock_balances(db, tenant, list(products))
         for line in lines:
-            balance = balances[line.product_id][line.warehouse_id]
+            balance = balances[line.product_id]
             balance.quantity = balance.quantity + line.quantity
             _add_movement(
-                db, tenant, operation, products[line.product_id], warehouses[line.warehouse_id], "in", line.quantity,
+                db, tenant, operation, products[line.product_id], "in", line.quantity,
                 balance.quantity, reason, source_reference=payload.receipt_number, source_line_id=line.line_id,
             )
         db.commit()
@@ -425,7 +361,7 @@ def receipt_by_key(db: Session, tenant: TenantContext, key: str) -> ReceiptPosti
 # --- client dispatch: several quantities of goods leaving for a client, atomically ---------------------------------
 def _dispatch_fingerprint(payload: DispatchPost) -> str:
     lines = sorted(
-        ({"line": str(l.line_id), "product": str(l.product_id), "warehouse": str(l.warehouse_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
+        ({"line": str(l.line_id), "product": str(l.product_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
         key=lambda item: item["line"],
     )
     body = json.dumps({"kind": "dispatch", "dispatch": payload.dispatch_number, "list": payload.delivery_list_number or "", "lines": lines}, sort_keys=True)
@@ -442,8 +378,8 @@ def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, 
 
     Stock never goes negative (the balance rows are locked, in a fixed order, while they are read and changed; the database
     also checks quantity >= 0). A dispatch line can produce at most one movement ever (unique index), whatever key the caller
-    uses. The product's unit must equal the unit on the line - a quantity is never reinterpreted - and archived products or
-    warehouses are refused.
+    uses. The product's unit must equal the unit on the line - a quantity is never reinterpreted - and archived products are
+    refused.
     """
     request_hash = _dispatch_fingerprint(payload)
     try:
@@ -453,17 +389,14 @@ def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, 
             return _replay_dispatch(db, tenant, key, request_hash)
 
         reason = f"{DEFAULT_REASONS['dispatch']} {payload.dispatch_number}" + (f" ({payload.delivery_list_number})" if payload.delivery_list_number else "")
-        lines = sorted(payload.lines, key=lambda l: (str(l.product_id), str(l.warehouse_id)))  # stable: same goods keep the order sent
+        lines = sorted(payload.lines, key=lambda l: str(l.product_id))  # stable: same goods keep the order sent
         products: Dict[uuid.UUID, Product] = {}
-        warehouses: Dict[uuid.UUID, Warehouse] = {}
         for line in lines:
             if line.product_id not in products:
                 products[line.product_id] = _load_product_locked(db, tenant, line.product_id)
-            if line.warehouse_id not in warehouses:
-                warehouses[line.warehouse_id] = get_scoped_or_404(db, Warehouse, tenant, line.warehouse_id, "Warehouse")
         for line in lines:
-            product, warehouse = products[line.product_id], warehouses[line.warehouse_id]
-            _require_active(product, warehouse)
+            product = products[line.product_id]
+            _require_active(product)
             if product.unit != line.unit:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
@@ -472,17 +405,14 @@ def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, 
                 )
             _check_quantity_for_unit(product, line.quantity)
 
-        balances: Dict[uuid.UUID, Dict[uuid.UUID, StockBalance]] = {}
-        for product_id in products:
-            wanted = sorted({l.warehouse_id for l in lines if l.product_id == product_id}, key=str)
-            balances[product_id] = _lock_balances(db, tenant, product_id, wanted)
+        balances = _lock_balances(db, tenant, list(products))
         for line in lines:
-            balance = balances[line.product_id][line.warehouse_id]
+            balance = balances[line.product_id]
             if balance.quantity < line.quantity:
-                raise _insufficient(products[line.product_id], warehouses[line.warehouse_id], balance.quantity, line.quantity)
+                raise _insufficient(products[line.product_id], balance.quantity, line.quantity)
             balance.quantity = balance.quantity - line.quantity
             _add_movement(
-                db, tenant, operation, products[line.product_id], warehouses[line.warehouse_id], "out", line.quantity,
+                db, tenant, operation, products[line.product_id], "out", line.quantity,
                 balance.quantity, reason, source_reference=payload.dispatch_number, source_line_id=line.line_id, source_type="client_dispatch",
             )
         db.commit()
@@ -520,7 +450,6 @@ def list_movements(
     tenant: TenantContext,
     *,
     product_id: Optional[uuid.UUID],
-    warehouse_id: Optional[uuid.UUID],
     movement_type: Optional[str],
     limit: int,
     offset: int,
@@ -528,8 +457,6 @@ def list_movements(
     filters = []
     if product_id:
         filters.append(StockMovement.product_id == product_id)
-    if warehouse_id:
-        filters.append(StockMovement.warehouse_id == warehouse_id)
     if movement_type:
         filters.append(StockMovement.movement_type == movement_type)
     total = db.scalar(scoped_count(StockMovement, tenant, *filters))
@@ -539,34 +466,21 @@ def list_movements(
     return MovementList(items=[_to_response(*row) for row in rows], total=total, limit=limit, offset=offset)
 
 
-def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product], warehouse_id: Optional[uuid.UUID] = None) -> List[StockProduct]:
-    """Quantities per warehouse and totals for the given products (all of them the tenant's), tenant-scoped."""
-    lines: Dict[uuid.UUID, List[StockLine]] = {p.id: [] for p in products}
+def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product]) -> List[StockProduct]:
+    """What is in stock for the given products (all of them the tenant's), tenant-scoped."""
+    quantities: Dict[uuid.UUID, Decimal] = {}
     if products:
-        line_query = (
-            scoped_select(StockBalance, tenant)
-            .add_columns(Warehouse)
-            .join(Warehouse, and_(Warehouse.id == StockBalance.warehouse_id, Warehouse.organization_id == StockBalance.organization_id))
-            .where(StockBalance.product_id.in_(list(lines)), StockBalance.quantity > 0)
-            .order_by(Warehouse.code)
-        )
-        if warehouse_id:
-            line_query = line_query.where(StockBalance.warehouse_id == warehouse_id)
-        for balance, warehouse in db.execute(line_query).all():
-            lines[balance.product_id].append(
-                StockLine(
-                    warehouse_id=warehouse.id, warehouse_code=warehouse.code, warehouse_name=warehouse.name,
-                    warehouse_active=warehouse.is_active, quantity=balance.quantity,
-                )
+        for product_id, quantity in db.execute(
+            select(StockBalance.product_id, StockBalance.quantity).where(
+                StockBalance.organization_id == tenant.organization_id, StockBalance.product_id.in_([p.id for p in products])
             )
-
+        ).all():
+            quantities[product_id] = quantity
     return [
         StockProduct(
             product_id=p.id, sku=p.sku, name=p.name, category=p.category, unit=p.unit,
             unit_allows_fractions=allows_fractions(p.unit), is_active=p.is_active,
-            total_quantity=sum((line.quantity for line in lines[p.id]), ZERO),
-            available_quantity=sum((line.quantity for line in lines[p.id] if line.warehouse_active), ZERO),
-            lines=lines[p.id],
+            total_quantity=quantities.get(p.id) or ZERO,  # nothing in stock reads "0", whether or not a balance row exists
         )
         for p in products
     ]
@@ -578,7 +492,6 @@ def stock_overview(
     *,
     q: Optional[str],
     category: Optional[str],
-    warehouse_id: Optional[uuid.UUID],
     product_status: str,
     in_stock_only: bool,
     limit: int,
@@ -595,33 +508,14 @@ def stock_overview(
     elif product_status == "archived":
         filters.append(Product.is_active.is_(False))
 
-    # "has stock" (optionally: in this warehouse), always inside the tenant
-    held = and_(StockBalance.organization_id == tenant.organization_id, StockBalance.product_id == Product.id, StockBalance.quantity > 0)
-    if warehouse_id:
-        held = and_(held, StockBalance.warehouse_id == warehouse_id)
-    if warehouse_id or in_stock_only:
-        filters.append(exists().where(held))
+    # "has stock", always inside the tenant
+    if in_stock_only:
+        filters.append(exists().where(and_(StockBalance.organization_id == tenant.organization_id, StockBalance.product_id == Product.id, StockBalance.quantity > 0)))
 
     total = db.scalar(scoped_count(Product, tenant, *filters))
     products = db.scalars(
         scoped_select(Product, tenant).where(*filters).order_by(Product.name, Product.sku, Product.id).limit(limit).offset(offset)
     ).all()
 
-    items = stock_items(db, tenant, products, warehouse_id)
+    items = stock_items(db, tenant, products)
     return StockOverview(items=items, total=total, limit=limit, offset=offset)
-
-
-def products_in_stock_by_warehouse(db: Session, tenant: TenantContext, warehouse_ids: Sequence[uuid.UUID]) -> Dict[uuid.UUID, int]:
-    """For each warehouse: how many products currently have stock there (tenant-scoped)."""
-    if not warehouse_ids:
-        return {}
-    rows = db.execute(
-        select(StockBalance.warehouse_id, func.count())
-        .where(
-            StockBalance.organization_id == tenant.organization_id,
-            StockBalance.warehouse_id.in_(list(warehouse_ids)),
-            StockBalance.quantity > 0,
-        )
-        .group_by(StockBalance.warehouse_id)
-    ).all()
-    return {warehouse_id: count for warehouse_id, count in rows}

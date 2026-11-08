@@ -7,7 +7,7 @@ Purchasing and Sales services each enforce it themselves, on every request. A me
 
 | Module | Contains | Needs |
 | :--- | :--- | :--- |
-| **Inventory** | Products, Warehouses, Stock, Scanning, Movements | nothing |
+| **Inventory** | Products, Stock, Scanning, Movements | nothing |
 | **Purchasing** | Suppliers, Purchase Orders, Goods Receipts | Inventory |
 | **Sales** | Clients, Delivery Lists, Dispatches, Invoices and Payments | Inventory |
 | **Finance** | Financial Overview, Accounts, Expenses, Journal Entries (see [`finance.md`](finance.md)) | nothing (off by default; only the Super Admin enables it) |

@@ -75,7 +75,7 @@ def test_a_total_too_large_for_the_column_is_refused_cleanly(api, shop, draft):
 def test_the_browser_cannot_dictate_product_details_totals_or_ownership(api, shop, draft):
     base = {"product_id": shop["bolt"], "quantity": "1", "unit_price": "1"}
     for extra in ({"product_name": "Hacked"}, {"product_sku": "X"}, {"unit": "kg"}, {"line_total": "0.01"}, {"total_amount": "0"}, {"organization_id": str(uuid.uuid4())},
-                  {"purchase_order_id": str(uuid.uuid4())}, {"planned_warehouse_code": "NOPE"}, {"selling_price": "0.01"}, {"cost_price": "0.01"}):
+                  {"purchase_order_id": str(uuid.uuid4())}, {"planned_warehouse_id": str(uuid.uuid4())}, {"selling_price": "0.01"}, {"cost_price": "0.01"}):
         assert api.client.post(f"{ORDERS}/{draft['id']}/lines", json={**base, **extra}, headers=api.headers).status_code == 422
     assert api.detail(draft["id"])["line_count"] == 0
 
@@ -152,14 +152,11 @@ def test_an_archived_product_cannot_be_ordered(api, shop, draft):
     assert api.detail(draft["id"])["line_count"] == 0
 
 
-def test_a_planned_warehouse_is_validated_and_snapshotted(api, shop, draft):
-    ok = api.add(draft["id"], shop["bolt"], 5, "1", planned_warehouse_id=shop["main"]).json()["line"]
-    assert (ok["planned_warehouse_id"], ok["planned_warehouse_code"]) == (shop["main"], "MAIN")
-    assert api.add(draft["id"], shop["flour"], 1, "1", planned_warehouse_id=str(uuid.uuid4())).status_code == 404
-    archived = api.add(draft["id"], shop["flour"], 1, "1", planned_warehouse_id=shop["annex"])
-    assert archived.status_code == 409 and "archived" in archived.json()["detail"]
-    cleared = api.client.patch(line_url(draft, ok["id"]), json={"planned_warehouse_id": None}, headers=api.headers)
-    assert cleared.status_code == 200 and cleared.json()["line"]["planned_warehouse_id"] is None
+def test_a_line_has_no_planned_warehouse(api, shop, draft):
+    ok = api.add(draft["id"], shop["bolt"], 5, "1").json()["line"]
+    assert "planned_warehouse_id" not in ok and "planned_warehouse_code" not in ok
+    assert api.add(draft["id"], shop["flour"], 1, "1", planned_warehouse_id=str(uuid.uuid4())).status_code == 422
+    assert api.client.patch(line_url(draft, ok["id"]), json={"planned_warehouse_id": None}, headers=api.headers).status_code == 422
 
 
 def test_line_notes(api, shop, draft):

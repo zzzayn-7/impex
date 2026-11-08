@@ -61,7 +61,6 @@ export type DeliveryListSummary = {
 
 export type ItemStock = {
   total_quantity: string;
-  available_quantity: string;
   product_active: boolean;
   unit_allows_fractions: boolean;
   exceeds_available: boolean;
@@ -75,8 +74,6 @@ export type DeliveryItem = {
   product_name: string;
   quantity: string;
   unit: string;
-  planned_warehouse_id: string | null;
-  planned_warehouse_code: string | null;
   created_at: string;
   updated_at: string;
   stock: ItemStock | null;
@@ -117,11 +114,9 @@ export type DispatchLine = {
   dispatched_elsewhere_quantity: string;
   pending_elsewhere_quantity: string;
   dispatchable_quantity: string;
-  warehouse_id: string;
-  warehouse_code: string | null;
   quantity: string;
   inventory_movement_id: string | null;
-  available_in_warehouse: string | null;
+  available_quantity: string | null;
 };
 
 export type DispatchDetail = DispatchSummary & {
@@ -236,7 +231,6 @@ export type BillableLine = {
   product_sku: string;
   product_name: string;
   unit: string;
-  warehouse_code: string | null;
   dispatched_quantity: string;
   invoiced_quantity: string;
   in_drafts_quantity: string;
@@ -369,7 +363,7 @@ export type SalesFailure = {
 const FIELD_NAMES: Record<string, string> = {
   client_id: "clientId", external_reference: "externalReference", contact_person: "contactPerson", delivery_list_id: "deliveryListId",
   dispatch_date: "dispatchDate", delivery_address: "deliveryAddress", transport_details: "transportDetails", tracking_reference: "trackingReference",
-  warehouse_id: "warehouseId", delivery_list_item_id: "deliveryListItemId",
+  delivery_list_item_id: "deliveryListItemId",
   currency_code: "currencyCode", invoice_date: "invoiceDate", due_date: "dueDate", dispatch_line_id: "dispatchLineId", unit_price: "unitPrice",
   discount_amount: "discountAmount", tax_rate: "taxRate", tax_label: "taxLabel", payment_date: "paymentDate",
 };

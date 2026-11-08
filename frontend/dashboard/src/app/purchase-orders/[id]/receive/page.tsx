@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { listWarehouseChoices } from "@/lib/inventory";
 import { getGoodsReceipt, getPurchaseOrder } from "@/lib/purchasing";
 import { ORDER_STATUS_LABELS } from "@/lib/purchasing-browser";
 import { UUID_RE } from "@/lib/stock-validation";
@@ -54,7 +53,6 @@ export default async function ReceiveGoodsPage({ params, searchParams }: { param
       </div>
     );
   }
-  const warehouses = await listWarehouseChoices(token, "active");
   return (
     <div className="space-y-5">
       {back}
@@ -62,8 +60,7 @@ export default async function ReceiveGoodsPage({ params, searchParams }: { param
         <h2 className="text-xl font-semibold text-white">Receive goods · <span className="font-mono">{order.number}</span></h2>
         <p className="text-xs text-slate-400">From {order.supplier.name}. Enter what arrived, review it, then confirm to add the accepted quantities to stock.</p>
       </div>
-      {warehouses.length === 0 && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">You have no active warehouse. Create one in Warehouses before receiving goods.</p>}
-      <ReceiveForm key={draft?.id ?? "new"} order={order} warehouses={warehouses} draft={draft} />
+      <ReceiveForm key={draft?.id ?? "new"} order={order} draft={draft} />
     </div>
   );
 }

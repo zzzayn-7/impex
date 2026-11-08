@@ -32,7 +32,6 @@ import StockLayout from "@/app/stock/layout";
 import SuppliersLayout from "@/app/suppliers/layout";
 import SupportLayout from "@/app/support/layout";
 import NewTicketPage from "@/app/support/new/page";
-import WarehousesLayout from "@/app/warehouses/layout";
 import PortalShell from "@/components/dashboard/frame";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
@@ -70,7 +69,6 @@ function Probe() {
 }
 const layouts: [string, string, (p: any) => any, string[]][] = [
   ["inventory", "Products", ProductsLayout, ["inventory"]],
-  ["inventory", "Warehouses", WarehousesLayout, ["inventory"]],
   ["inventory", "Stock", StockLayout, ["inventory"]],
   ["inventory", "Scan Product", ScanLayout, ["inventory"]],
   ["inventory", "Movements", MovementsLayout, ["inventory"]],
@@ -146,11 +144,11 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Delivery Lists", "Dispatches", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
+      ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Delivery Lists", "Dispatches", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {
-    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Warehouses", "Stock", "Scan Product", "Movements", "Help & Support", "Settings"]);
+    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Help & Support", "Settings"]);
   });
   it("Inventory and Sales", () => {
     const shown = labels(nav(["inventory", "sales"]));
