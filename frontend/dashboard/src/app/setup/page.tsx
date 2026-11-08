@@ -29,7 +29,7 @@ export default async function SetupPage() {
       <section role="alert" className="mx-auto mt-10 max-w-md rounded-[22px] border border-ix-mist/15 bg-ix-deep/70 p-8 text-center shadow-[0_6px_24px_rgba(35,55,42,0.035)]">
         <h1 className="text-lg font-semibold tracking-tight">We couldn&apos;t load your setup just now</h1>
         <p className="mt-2 text-sm text-ix-muted">Nothing was lost. Please try again in a moment. You can sign out at any time.</p>
-        <a href="/setup" className="mt-5 inline-flex rounded-xl bg-ix-action px-5 py-2.5 text-sm font-medium text-white transition hover:bg-ix-action-hover">
+        <a href="/setup" className="mt-5 inline-flex rounded-xl bg-ix-butter px-5 py-2.5 text-sm font-medium text-ix-deep transition hover:bg-ix-butter-hover">
           Try again
         </a>
       </section>

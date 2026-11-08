@@ -92,7 +92,7 @@ export default function LoginForm() {
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loading && (
-          <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-ix-deep/25 border-t-ix-deep motion-reduce:animate-none" />
         )}
         {loading ? "Signing in…" : "Sign in"}
       </button>

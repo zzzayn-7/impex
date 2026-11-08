@@ -10,7 +10,7 @@ export default function SetupLayout({ children }: { children: React.ReactNode })
     <div className="ix-dash text-ix-text" style={{ fontFamily: 'Inter, Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
       <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 py-6 sm:px-8">
         <div className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-ix-teal to-ix-sea text-sm font-bold text-ix-deep">IX</div>
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-ix-butter text-sm font-bold text-ix-deep">IX</div>
           <span className="text-sm font-medium tracking-tight text-ix-muted">IMPEX</span>
         </div>
         <div className="flex items-center gap-2">

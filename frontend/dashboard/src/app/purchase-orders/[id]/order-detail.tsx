@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState, useTransition } from "react";
+import { Tooltip } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -186,7 +187,7 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
                       <>
                         <td className="px-3 py-3 text-right font-mono text-xs">
                           {qty(line.received_quantity ?? "0")} <span className="text-slate-500">{line.unit}</span>
-                          {line.pending_quantity && /[1-9]/.test(line.pending_quantity) && <div className="text-sky-300" title="Being added to stock; reserved until confirmed">+{qty(line.pending_quantity)} in progress</div>}
+                          {line.pending_quantity && /[1-9]/.test(line.pending_quantity) && <Tooltip label="Being added to stock; reserved until confirmed"><div tabIndex={0} className="rounded text-sky-300">+{qty(line.pending_quantity)} in progress</div></Tooltip>}
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-white">{qty(line.remaining_quantity ?? line.quantity)}</td>
                       </>

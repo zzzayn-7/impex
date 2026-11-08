@@ -2,11 +2,12 @@ import LogoutButton from "@/components/logout-button";
 import { navGroups, PAGE_META, type PageKey } from "@/lib/dashboard-nav";
 import { monogram } from "@/lib/setup-validation";
 import type { TenantAdmin } from "@/lib/tenant-auth";
+import { Tooltip } from "@/components/ui/tooltip";
 import { MenuButton, NavProvider, Sidebar } from "./sidebar";
 
 // The Organization Portal's shell: the atmospheric background, the icon-rail sidebar and a slim glass header. EVERY authenticated page of the
 // portal is rendered inside it (through PortalFrame), so there is exactly one navigation and one header. The content column keeps a constant left
-// padding for the 76px rail, so the sidebar expanding (an overlay) never moves anything. `data-section` gives the page its section accent.
+// padding for the 76px rail, so the sidebar expanding (an overlay) never moves anything. The accent is the same on every page (pale butter yellow).
 
 export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null; modules?: string[] };
 
@@ -14,7 +15,6 @@ const initialsOf = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "OA";
 
 const WIDTH = { wide: "max-w-[1400px]", default: "max-w-7xl", narrow: "max-w-5xl" } as const;
-const ACCENTED = new Set(["inventory", "purchasing", "sales"]);
 
 export default function PortalShell({
   admin, organization, children, current = "dashboard", width = "default",
@@ -28,7 +28,7 @@ export default function PortalShell({
   const groups = navGroups(organization?.modules);
   const page = PAGE_META[current];
   return (
-    <div className="ix-dash" data-section={ACCENTED.has(page.section) ? page.section : undefined}>
+    <div className="ix-dash">
       <NavProvider>
         <Sidebar groups={groups} currentHref={page.href} />
         <div className="min-w-0 lg:pl-[104px] print:pl-0">
@@ -45,7 +45,7 @@ export default function PortalShell({
                     className="h-10 w-10 shrink-0 rounded-xl bg-ix-text/95 object-contain p-0.5"
                   />
                 ) : (
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-ix-teal to-ix-sea text-sm font-bold text-ix-deep">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ix-butter text-sm font-bold text-ix-deep">
                     {organization ? monogram(organization.name) : "IX"}
                   </div>
                 )}
@@ -65,13 +65,15 @@ export default function PortalShell({
               </nav>
 
               <div className="ml-auto flex items-center gap-3">
-                <div className="hidden text-right sm:block">
+                <div className="text-right max-sm:sr-only">
                   <p className="max-w-[12rem] truncate text-sm font-medium leading-tight text-ix-text">{admin.full_name}</p>
                   <p className="max-w-[12rem] truncate text-[11px] text-ix-muted">{admin.email}</p>
                 </div>
-                <div title={`${admin.full_name} (${admin.email})`} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-ix-mist/20 bg-ix-slate/60 text-xs font-semibold text-ix-text">
-                  {initialsOf(admin.full_name)}
-                </div>
+                <Tooltip label={`${admin.full_name} (${admin.email})`} side="bottom">
+                  <div aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-ix-butter/30 bg-ix-slate/60 text-xs font-semibold text-ix-butter">
+                    {initialsOf(admin.full_name)}
+                  </div>
+                </Tooltip>
                 <LogoutButton variant="glass" />
               </div>
             </div>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { listInbox } from "@/lib/support";
 import { parseFilters } from "@/lib/support-filters";
@@ -22,11 +22,8 @@ export default async function SupportInboxPage({ searchParams }: { searchParams:
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="support" supportUnread={list.ok ? list.unread : 0} />
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 p-8">
-        <SupportInbox list={list} filters={filters} />
-      </main>
-    </div>
+    <PortalShell user={user} current="support" supportUnread={list.ok ? list.unread : 0}>
+      <SupportInbox list={list} filters={filters} />
+    </PortalShell>
   );
 }

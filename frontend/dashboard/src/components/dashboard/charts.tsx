@@ -1,13 +1,14 @@
 import { toPlot } from "@/lib/dashboard-metrics";
+import { Tooltip } from "@/components/ui/tooltip";
 
 // Lightweight server-rendered SVG charts in the dashboard's muted palette. No chart library and no client JavaScript: hover details are native
 // <title> tooltips, and every chart has a text alternative (an aria-label that summarises it, and a visually hidden table of the exact values).
 // Geometry uses numbers; every value that is READ on the screen is the exact string it came from.
 
-// The foundation (teal, sea, sage, slate, mist) plus the three accents: sales/invoices mint, purchasing pale butter, inventory/stock powder blue.
-export const SERIES_COLORS = { teal: "#568E8F", sea: "#86B6AA", sage: "#A6C1B2", slate: "#7D98A3", mist: "#D8E8E3", mint: "#96C5B8", butter: "#E8D8A4", blue: "#A7C7D8" } as const;
+// One accent: pale butter marks the series that matters most; everything else is slate-teal and mist, told apart by lightness, never by hue.
+export const SERIES_COLORS = { butter: "#E8D8A4", teal: "#568E8F", slate: "#7D98A3", mist: "#D8E8E3" } as const;
 
-const BAR_GRADIENT = { teal: "from-ix-teal to-ix-sea", blue: "from-ix-blue/60 to-ix-blue", mint: "from-ix-mint/60 to-ix-mint", butter: "from-ix-butter/60 to-ix-butter" } as const;
+const BAR_GRADIENT = { teal: "from-ix-teal/70 to-ix-mist/80", butter: "from-ix-butter/55 to-ix-butter" } as const;
 
 export type Point = { label: string; value: string; text: string }; // value: exact string (geometry only); text: how to write it
 export type Series = { name: string; color: string; points: Point[] };
@@ -146,7 +147,7 @@ export function BarList({ items, label, accent = "teal" }: { items: { name: stri
       {items.map((item) => (
         <li key={item.name}>
           <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
-            <span className="min-w-0 truncate text-ix-text" title={item.name}>{item.name}{item.hint && <span className="ml-1.5 text-ix-muted">{item.hint}</span>}</span>
+            <Tooltip label={item.name}><span tabIndex={0} className="min-w-0 truncate rounded text-ix-text">{item.name}{item.hint && <span className="ml-1.5 text-ix-muted">{item.hint}</span>}</span></Tooltip>
             <span className="shrink-0 font-medium tabular-nums text-ix-mist">{item.text}</span>
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-ix-deep/50" role="presentation">
@@ -164,7 +165,7 @@ export function StackedBar({ parts, label }: { parts: { name: string; color: str
   return (
     <div>
       <div role="img" aria-label={label} className="flex h-3.5 w-full overflow-hidden rounded-full bg-ix-deep/50">
-        {total > 0 && parts.filter((p) => p.value > 0).map((p) => <div key={p.name} title={`${p.name}: ${p.text}`} style={{ width: `${(p.value / total) * 100}%`, background: p.color }} />)}
+        {total > 0 && parts.filter((p) => p.value > 0).map((p) => <Tooltip key={p.name} label={`${p.name}: ${p.text}`}><div style={{ width: `${(p.value / total) * 100}%`, background: p.color }} /></Tooltip>)}
       </div>
       <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         {parts.map((p) => (

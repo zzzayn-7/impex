@@ -18,7 +18,7 @@ const NOTIFICATION_LABELS: Record<Notification["notification_type"], string> = {
 };
 const DELIVERY_LABELS: Record<Notification["delivery_status"], string> = { pending: "Waiting to send", sending: "Sending", sent: "Sent", failed: "Failed" };
 const DELIVERY_STYLE: Record<Notification["delivery_status"], string> = {
-  pending: "text-amber-300", sending: "text-sky-300", sent: "text-emerald-400", failed: "text-red-400",
+  pending: "text-amber-300", sending: "text-ix-mist", sent: "text-ix-butter", failed: "text-red-400",
 };
 
 function describeEvent(e: NonNullable<TicketDetail["events"]>[number]): string {
@@ -126,7 +126,7 @@ export default function TicketPanel({ initial, organization }: { initial: Ticket
               const staff = m.sender_role === "super-admin";
               return (
                 <li key={m.id} className={`flex ${staff ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] rounded-2xl border px-4 py-3 ${staff ? "rounded-tr-sm border-indigo-500/20 bg-indigo-500/10" : "rounded-tl-sm border-slate-700 bg-slate-800/40"}`}>
+                  <div className={`max-w-[85%] rounded-2xl border px-4 py-3 ${staff ? "rounded-tr-sm border-ix-butter/25 bg-ix-butter/10" : "rounded-tl-sm border-ix-mist/15 bg-ix-mist/[0.06]"}`}>
                     <p className="text-xs font-semibold text-slate-300">
                       {staff ? `${m.sender_name} (Impex Support)` : m.sender_name}
                       <span className="ml-2 font-normal text-slate-500">{stamp(m.created_at)}</span>

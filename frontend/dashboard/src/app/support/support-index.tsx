@@ -103,7 +103,7 @@ export default function SupportIndex({ list, filters }: { list: TicketPage; filt
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm font-semibold text-indigo-300">{t.ticket_number}</span>
-                        {t.unread && <span className="rounded-full bg-sky-500 px-2 py-0.5 text-[11px] font-semibold text-white">New reply</span>}
+                        {t.unread && <span className="rounded-full bg-ix-butter px-2 py-0.5 text-[11px] font-semibold text-ix-deep">New reply</span>}
                       </div>
                       <p className={`mt-0.5 truncate text-sm ${t.unread ? "font-semibold text-white" : "text-slate-200"}`}>{t.subject}</p>
                       <p className="mt-0.5 text-xs text-slate-500">

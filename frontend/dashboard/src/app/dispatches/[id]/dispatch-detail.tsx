@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Tooltip } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -130,7 +131,7 @@ export default function DispatchDetailView({ dispatch: initial }: { dispatch: Di
                     {dispatch.stock_status === "ok" && <td className="px-3 py-3 text-right font-mono text-xs">{l.available_quantity === null ? <span className="text-slate-600">—</span> : <>{qty(l.available_quantity)} {l.unit}</>}</td>}
                     <td className="px-3 py-3 text-xs">
                       {l.inventory_movement_id
-                        ? <Link href={`/movements?product=${l.product_id}`} className="font-mono text-indigo-300 hover:text-indigo-200" title={l.inventory_movement_id}>#{l.inventory_movement_id.slice(0, 8)}</Link>
+                        ? <Tooltip label={`Stock movement ${l.inventory_movement_id}`}><Link href={`/movements?product=${l.product_id}`} className="font-mono text-indigo-300 hover:text-indigo-200">#{l.inventory_movement_id.slice(0, 8)}</Link></Tooltip>
                         : <span className="text-slate-600">not yet deducted</span>}
                     </td>
                   </tr>

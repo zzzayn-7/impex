@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { UUID_RE, getHistory, getModules } from "@/lib/modules";
 import { getUnreadCount } from "@/lib/support";
@@ -21,10 +21,7 @@ export default async function OrganizationModulesPage({ params }: { params: { id
   const unread = (await getUnreadCount(token)) ?? 0;
   const back = <Link href="/organizations" className="text-xs text-indigo-300 hover:text-indigo-200">← Organizations</Link>;
   const frame = (content: React.ReactNode) => (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="organizations" supportUnread={unread} />
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-8">{back}{content}</main>
-    </div>
+    <PortalShell user={user} current="organizations" supportUnread={unread} width="narrow">{back}{content}</PortalShell>
   );
   const notice = (text: string) => <p role="alert" className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">{text}</p>;
 

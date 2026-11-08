@@ -34,7 +34,7 @@ export function CardNote({ children, tone = "empty" }: { children: ReactNode; to
 export function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "good" | "warn" | "muted" }) {
   const styles = {
     neutral: "border-ix-mist/20 bg-ix-mist/10 text-ix-mist",
-    good: "border-ix-sea/30 bg-ix-sea/15 text-ix-sea",
+    good: "border-ix-butter/30 bg-ix-butter/15 text-ix-butter",
     warn: "border-amber-200/25 bg-amber-100/10 text-amber-100",
     muted: "border-ix-mist/10 bg-ix-deep/30 text-ix-muted",
   } as const;

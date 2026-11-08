@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Tooltip } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -124,7 +125,7 @@ export default function ReceiptDetailView({ receipt: initial }: { receipt: Recei
                     {hasRejected && <td className="px-3 py-3 text-right font-mono">{qty(l.rejected_quantity)}</td>}
                     <td className="px-3 py-3 text-xs">
                       {l.inventory_movement_id
-                        ? <Link href={`/movements?product=${l.product_id}`} className="font-mono text-indigo-300 hover:text-indigo-200" title={l.inventory_movement_id}>#{l.inventory_movement_id.slice(0, 8)}</Link>
+                        ? <Tooltip label={`Stock movement ${l.inventory_movement_id}`}><Link href={`/movements?product=${l.product_id}`} className="font-mono text-indigo-300 hover:text-indigo-200">#{l.inventory_movement_id.slice(0, 8)}</Link></Tooltip>
                         : <span className="text-slate-600">{/[1-9]/.test(l.accepted_quantity) ? "not yet in stock" : "none (nothing accepted)"}</span>}
                     </td>
                   </tr>

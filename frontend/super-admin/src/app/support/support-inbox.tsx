@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { Tooltip } from "@/components/ui/tooltip";
 import type { InboxFilters, InboxPage } from "@/lib/support";
 import { CATEGORIES, CATEGORY_LABELS, PRIORITIES, PRIORITY_LABELS, PRIORITY_STYLE, STATUSES, STATUS_LABELS, STATUS_STYLE, stamp } from "@/lib/support-labels";
 
@@ -119,10 +120,10 @@ export default function SupportInbox({ list, filters }: { list: InboxPage; filte
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {list.items.map((t) => (
-                    <tr key={t.id} className={`hover:bg-slate-800/30 ${t.unread ? "bg-sky-500/5" : ""}`}>
+                    <tr key={t.id} className={`hover:bg-slate-800/30 ${t.unread ? "bg-ix-butter/5" : ""}`}>
                       <td className="px-2 py-3 align-top">
                         <Link href={`/support/${t.id}`} className="inline-flex items-center gap-2 font-mono font-semibold text-indigo-300 hover:text-indigo-200">
-                          {t.unread && <span role="img" aria-label="Unread" title="Unread" className="h-2 w-2 rounded-full bg-sky-400" />}
+                          {t.unread && <Tooltip label="Unread"><span role="img" aria-label="Unread" className="inline-block h-2 w-2 rounded-full bg-ix-butter" /></Tooltip>}
                           {t.ticket_number}
                         </Link>
                       </td>
@@ -130,7 +131,7 @@ export default function SupportInbox({ list, filters }: { list: InboxPage; filte
                       <td className="px-2 py-3 align-top text-slate-300">{t.requester_name}</td>
                       <td className="max-w-[16rem] px-2 py-3 align-top">
                         <Link href={`/support/${t.id}`} className={`block truncate hover:text-white ${t.unread ? "font-semibold text-white" : "text-slate-200"}`}>{t.subject}</Link>
-                        {t.awaiting_staff && <span className="mt-0.5 block text-[11px] text-sky-300">Awaiting your reply</span>}
+                        {t.awaiting_staff && <span className="mt-0.5 block text-[11px] text-ix-butter">Awaiting your reply</span>}
                       </td>
                       <td className="px-2 py-3 align-top text-slate-300">{CATEGORY_LABELS[t.category]}</td>
                       <td className="px-2 py-3 align-top"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLE[t.priority]}`}>{PRIORITY_LABELS[t.priority]}</span></td>

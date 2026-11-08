@@ -21,10 +21,10 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
 };
 
 export const STATUS_STYLE: Record<TicketStatus, string> = {
-  open: "border-sky-500/20 bg-sky-500/10 text-sky-300",
-  in_progress: "border-violet-500/20 bg-violet-500/10 text-violet-300",
+  open: "border-ix-butter/40 bg-ix-butter/15 text-ix-butter",
+  in_progress: "border-ix-mist/25 bg-ix-mist/10 text-ix-mist",
   waiting_for_customer: "border-amber-500/20 bg-amber-500/10 text-amber-300",
-  resolved: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  resolved: "border-ix-teal/40 bg-ix-teal/15 text-ix-mist",
   closed: "border-slate-600/40 bg-slate-700/30 text-slate-400",
 };
 
@@ -32,7 +32,7 @@ export const PRIORITY_LABELS: Record<TicketPriority, string> = { low: "Low", nor
 
 export const PRIORITY_STYLE: Record<TicketPriority, string> = {
   low: "border-slate-600/40 bg-slate-700/30 text-slate-300",
-  normal: "border-sky-500/20 bg-sky-500/10 text-sky-300",
+  normal: "border-ix-mist/25 bg-ix-mist/10 text-ix-mist",
   high: "border-amber-500/20 bg-amber-500/10 text-amber-300",
   urgent: "border-red-500/20 bg-red-500/10 text-red-300",
 };

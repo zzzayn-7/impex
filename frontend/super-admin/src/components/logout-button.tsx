@@ -22,7 +22,7 @@ export default function LogoutButton() {
       type="button"
       onClick={logout}
       disabled={loading}
-      className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:opacity-60"
+      className="whitespace-nowrap rounded-xl border border-ix-mist/20 bg-ix-mist/10 px-3.5 py-2 text-xs font-medium text-ix-text transition duration-200 hover:bg-ix-mist/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-butter/60 disabled:opacity-60 motion-reduce:transition-none"
     >
       {loading ? "Signing out…" : "Sign out"}
     </button>

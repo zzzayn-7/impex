@@ -84,7 +84,7 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
       </div>
 
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-sea transition hover:bg-ix-sea/15 motion-reduce:transition-none">{s.label}</a>)}
+        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-butter transition hover:bg-ix-butter/15 motion-reduce:transition-none">{s.label}</a>)}
       </nav>
 
       {notice && (

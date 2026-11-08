@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 import SupportLayout from "@/app/support/layout";
 import SupportInboxPage from "@/app/support/page";
 import TicketPage from "@/app/support/[id]/page";
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const now = "2026-11-07T10:00:00+00:00";
@@ -101,13 +101,15 @@ describe("who may open the Support Inbox", () => {
 });
 
 describe("the navigation", () => {
+  const shell = (current: "dashboard" | "organizations" | "support", supportUnread: number) =>
+    renderToStaticMarkup(PortalShell({ user: superAdmin as any, current, supportUnread, children: "BODY" }));
   it("has a Support Inbox item that is marked current on support pages and shows unread tickets", () => {
-    const html = renderToStaticMarkup(PortalHeader({ user: superAdmin as any, current: "support", supportUnread: 3 }));
+    const html = shell("support", 3);
     expect(html).toContain('href="/support"');
-    expect(html).toMatch(/aria-current="page"[^>]*>Support Inbox/);
+    expect(html).toMatch(/aria-current="page"[^>]*>[\s\S]*?Support Inbox/);
     expect(html).toContain('aria-label="3 unread"');
-    expect(renderToStaticMarkup(PortalHeader({ user: superAdmin as any, current: "organizations", supportUnread: 0 }))).not.toContain("unread");
-    expect(renderToStaticMarkup(PortalHeader({ user: superAdmin as any, current: "dashboard", supportUnread: 250 }))).toContain("99+");
+    expect(shell("organizations", 0)).not.toContain("unread");
+    expect(shell("dashboard", 250)).toContain("99+");
     // the two existing items remain
     expect(html).toContain('href="/organizations"');
     expect(html).toContain("Dashboard");

@@ -8,6 +8,7 @@ import type { TenantOrganization, OrganizationResult } from "@/lib/organization"
 import type { TenantAdmin } from "@/lib/tenant-auth";
 import { AreaChart, ColumnChart, BarList, Legend, SERIES_COLORS, StackedBar, type Series } from "./charts";
 import { CardHeader, CardNote, Footnote, GlassCard, Pill } from "./glass";
+import { Tooltip } from "@/components/ui/tooltip";
 import Icon, { type IconKey } from "./icons";
 
 // The dashboard's content. Every number is computed from the records in `data` (see lib/dashboard-data.ts); a module that is not enabled has no
@@ -16,17 +17,15 @@ import Icon, { type IconKey } from "./icons";
 
 type Props = { admin: TenantAdmin; organizationResult: OrganizationResult; data: DashboardData };
 
-// The decorative accent of each part of the business (never a status colour): Inventory powder blue, Purchasing pale butter, Sales sea-glass mint.
-type Tone = "blue" | "yellow" | "mint" | "sea";
-const TEXT_TONE: Record<Tone, string> = { blue: "text-ix-blue", yellow: "text-ix-butter", mint: "text-ix-mint", sea: "text-ix-sea" };
-const WELL_TONE: Record<Tone, string> = { blue: "bg-ix-blue/15 text-ix-blue", yellow: "bg-ix-butter/15 text-ix-butter", mint: "bg-ix-mint/15 text-ix-mint", sea: "bg-ix-sea/15 text-ix-sea" };
-const MODULE_TONE = { inventory: "blue", purchasing: "yellow", sales: "mint", finance: "sea" } as const;
+// ONE decorative accent (pale butter yellow). A figure or action is either "yellow" (the few that matter most) or "neutral" (slate-grey). Never a status.
+type Tone = "yellow" | "neutral";
+const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-butter", neutral: "bg-ix-mist/10 text-ix-mist" };
 
 const unavailable = "Could not be loaded just now. Please refresh in a moment.";
 const grid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]";
 const wideGrid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]";
 
-function Kpi({ icon, label, value, unit, context, tone, accent = "sea" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: "blue" | "yellow" | "mint" | "sea" }) {
+function Kpi({ icon, label, value, unit, context, tone, accent = "neutral" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: Tone }) {
   return (
     <GlassCard small lift className="ix-kpi p-5" aria-label={label} data-accent={accent}>
       <div className="flex items-start justify-between gap-3">
@@ -42,7 +41,7 @@ function Kpi({ icon, label, value, unit, context, tone, accent = "sea" }: { icon
   );
 }
 
-function KpiUnavailable({ icon, label, accent }: { icon: IconKey; label: string; accent?: "blue" | "yellow" | "mint" | "sea" }) {
+function KpiUnavailable({ icon, label, accent }: { icon: IconKey; label: string; accent?: Tone }) {
   return <Kpi icon={icon} label={label} accent={accent} value="—" context={<span role="alert">{unavailable}</span>} tone="warn" />;
 }
 
@@ -76,28 +75,28 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   const kpis: React.ReactNode[] = [];
   if (inventory) {
     kpis.push(inventory.status === "ok" ? (
-      <Kpi key="products" icon="products" accent="blue" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
+      <Kpi key="products" icon="products" accent="neutral" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
         context={inventory.data.products === 0 ? "No products yet" : "In your product catalog"} />
-    ) : <KpiUnavailable key="products" icon="products" accent="blue" label="Active products" />);
+    ) : <KpiUnavailable key="products" icon="products" accent="neutral" label="Active products" />);
   }
   if (purchasing) {
     kpis.push(purchasing.status === "ok" ? (
-      <Kpi key="orders" icon="orders" accent="yellow" label="Open purchase orders" value={String(purchasing.data.open.count)}
+      <Kpi key="orders" icon="orders" accent="neutral" label="Open purchase orders" value={String(purchasing.data.open.count)}
         context={purchasing.data.open.count === 0 ? "Nothing waiting to be received" : (
           <>
             {purchasing.data.open.byCurrency.slice(0, 2).map((t) => <span key={t.currency} className="block">{money(t.amount, t.currency)} on order</span>)}
             {purchasing.data.open.byCurrency.length > 2 && <span className="block">+ {purchasing.data.open.byCurrency.length - 2} more {purchasing.data.open.byCurrency.length - 2 === 1 ? "currency" : "currencies"}</span>}
           </>
         )} />
-    ) : <KpiUnavailable key="orders" icon="orders" accent="yellow" label="Open purchase orders" />);
+    ) : <KpiUnavailable key="orders" icon="orders" accent="neutral" label="Open purchase orders" />);
   }
   if (sales) {
     kpis.push(sales.status === "ok" ? (
-      <Kpi key="invoiced" icon="invoices" accent="mint" label="Invoiced this month" value={formatAmount(salesThisMonth, prefs)} unit={headline}
+      <Kpi key="invoiced" icon="invoices" accent="yellow" label="Invoiced this month" value={formatAmount(salesThisMonth, prefs)} unit={headline}
         context={salesRows.length === 0 ? "No invoices issued yet" : <>Issued invoices, {monthLabel(month)}<Others totals={Array.from(new Set(salesRows.map((r) => r.currency))).filter((c) => c !== headline).map((c) => ({ currency: c, amount: monthlyTotals(salesRows, [month], c)[0] }))} shown={headline} prefs={prefs} /></>} />
-    ) : <KpiUnavailable key="invoiced" icon="invoices" accent="mint" label="Invoiced this month" />);
+    ) : <KpiUnavailable key="invoiced" icon="invoices" accent="yellow" label="Invoiced this month" />);
     kpis.push(sales.status === "ok" ? (
-      <Kpi key="receivables" icon="clients" accent="sea" label="Outstanding receivables" value={formatAmount(amountOf(outstanding, headline), prefs)} unit={headline}
+      <Kpi key="receivables" icon="clients" accent="yellow" label="Outstanding receivables" value={formatAmount(amountOf(outstanding, headline), prefs)} unit={headline}
         tone={/[1-9]/.test(amountOf(sales.data.receivables.overdue, headline)) ? "warn" : undefined}
         context={sales.data.receivables.count === 0 ? "No unpaid invoices" : (
           <>
@@ -106,7 +105,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
             <Others totals={outstanding} shown={headline} prefs={prefs} />
           </>
         )} />
-    ) : <KpiUnavailable key="receivables" icon="clients" label="Outstanding receivables" />);
+    ) : <KpiUnavailable key="receivables" icon="clients" accent="yellow" label="Outstanding receivables" />);
   }
 
   // ---- analytics ----------------------------------------------------------------------------------------------------------
@@ -114,8 +113,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if ((sales || purchasing) && (sales?.status === "ok" || purchasing?.status === "ok")) {
     const series: Series[] = [];
     const toSeries = (name: string, color: string, values: string[]): Series => ({ name, color, points: values.map((v, i) => ({ label: monthLabel(data.months[i]), value: v, text: money(v) })) });
-    if (sales?.status === "ok") series.push(toSeries("Invoiced", SERIES_COLORS.mint, salesByMonth));
-    if (purchasing?.status === "ok") series.push(toSeries("Purchase orders placed", SERIES_COLORS.butter, purchasesByMonth));
+    if (sales?.status === "ok") series.push(toSeries("Invoiced", SERIES_COLORS.butter, salesByMonth));
+    if (purchasing?.status === "ok") series.push(toSeries("Purchase orders placed", SERIES_COLORS.teal, purchasesByMonth));
     const empty = series.every((s) => s.points.every((p) => !/[1-9]/.test(p.value)));
     const truncated = (sales?.status === "ok" && sales.data.trend.truncated) || (purchasing?.status === "ok" && purchasing.data.trend.truncated);
     const others = [...otherSalesCurrencies, ...otherPurchaseCurrencies.filter((c) => !otherSalesCurrencies.includes(c))];
@@ -141,7 +140,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
           return (
             <>
               <StackedBar label={`Open invoices in ${headline}`} parts={[
-                { name: "Paid so far", color: SERIES_COLORS.mint, value: toPlot(amountOf(r.paid, headline)), text: money(amountOf(r.paid, headline)) },
+                { name: "Paid so far", color: SERIES_COLORS.butter, value: toPlot(amountOf(r.paid, headline)), text: money(amountOf(r.paid, headline)) },
                 { name: "Still due", color: SERIES_COLORS.teal, value: toPlot(stillDue), text: money(stillDue) },
                 { name: "Overdue", color: "#C9A27A", value: toPlot(overdue), text: money(overdue) },
               ]} />
@@ -159,9 +158,9 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     const mk = (name: string, color: string, pick: (d: (typeof activity)[number]) => number): Series => ({ name, color, points: activity.map((d) => ({ label: dayLabel(d.day), value: String(pick(d)), text: `${pick(d)} ${pick(d) === 1 ? "movement" : "movements"}` })) });
     analytics.push(
       <GlassCard key="activity" className="p-5 sm:p-6" aria-label="Inventory movement activity">
-        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.blue }, { name: "Removed", color: SERIES_COLORS.slate }]} />} />
+        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.butter }, { name: "Removed", color: SERIES_COLORS.slate }]} />} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : !anyActivity ? <CardNote>No stock movements in the last {ACTIVITY_DAYS} days.</CardNote> : (
-          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.blue, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed)]} />
+          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.butter, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed)]} />
         )}
         {inventory.status === "ok" && inventory.data.movementsTruncated && anyActivity && <Footnote>Based on the latest {inventory.data.movements.length} movements.</Footnote>}
       </GlassCard>
@@ -174,11 +173,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (sales) {
     operations.push(
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
-        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-mint hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {sales.data.recent.map((i) => row(i.id,
-              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-mint hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
+              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-butter hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
               <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{money(i.total, i.currency_code)}</p><Pill tone={i.status === "paid" ? "good" : i.overdue ? "warn" : i.status === "draft" ? "muted" : "neutral"}>{i.overdue ? "Overdue" : i.status.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
@@ -202,7 +201,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (inventory) {
     operations.push(
       <GlassCard key="movements" className="p-5 sm:p-6" aria-label="Recent stock movements">
-        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-blue hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.movements.length === 0 ? <CardNote>No stock movements yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {inventory.data.movements.slice(0, 5).map((m) => row(m.id,
@@ -216,7 +215,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (finance) {
     operations.push(
       <GlassCard key="finance" className="p-5 sm:p-6" aria-label="Finance snapshot">
-        <CardHeader title="Finance snapshot" action={<Link href="/finance" className="text-xs font-medium text-ix-sage hover:text-ix-text">Open Finance</Link>} />
+        <CardHeader title="Finance snapshot" action={<Link href="/finance" className="text-xs font-medium text-ix-muted hover:text-ix-text">Open Finance</Link>} />
         {finance.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : (
           <>
             <dl className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -237,18 +236,18 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   }
 
   const actions: { label: string; href: string; icon: IconKey; tone: Tone }[] = [];
-  if (enabled.includes("inventory")) actions.push({ label: "Scan a product", href: "/scan", icon: "scan", tone: "blue" }, { label: "Adjust stock", href: "/stock", icon: "stock", tone: "blue" });
-  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "mint" });
-  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "yellow" });
-  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "sea" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "sea" });
-  actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "sea" });
+  if (enabled.includes("inventory")) actions.push({ label: "Scan a product", href: "/scan", icon: "scan", tone: "yellow" }, { label: "Adjust stock", href: "/stock", icon: "stock", tone: "neutral" });
+  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "yellow" });
+  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "neutral" });
+  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "neutral" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "neutral" });
+  actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "neutral" });
 
   return (
     <div className="space-y-5">
       <GlassCard className="overflow-hidden p-6 sm:p-7" aria-labelledby="welcome-heading">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-ix-sage">Overview</p>
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-ix-muted">Overview</p>
             <h2 id="welcome-heading" className="mt-1.5 text-2xl font-semibold tracking-tight text-ix-text sm:text-[28px]">Welcome, {admin.full_name}</h2>
             <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ix-muted">
               You are signed in as an administrator of <span className="font-medium text-ix-text">{organization ? organization.name : "your organization"}</span>.
@@ -271,7 +270,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
           </div>
           <div className="rounded-2xl border border-ix-mist/10 bg-ix-deep/25 px-4 py-3">
             <dt className="text-ix-muted">Organization ID</dt>
-            <dd className="mt-0.5 break-all font-mono text-[11px] text-ix-sage">{admin.organization_id}</dd>
+            <dd className="mt-0.5 break-all font-mono text-[11px] text-ix-muted">{admin.organization_id}</dd>
           </div>
         </dl>
       </GlassCard>
@@ -305,14 +304,14 @@ export default function DashboardView({ admin, organizationResult, data }: Props
                     <p className="mt-1 text-xs leading-relaxed text-ix-muted">{MODULE_DESCRIPTIONS[key]}</p>
                     <ul className="mt-3 flex flex-wrap gap-1.5">
                       {MODULE_PAGES[key].map((page) => (
-                        <li key={page.href}><Link href={page.href} className={`inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-ix-mist/10 hover:text-ix-text ${TEXT_TONE[MODULE_TONE[key]]}`}>{page.label}</Link></li>
+                        <li key={page.href}><Link href={page.href} className={`inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium transition-colors hover:border-ix-butter/30 hover:bg-ix-butter/10 hover:text-ix-butter text-ix-mist`}>{page.label}</Link></li>
                       ))}
                     </ul>
                   </div>
                 ))}
               </div>
             )}
-            <Footnote>Need another module? <Link href="/support/new?module=other" className="text-ix-sage underline-offset-2 hover:underline">Ask the Impex team</Link>. Only the Impex team can enable it.</Footnote>
+            <Footnote>Need another module? <Link href="/support/new?module=other" className="text-ix-muted underline-offset-2 hover:underline">Ask the Impex team</Link>. Only the Impex team can enable it.</Footnote>
           </GlassCard>
 
           <GlassCard className="p-5 sm:p-6" aria-label="Quick actions">
@@ -337,7 +336,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
                 ["Name", organization.name], ["Identifier", organization.slug], ["Country", organization.country_code], ["Tax identifier", organization.tax_identifier ?? "Not provided"],
                 ["Contact email", organization.contact_email], ["Registered", formatDate(organization.created_at, prefs)],
               ] as const).map(([name, value]) => (
-                <div key={name} className="min-w-0"><dt className="text-ix-muted">{name}</dt><dd className="mt-0.5 truncate font-medium text-ix-text" title={value}>{value}</dd></div>
+                <div key={name} className="min-w-0"><dt className="text-ix-muted">{name}</dt><Tooltip label={value}><dd tabIndex={0} className="mt-0.5 truncate rounded font-medium text-ix-text">{value}</dd></Tooltip></div>
               ))}
             </dl>
           </GlassCard>

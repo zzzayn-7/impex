@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { activeHref, type NavGroup } from "@/lib/dashboard-nav";
+import { Tooltip } from "@/components/ui/tooltip";
 import Icon from "./icons";
 
 // The dashboard's navigation. On a desktop it is a fixed 76px icon rail that EXPANDS OVER the page (a fixed-position overlay: the page itself
 // never moves) when the pointer is over it or keyboard focus is inside it, or when the toggle has pinned it open. Below the `lg` breakpoint it is
 // an off-canvas drawer opened from the header's menu button: nothing depends on hover. Escape closes whichever is open. The expanding is plain CSS
 // (group-hover / group-focus-within), so there is no flicker, no layout shift and no hydration difference; the only state is "pinned" and "drawer open".
+// There are no per-item tooltips on purpose: hovering or focusing any icon expands the rail, which shows the labels themselves (a tooltip would repeat them).
 
 type NavState = { mobileOpen: boolean; setMobileOpen: (open: boolean) => void; pinned: boolean; setPinned: (pinned: boolean) => void };
 const NavContext = createContext<NavState | null>(null);
@@ -86,7 +88,7 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
           if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
         }}
         className={[
-          "ix-glass group fixed z-40 flex flex-col overflow-hidden print:hidden",
+          "ix-glass group fixed z-40 flex flex-col overflow-clip print:hidden",
           // desktop: an icon rail inset from the edges that grows over the page
           "lg:inset-y-3 lg:left-3 lg:w-[76px] lg:translate-x-0 lg:visible lg:hover:w-[256px] lg:focus-within:w-[256px] lg:data-[pinned=true]:w-[256px] lg:transition-[width,box-shadow] lg:duration-200 lg:ease-out",
           "lg:hover:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)] lg:focus-within:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)]",
@@ -97,19 +99,24 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
       >
         <div className="flex h-[68px] shrink-0 items-center px-3">
           <span className="grid h-[52px] w-[52px] shrink-0 place-items-center" aria-hidden="true">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-ix-teal to-ix-sea text-sm font-bold text-ix-deep">IX</span>
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-ix-butter text-sm font-bold text-ix-deep">IX</span>
           </span>
           <span className={`${label} ml-1 tracking-wide text-ix-text`}>Impex</span>
-          <button
-            type="button"
-            onClick={() => setPinned(!pinned)}
-            aria-pressed={pinned}
-            aria-label={pinned ? "Collapse navigation" : "Expand navigation"}
-            title={pinned ? "Collapse navigation" : "Expand navigation"}
-            className="ml-auto hidden h-9 w-9 shrink-0 place-items-center rounded-xl text-ix-muted opacity-0 transition duration-200 hover:bg-ix-mist/10 hover:text-ix-text focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 lg:grid"
-          >
-            <Icon name={pinned ? "chevronLeft" : "chevronRight"} className="h-4 w-4" />
-          </button>
+          <Tooltip label={pinned ? "Collapse navigation" : "Pin navigation open"} side="bottom">
+            <button
+              type="button"
+              onClick={(event) => {
+                // unpinning with the mouse must let the rail collapse when the pointer leaves: focus-within would otherwise hold it open
+                if (pinned && event.detail > 0) event.currentTarget.blur();
+                setPinned(!pinned);
+              }}
+              aria-pressed={pinned}
+              aria-label={pinned ? "Collapse navigation" : "Expand navigation"}
+              className="ml-auto hidden h-9 w-9 shrink-0 place-items-center rounded-xl text-ix-muted opacity-0 transition duration-200 hover:bg-ix-mist/10 hover:text-ix-butter focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 lg:grid"
+            >
+              <Icon name={pinned ? "chevronLeft" : "chevronRight"} className="h-4 w-4" />
+            </button>
+          </Tooltip>
         </div>
 
         <nav aria-label="Main" className="ix-scroll flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3">
@@ -128,7 +135,6 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
                     <li key={item.key}>
                       <Link
                         href={item.href}
-                        title={item.label}
                         aria-current={active ? "page" : undefined}
                         className={`relative flex h-11 items-center rounded-2xl transition-colors duration-200 ${active ? "bg-ix-butter/10 text-ix-text shadow-[inset_0_0_0_1px_rgba(232,216,164,0.26)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
                       >

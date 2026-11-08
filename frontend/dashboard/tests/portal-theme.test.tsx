@@ -123,28 +123,31 @@ describe("the current page is highlighted, nested routes included", () => {
   });
 });
 
-describe("each part of the portal has its own decorative accent", () => {
-  const section = (key: keyof typeof PAGE_META) => /data-section="([a-z]+)"/.exec(shell(key))?.[1];
-  it("Inventory powder blue, Purchasing pale butter, Sales sea-glass mint; the rest keep the foundation's sea-glass", () => {
-    for (const key of ["products", "stock", "scan", "movements"] as const) expect(section(key), key).toBe("inventory");
-    for (const key of ["suppliers", "purchasing", "receipts"] as const) expect(section(key), key).toBe("purchasing");
-    for (const key of ["clients", "deliveries", "dispatches", "invoices"] as const) expect(section(key), key).toBe("sales");
-    for (const key of ["dashboard", "finance", "support", "settings"] as const) expect(section(key), key).toBeUndefined();
+describe("the portal has ONE decorative accent: pale butter yellow", () => {
+  it("no page sets a section accent any more: every page of the shell is the same", () => {
+    for (const key of Object.keys(PAGE_META) as (keyof typeof PAGE_META)[]) expect(shell(key), key).not.toContain("data-section");
+    expect(read("src/app/globals.css")).not.toContain("data-section");
   });
-  it("the CSS defines those accents once, as tokens", () => {
+  it("the CSS defines the accent once, as tokens; powder blue and mint no longer exist", () => {
     const css = read("src/app/globals.css");
-    expect(css).toMatch(/--ix-accent-yellow:\s*#e8d8a4/i);
-    expect(css).toMatch(/--ix-accent-mint:\s*#96c5b8/i);
-    expect(css).toMatch(/--ix-accent-blue:\s*#a7c7d8/i);
-    expect(css).toMatch(/data-section="inventory"\][^}]*167 199 216/);
-    expect(css).toMatch(/data-section="purchasing"\][^}]*232 216 164/);
-    expect(css).toMatch(/data-section="sales"\][^}]*150 197 184/);
+    expect(css).toMatch(/--ix-accent:\s*#e8d8a4/i);
+    expect(css).toMatch(/--ix-accent-hover:\s*#f0e4b8/i);
+    expect(css).toMatch(/--ix-accent-rgb:\s*232 216 164/);
+    expect(css).toMatch(/--ix-on-accent:\s*#172a32/i); // dark slate text on a pale-yellow fill
+    for (const gone of ["#96c5b8", "#a7c7d8", "#86b6aa", "accent-mint", "accent-blue", "150 197 184", "167 199 216"]) expect(css.toLowerCase(), gone).not.toContain(gone);
     const tailwind = read("tailwind.config.ts");
-    for (const hex of ["#E8D8A4", "#96C5B8", "#A7C7D8", "#172A32", "#324D58", "#568E8F", "#86B6AA", "#A6C1B2", "#D8E8E3", "#EDF4F1", "#B5CBC9"]) expect(tailwind.toUpperCase(), hex).toContain(hex);
+    for (const hex of ["#E8D8A4", "#F0E4B8", "#172A32", "#324D58", "#568E8F", "#D8E8E3", "#EDF4F1", "#B5CBC9"]) expect(tailwind.toUpperCase(), hex).toContain(hex);
+    for (const gone of ["#96C5B8", "#A7C7D8", "#86B6AA"]) expect(tailwind.toUpperCase(), gone).not.toContain(gone);
+  });
+  it("the legacy indigo / emerald / sky / violet / teal Tailwind classes all resolve to the accent or to neutral slate", () => {
+    const tailwind = read("tailwind.config.ts");
+    expect(tailwind).toMatch(/indigo: butter/);
+    expect(tailwind).toMatch(/emerald: butter/);
+    for (const family of ["sky", "violet", "teal"]) expect(tailwind).toMatch(new RegExp(`${family}: mist`));
   });
   it("the accent hex codes live ONLY in the theme files (the CSS tokens, the Tailwind palette and the chart palette), not scattered through components", () => {
     const allowed = ["src/app/globals.css", "tailwind.config.ts", "src/components/dashboard/charts.tsx"].map((p) => join(root, p));
-    const scattered = walk(join(root, "src")).filter((f) => !allowed.includes(f)).filter((f) => /#E8D8A4|#96C5B8|#A7C7D8/i.test(readFileSync(f, "utf-8")));
+    const scattered = walk(join(root, "src")).filter((f) => !allowed.includes(f)).filter((f) => /#E8D8A4/i.test(readFileSync(f, "utf-8")));
     expect(scattered).toEqual([]);
   });
   it("the old light palettes are gone from Settings, setup and login", () => {
@@ -177,7 +180,8 @@ describe("printing", () => {
 
 describe("the shared UI library", () => {
   it("has three button looks: a calm general action, a glass secondary and an unmistakable destructive one", () => {
-    expect(buttonClass.primary).toContain("bg-ix-action");
+    expect(buttonClass.primary).toContain("bg-ix-butter");
+    expect(buttonClass.primary).toContain("text-ix-deep"); // dark slate text on pale yellow
     expect(buttonClass.secondary).toContain("border-ix-mist/20");
     expect(buttonClass.destructive).toMatch(/red/);
     for (const looks of Object.values(buttonClass)) expect(looks).toMatch(/min-h-11/); // touch-friendly
@@ -268,15 +272,15 @@ describe("confirmation dialogs", () => {
 });
 
 describe("the dashboard's accents", () => {
-  it("each figure card keeps the glass and takes its own accent: products blue, purchase orders butter, invoicing mint", () => {
+  it("each figure card keeps the glass and is either pale yellow or neutral slate", () => {
     const css = read("src/app/globals.css");
-    expect(css).toMatch(/\.ix-kpi\[data-accent="blue"\][^}]*accent-blue-rgb/);
-    expect(css).toMatch(/\.ix-kpi\[data-accent="yellow"\][^}]*accent-yellow-rgb/);
-    expect(css).toMatch(/\.ix-kpi\[data-accent="mint"\][^}]*accent-mint-rgb/);
+    expect(css).toMatch(/\.ix-kpi\s*\{\s*--kpi:\s*var\(--ix-accent-rgb\)/);
+    expect(css).toMatch(/\.ix-kpi\[data-accent="neutral"\][^}]*181 203 201/);
     const view = read("src/components/dashboard/view.tsx");
-    expect(view).toMatch(/icon="products" accent="blue"/);
-    expect(view).toMatch(/icon="orders" accent="yellow"/);
-    expect(view).toMatch(/icon="invoices" accent="mint"/);
+    expect(view).toMatch(/icon="products" accent="neutral"/);
+    expect(view).toMatch(/icon="orders" accent="neutral"/);
+    expect(view).toMatch(/icon="invoices" accent="yellow"/);
+    expect(view).toMatch(/icon="clients" accent="yellow"/);
     expect(view).toContain("ix-kpi p-5"); // still a glass card (GlassCard), never a solid colour
   });
   it("the sidebar's selected entry is marked with the pale butter yellow", () => {
@@ -289,5 +293,25 @@ describe("the dashboard's accents", () => {
   it("alphaOrg-shaped data still produces the shell without errors", () => {
     expect(() => shell("dashboard", alphaOrg.modules)).not.toThrow();
     expect(orgAdmin.full_name).toBeTruthy();
+  });
+});
+
+describe("one accent, everywhere", () => {
+  it("no source file asks for cyan / blue / purple / pink / green / orange / yellow / rose colours by name", () => {
+    const offenders = walk(join(root, "src")).filter((f) => !f.endsWith("globals.css")).filter((f) => /\b(?:bg|text|border|ring|from|to|via)-(?:cyan|blue|purple|pink|fuchsia|lime|green|orange|yellow|rose)-\d{2,3}/.test(readFileSync(f, "utf-8")));
+    expect(offenders).toEqual([]);
+  });
+  it("no component still uses the retired ix-mint / ix-blue / ix-sea / ix-sage / ix-action tokens", () => {
+    const offenders = walk(join(root, "src")).filter((f) => !f.endsWith("globals.css")).filter((f) => /\bix-(?:mint|blue|sea|sage|action)\b/.test(readFileSync(f, "utf-8")));
+    expect(offenders).toEqual([]);
+  });
+  it("native title tooltips are gone from the sidebar and header (the themed Tooltip is used instead)", () => {
+    expect(read("src/components/dashboard/sidebar.tsx")).not.toMatch(/\btitle=/);
+    expect(read("src/components/dashboard/frame.tsx")).not.toMatch(/\btitle=\{/);
+    expect(read("src/components/dashboard/sidebar.tsx")).toContain("<Tooltip");
+    expect(read("src/components/dashboard/frame.tsx")).toContain("<Tooltip");
+  });
+  it("the confirm dialog backdrop is the themed dim blur", () => {
+    expect(read("src/components/ui/confirm.tsx")).toContain("backdrop:backdrop-blur");
   });
 });

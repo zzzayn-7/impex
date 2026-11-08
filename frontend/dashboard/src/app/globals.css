@@ -46,39 +46,48 @@ body {
 }
 
 /* ==============================================================================================================================
-   Organization Portal theme (Steps 22A + 22B). One design system for the whole authenticated portal:
+   Impex portal theme (Organization Portal + Super Admin Portal share these tokens; each portal keeps its own copy of this file).
+   ONE decorative accent: Pale Butter Yellow #E8D8A4, on a dark slate-teal foundation (~85-90% slate / glass / neutral, 10-15% yellow).
+   Semantic colours (red for errors and destructive actions, amber for warnings) are separate and never decorative.
      .ix-dash      the page wrapper (slate-teal atmosphere); .ix-glass / .ix-panel / .ix-inset  the three surface levels
-     data-section  sets the SECTION ACCENT; every legacy "indigo-300" link and highlight follows it (see tailwind.config.ts)
    Nothing here applies outside .ix-dash, and the skin for older pages is screen-only: printing is handled at the bottom.
    ============================================================================================================================== */
 .ix-dash {
-  /* palette */
+  /* foundation */
   --ix-deep: #172a32;
   --ix-slate: #324d58;
   --ix-teal: #568e8f;
-  --ix-sea: #86b6aa;
-  --ix-sage: #a6c1b2;
   --ix-mist: #d8e8e3;
   --ix-text: #edf4f1;
   --ix-muted: #b5cbc9;
-  /* the three accents (and their "r g b" triplets, for translucent use) */
-  --ix-accent-yellow: #e8d8a4;
-  --ix-accent-mint: #96c5b8;
-  --ix-accent-blue: #a7c7d8;
-  --ix-accent-yellow-rgb: 232 216 164;
-  --ix-accent-mint-rgb: 150 197 184;
-  --ix-accent-blue-rgb: 167 199 216;
-  /* the current section accent: the default is the sea-glass of the foundation */
-  --ix-accent-rgb: 134 182 170;
-  --ix-accent-soft-rgb: 190 218 209;
-  /* surfaces, borders, shadows, radii, focus */
+  /* the accent (and its "r g b" triplets, for translucent use) */
+  --ix-accent: #e8d8a4;
+  --ix-accent-hover: #f0e4b8;
+  --ix-accent-rgb: 232 216 164;
+  --ix-accent-soft-rgb: 243 234 200;
+  --ix-accent-translucent: rgba(232, 216, 164, 0.12);
+  --ix-on-accent: #172a32; /* text on a pale-yellow fill */
+  /* surfaces, borders, shadows, radii, focus, motion */
+  --ix-surface-glass: rgba(50, 77, 88, 0.3);
+  --ix-surface-panel: rgba(36, 60, 70, 0.5);
+  --ix-surface-inset: rgba(14, 29, 35, 0.42);
+  --ix-surface-menu: rgba(21, 40, 48, 0.94);
   --ix-border: rgba(216, 232, 227, 0.13);
   --ix-border-strong: rgba(216, 232, 227, 0.22);
   --ix-shadow: 0 14px 32px -18px rgba(4, 12, 15, 0.6);
+  --ix-shadow-pop: 0 18px 40px -14px rgba(3, 10, 13, 0.75);
+  --ix-radius-xl: 24px;
   --ix-radius-lg: 22px;
   --ix-radius-md: 18px;
   --ix-radius-sm: 14px;
-  --ix-focus: rgb(var(--ix-accent-rgb) / 0.55);
+  --ix-radius-field: 13px;
+  --ix-radius-tip: 11px;
+  --ix-radius-menu: 16px;
+  --ix-focus: rgb(var(--ix-accent-rgb) / 0.6);
+  --ix-ring: 0 0 0 3px rgb(var(--ix-accent-rgb) / 0.2);
+  --ix-dur-fast: 140ms;
+  --ix-dur-base: 200ms;
+  --ix-dur-slow: 320ms;
 
   position: relative;
   min-height: 100vh;
@@ -86,12 +95,6 @@ body {
   background-color: var(--ix-deep);
   isolation: isolate;
 }
-
-/* The accent of each part of the portal: Inventory powder blue, Purchasing pale butter, Sales sea-glass mint. Finance, Settings, Support and the
-   dashboard keep the sea-glass of the foundation. Only decorative colour changes: status colours (success, warning, error) are separate. */
-.ix-dash[data-section="inventory"] { --ix-accent-rgb: 167 199 216; --ix-accent-soft-rgb: 205 224 233; }
-.ix-dash[data-section="purchasing"] { --ix-accent-rgb: 232 216 164; --ix-accent-soft-rgb: 243 234 200; }
-.ix-dash[data-section="sales"] { --ix-accent-rgb: 150 197 184; --ix-accent-soft-rgb: 196 224 215; }
 
 /* The atmosphere: a quiet slate foundation with restrained ambient lights. One fixed layer: never animated, never blurred. */
 .ix-dash::before {
@@ -102,7 +105,7 @@ body {
   pointer-events: none;
   background:
     radial-gradient(60rem 38rem at 12% -8%, rgba(86, 142, 143, 0.32), transparent 62%),
-    radial-gradient(52rem 34rem at 96% 8%, rgba(134, 182, 170, 0.15), transparent 60%),
+    radial-gradient(52rem 34rem at 96% 8%, rgba(232, 216, 164, 0.06), transparent 60%),
     radial-gradient(46rem 40rem at 70% 112%, rgba(50, 77, 88, 0.55), transparent 65%),
     linear-gradient(165deg, #1b333c 0%, #172a32 48%, #13232a 100%);
 }
@@ -112,7 +115,7 @@ body {
   border-radius: var(--ix-radius-lg);
   border: 1px solid var(--ix-border);
   background:
-    linear-gradient(158deg, rgba(216, 232, 227, 0.11) 0%, rgba(134, 182, 170, 0.06) 38%, rgba(23, 42, 50, 0.3) 100%),
+    linear-gradient(158deg, rgba(216, 232, 227, 0.11) 0%, rgba(86, 142, 143, 0.07) 38%, rgba(23, 42, 50, 0.3) 100%),
     rgba(50, 77, 88, 0.3);
   box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.16), inset 0 -1px 0 rgba(23, 42, 50, 0.35), var(--ix-shadow);
   -webkit-backdrop-filter: blur(18px) saturate(115%);
@@ -154,23 +157,21 @@ body {
   box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.2), inset 0 -1px 0 rgba(23, 42, 50, 0.35), 0 18px 36px -18px rgba(4, 12, 15, 0.7);
 }
 
-/* A figure card: a very faint light on the upper edge in its accent colour, and a tinted icon well. */
-.ix-kpi[data-accent="blue"] { --kpi: var(--ix-accent-blue-rgb); }
-.ix-kpi[data-accent="yellow"] { --kpi: var(--ix-accent-yellow-rgb); }
-.ix-kpi[data-accent="mint"] { --kpi: var(--ix-accent-mint-rgb); }
-.ix-kpi[data-accent="sea"] { --kpi: 134 182 170; }
+/* A figure card: a very faint light on the upper edge and a tinted icon well. The accent is pale yellow; "neutral" cards use slate-grey. */
+.ix-kpi { --kpi: var(--ix-accent-rgb); }
+.ix-kpi[data-accent="neutral"] { --kpi: 181 203 201; }
 .ix-kpi::after {
   content: "";
   position: absolute;
   inset: 0 22px auto 22px;
   height: 1px;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgb(var(--kpi, 134 182 170) / 0.55), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--kpi) / 0.5), transparent);
 }
 .ix-kpi-icon {
-  color: rgb(var(--kpi, 134 182 170));
-  background: rgb(var(--kpi, 134 182 170) / 0.12);
-  border: 1px solid rgb(var(--kpi, 134 182 170) / 0.24);
+  color: rgb(var(--kpi));
+  background: rgb(var(--kpi) / 0.1);
+  border: 1px solid rgb(var(--kpi) / 0.2);
 }
 
 /* No backdrop-filter (older browsers): calm, more opaque surfaces keep every label readable. */
@@ -210,35 +211,119 @@ body {
   .ix-dash .rounded-md { border-radius: 12px; }
   .ix-dash .rounded-lg { border-radius: var(--ix-radius-sm); }
   .ix-dash .rounded-xl { border-radius: var(--ix-radius-md); }
-  .ix-dash .overflow-x-auto { border-radius: var(--ix-radius-sm); scrollbar-width: thin; scrollbar-color: rgba(166, 193, 178, 0.35) transparent; }
+  .ix-dash .overflow-x-auto { border-radius: var(--ix-radius-sm); }
 
-  /* fields */
+  /* fields: one height, one radius, one focus treatment for every text input, textarea and select */
   .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]) {
-    border-radius: 12px;
+    border-radius: var(--ix-radius-field);
     border-color: rgba(216, 232, 227, 0.16);
     background-color: rgba(11, 25, 31, 0.5);
     color: var(--ix-text);
-    transition: border-color 160ms ease, box-shadow 160ms ease;
+    color-scheme: dark;
+    transition: border-color var(--ix-dur-fast) ease, box-shadow var(--ix-dur-fast) ease, background-color var(--ix-dur-fast) ease;
+  }
+  .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]):hover:not(:disabled):not(:focus) {
+    border-color: rgba(216, 232, 227, 0.28);
   }
   .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]):focus {
     outline: none;
     border-color: rgb(var(--ix-accent-rgb) / 0.75);
-    box-shadow: 0 0 0 3px rgb(var(--ix-accent-rgb) / 0.2);
+    box-shadow: var(--ix-ring);
   }
+  .ix-dash :is(input, select, textarea):disabled { cursor: not-allowed; opacity: 0.55; }
   .ix-dash :is(input, textarea)::placeholder { color: rgba(181, 203, 201, 0.6); }
-  .ix-dash select option { background: #1c323b; color: var(--ix-text); }
-  .ix-dash input[type="checkbox"], .ix-dash input[type="radio"] { accent-color: #86b6aa; }
-  .ix-dash input[type="date"] { color-scheme: dark; }
-
-  /* buttons: the general action is a calm deep sea-glass fill; secondary buttons are glass with a thin border */
-  .ix-dash :is(button, a)[class*="bg-indigo-600"] {
-    border-radius: 12px;
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 18px -10px rgba(4, 12, 15, 0.7);
+  .ix-dash input[type="checkbox"], .ix-dash input[type="radio"] { accent-color: var(--ix-accent); cursor: pointer; }
+  .ix-dash input[type="date"], .ix-dash input[type="datetime-local"], .ix-dash input[type="month"], .ix-dash input[type="time"] { color-scheme: dark; min-height: 2.5rem; }
+  .ix-dash input[type="date"]::-webkit-calendar-picker-indicator,
+  .ix-dash input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  .ix-dash input[type="month"]::-webkit-calendar-picker-indicator,
+  .ix-dash input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.7; filter: invert(0.85) sepia(0.35) saturate(1.6) hue-rotate(2deg); }
+  .ix-dash input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+  .ix-dash input[type="search"]::-webkit-search-cancel-button { filter: invert(0.8); cursor: pointer; }
+  /* an on/off switch (role="switch"): a pill track and a round knob; pale yellow when on. The visible On/Off text beside it carries the state too. */
+  .ix-dash input[type="checkbox"][role="switch"] {
+    -webkit-appearance: none; appearance: none; position: relative; flex-shrink: 0;
+    width: 2.75rem; height: 1.5rem; border-radius: 999px;
+    border: 1px solid var(--ix-border-strong); background: rgba(11, 25, 31, 0.6);
+    transition: background-color var(--ix-dur-base) ease, border-color var(--ix-dur-base) ease;
   }
-  .ix-dash :is(button, a)[class*="bg-indigo-600"]:hover:not(:disabled) { background-color: #4a8184; }
-  .ix-dash :is(button, a)[class*="border-slate-700"] { border-radius: 12px; background-color: rgba(216, 232, 227, 0.04); }
+  .ix-dash input[type="checkbox"][role="switch"]::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 1.25rem; height: 1.25rem; border-radius: 999px;
+    background: var(--ix-muted); transition: transform var(--ix-dur-base) ease, background-color var(--ix-dur-base) ease;
+  }
+  .ix-dash input[type="checkbox"][role="switch"]:checked { border-color: rgb(var(--ix-accent-rgb) / 0.6); background: rgb(var(--ix-accent-rgb) / 0.28); }
+  .ix-dash input[type="checkbox"][role="switch"]:checked::after { transform: translateX(1.25rem); background: var(--ix-accent); }
+  .ix-dash input[type="checkbox"][role="switch"]:focus-visible { outline: 2px solid var(--ix-focus); outline-offset: 3px; }
+  .ix-dash input[type="checkbox"][role="switch"]:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ix-dash input[type="file"] { color: var(--ix-muted); font-size: 0.875rem; }
+  .ix-dash input[type="file"]::file-selector-button {
+    margin-right: 0.75rem; cursor: pointer; border: 1px solid var(--ix-border-strong); border-radius: 12px;
+    background: rgba(216, 232, 227, 0.07); padding: 0.45rem 0.9rem; color: var(--ix-text); font-weight: 500;
+    transition: background-color var(--ix-dur-fast) ease;
+  }
+  .ix-dash input[type="file"]::file-selector-button:hover { background: rgba(216, 232, 227, 0.14); }
+
+  /* SELECTS (every one, in both portals): no browser arrow. A single chevron is drawn inside the right-hand padding, vertically centred, so it can
+     never run past the box, and the padding keeps a long label from sliding underneath it (the label is cut with an ellipsis instead).
+     The list that opens is drawn by the operating system: the browser lets CSS set only its colours, which is done below. */
+  .ix-dash select:not([multiple]):not([size]) {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 2.5rem;
+    padding-right: 2.75rem !important;
+    padding-left: 0.875rem;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23B5CBC9' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.95rem center;
+    background-size: 1rem 1rem;
+  }
+  .ix-dash select:not([multiple]):not([size]):hover:not(:disabled),
+  .ix-dash select:not([multiple]):not([size]):focus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23E8D8A4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5l5 5 5-5'/%3E%3C/svg%3E");
+  }
+  .ix-dash select:disabled { cursor: not-allowed; }
+  .ix-dash select::-ms-expand { display: none; }
+  .ix-dash select option, .ix-dash select optgroup { background-color: #1a3039; color: var(--ix-text); padding: 0.4rem 0.6rem; }
+  .ix-dash select option:checked { background-color: #2c4651; color: var(--ix-accent); }
+  .ix-dash select option:disabled { color: rgba(181, 203, 201, 0.5); }
+
+  /* buttons: the primary action is dark slate text on pale yellow; secondary buttons are glass with a thin border. The older pages ask for it with
+     bg-indigo-600 / bg-emerald-600 (both are the accent ramp, see tailwind.config.ts); the white text they carry becomes dark slate. */
+  .ix-dash :is(button, a)[class*="bg-indigo-600"],
+  .ix-dash :is(button, a)[class*="bg-emerald-600"],
+  .ix-dash :is(button, a)[class*="bg-ix-butter"][class*="text-ix-deep"] {
+    border-radius: var(--ix-radius-field);
+    background-color: var(--ix-accent);
+    color: var(--ix-on-accent);
+    font-weight: 600;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(4, 12, 15, 0.7);
+    transition: background-color var(--ix-dur-fast) ease, transform var(--ix-dur-fast) ease, box-shadow var(--ix-dur-fast) ease;
+  }
+  .ix-dash :is(button, a)[class*="bg-indigo-600"]:hover:not(:disabled),
+  .ix-dash :is(button, a)[class*="bg-emerald-600"]:hover:not(:disabled),
+  .ix-dash :is(button, a)[class*="bg-ix-butter"][class*="text-ix-deep"]:hover:not(:disabled) { background-color: var(--ix-accent-hover); }
+  .ix-dash :is(button, a)[class*="bg-indigo-600"]:disabled,
+  .ix-dash :is(button, a)[class*="bg-emerald-600"]:disabled { cursor: not-allowed; }
+  .ix-dash :is(button, a)[class*="bg-indigo-600"] :is(svg, span),
+  .ix-dash :is(button, a)[class*="bg-emerald-600"] :is(svg, span) { color: inherit; }
+  /* the same dark-on-yellow rule for a selected tab, a monogram tile or any other solid accent surface that is not a button */
+  .ix-dash :not(button):not(a)[class*="bg-indigo-600"],
+  .ix-dash :not(button):not(a)[class*="bg-emerald-600"] { color: var(--ix-on-accent); }
+  .ix-dash :is(button, a)[class*="border-slate-700"] { border-radius: var(--ix-radius-field); background-color: rgba(216, 232, 227, 0.04); }
   .ix-dash :is(button, a)[class*="border-slate-700"]:hover:not(:disabled) { background-color: rgba(216, 232, 227, 0.1); }
+  .ix-dash :is(button, a):active:not(:disabled) { transform: translateY(0.5px); }
+
+  /* thin themed scrollbars */
+  .ix-dash * { scrollbar-width: thin; scrollbar-color: rgba(166, 193, 178, 0.3) transparent; }
+  .ix-dash *::-webkit-scrollbar { width: 10px; height: 10px; }
+  .ix-dash *::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: rgba(166, 193, 178, 0.3); background-clip: content-box; }
+  .ix-dash *::-webkit-scrollbar-thumb:hover { background: rgba(232, 216, 164, 0.45); background-clip: content-box; }
+  .ix-dash *::-webkit-scrollbar-track { background: transparent; }
 
   /* tables */
   .ix-dash table { border-collapse: collapse; }
@@ -246,6 +331,81 @@ body {
   .ix-dash thead th { letter-spacing: 0.04em; }
   .ix-dash tbody tr { transition: background-color 140ms ease; }
 }
+
+/* ------------------------------------------------------------------------------------------------------------------------------
+   Floating layers. Tooltips, menus and dialogs are drawn by components rendered into <body> (a portal), so no card's overflow, backdrop-filter
+   or transform can clip them; they sit above content (z 70). The portal sits outside .ix-dash, so these rules do not depend on it.
+   ------------------------------------------------------------------------------------------------------------------------------ */
+.ix-tip {
+  position: fixed;
+  z-index: 70;
+  max-width: min(18rem, calc(100vw - 16px));
+  pointer-events: none; /* a tooltip never blocks a click */
+  border: 1px solid rgba(216, 232, 227, 0.2);
+  border-radius: 11px;
+  background: linear-gradient(160deg, rgba(48, 76, 86, 0.96), rgba(21, 40, 48, 0.97));
+  padding: 0.4rem 0.7rem;
+  font: 500 12px/1.4 Inter, Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #edf4f1;
+  box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.12), 0 14px 30px -12px rgba(3, 10, 13, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  transform: translateY(2px) scale(0.98);
+  transition: opacity 140ms ease, transform 140ms ease;
+  overflow-wrap: anywhere;
+}
+.ix-tip[data-open="true"] { opacity: 1; transform: none; }
+.ix-tip::before { /* the pale-yellow indicator */
+  content: "";
+  position: absolute;
+  left: 0.55rem;
+  top: -1px;
+  width: 1.1rem;
+  height: 2px;
+  border-radius: 2px;
+  background: #e8d8a4;
+  opacity: 0.85;
+}
+
+/* An app-rendered menu or popover (action menus, user menu ...): dark translucent glass, thin border, pale-yellow hover and selection. */
+.ix-menu {
+  border: 1px solid rgba(216, 232, 227, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(48, 76, 86, 0.97), rgba(21, 40, 48, 0.98));
+  box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.12), 0 18px 40px -14px rgba(3, 10, 13, 0.75);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  padding: 0.35rem;
+  color: #edf4f1;
+}
+.ix-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 11px;
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #edf4f1;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.ix-menu-item:hover, .ix-menu-item:focus-visible, .ix-menu-item[aria-current="true"] { background: rgba(232, 216, 164, 0.12); color: #e8d8a4; outline: none; }
+.ix-menu-item[aria-disabled="true"], .ix-menu-item:disabled { cursor: not-allowed; opacity: 0.5; }
+.ix-menu-sep { margin: 0.3rem 0.4rem; height: 1px; background: rgba(216, 232, 227, 0.12); }
+
+/* Dialog layer (the confirm dialog): a dim, softly blurred backdrop. */
+.ix-backdrop { background: rgba(8, 17, 21, 0.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-tip { transition: none; transform: none; }
+  .ix-menu-item { transition: none; }
+}
+
+/* Floating layers are never printed. */
+@media print { .ix-tip, .ix-menu { display: none !important; } }
 
 @media (prefers-reduced-motion: reduce) {
   .ix-dash *, .ix-dash *::before, .ix-dash *::after {

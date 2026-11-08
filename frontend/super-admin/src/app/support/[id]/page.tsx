@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { listOrganizations } from "@/lib/organizations";
 import { getTicket, UUID_RE } from "@/lib/support";
@@ -19,10 +19,7 @@ export default async function TicketPage({ params }: { params: { id: string } })
   const token = getSessionToken() ?? "";
   const back = <Link href="/support" className="text-xs text-indigo-300 hover:text-indigo-200">← Support Inbox</Link>;
   const frame = (content: React.ReactNode, unread = 0) => (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="support" supportUnread={unread} />
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-5 p-8">{back}{content}</main>
-    </div>
+    <PortalShell user={user} current="support" supportUnread={unread}>{back}{content}</PortalShell>
   );
 
   if (!UUID_RE.test(params.id)) return frame(<Notice>Ticket not found.</Notice>);

@@ -27,14 +27,14 @@ function Shell({ modules = ["inventory", "sales", "finance"] }: { modules?: stri
 const aside = () => document.getElementById("ix-sidebar") as HTMLElement;
 
 describe("the sidebar's structure", () => {
-  it("is a labelled navigation whose every link has an accessible name, a title and a route", () => {
+  it("is a labelled navigation whose every link has an accessible name and a route", () => {
     render(<Shell />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link");
     expect(links.length).toBe(navGroups(["inventory", "sales", "finance"]).flatMap((g) => g.items).length);
     for (const link of links) {
       expect(link.getAttribute("href")).toMatch(/^\//);
-      expect(link.getAttribute("title")).toBe(link.textContent); // the full label, as the tooltip, even while only the icon shows
+      expect(link.getAttribute("title")).toBeNull(); // no native tooltip: hovering or focusing the rail expands it, which shows the label itself
       expect(link.textContent!.trim().length).toBeGreaterThan(0); // the name is in the DOM, so a screen reader reads it while the rail is collapsed
     }
     expect(within(nav).getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBe("page");

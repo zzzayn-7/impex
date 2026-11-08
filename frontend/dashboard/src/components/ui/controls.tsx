@@ -10,7 +10,7 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAt
 const base = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/60 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const buttonClass = {
-  primary: `${base} bg-ix-action text-white shadow-md shadow-black/20 hover:bg-ix-action-hover`,
+  primary: `${base} bg-ix-butter text-ix-deep shadow-md shadow-black/20 hover:bg-ix-butter-hover`,
   secondary: `${base} border border-ix-mist/20 bg-ix-mist/5 text-ix-text hover:bg-ix-mist/10`,
   destructive: `${base} border border-red-300/40 bg-red-400/10 text-red-200 hover:bg-red-400/20`,
 } as const;

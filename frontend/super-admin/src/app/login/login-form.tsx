@@ -97,7 +97,7 @@ export default function LoginForm() {
         {loading && (
           <span
             aria-hidden="true"
-            className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            className="h-4 w-4 animate-spin rounded-full border-2 border-ix-deep/25 border-t-ix-deep motion-reduce:animate-none"
           />
         )}
         {loading ? "Signing in…" : "Sign in"}

@@ -1,4 +1,4 @@
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { getUnreadCount } from "@/lib/support";
 
@@ -23,18 +23,14 @@ export default async function SuperAdminDashboard() {
   ];
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="dashboard" supportUnread={supportUnread} />
-
-      {/* Main Content */}
-      <main className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">
+    <PortalShell user={user} current="dashboard" supportUnread={supportUnread}>
         {/* Metric Cards */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, idx) => (
-            <div key={idx} className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 shadow-sm">
-              <p className="text-xs font-medium text-slate-400">{stat.label}</p>
-              <p className="mt-2 text-2xl font-bold text-white tracking-tight">{stat.value}</p>
-              <p className="mt-1 text-xs text-indigo-400">{stat.change}</p>
+            <div key={idx} data-accent={idx === 0 ? "yellow" : "neutral"} className="ix-glass ix-glass-sm ix-glass-lift ix-kpi relative p-5">
+              <p className="text-xs font-medium text-ix-muted">{stat.label}</p>
+              <p className="mt-2 text-[28px] font-semibold leading-none tracking-tight text-ix-text">{stat.value}</p>
+              <p className="mt-2 text-xs text-ix-butter">{stat.change}</p>
             </div>
           ))}
         </section>
@@ -124,8 +120,7 @@ export default async function SuperAdminDashboard() {
             </p>
           </div>
         </section>
-      </main>
-    </div>
+    </PortalShell>
   );
 }
 

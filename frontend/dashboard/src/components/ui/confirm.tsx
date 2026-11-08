@@ -25,7 +25,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel, danger = tru
       aria-labelledby="ix-confirm-title"
       aria-describedby="ix-confirm-message"
       onCancel={(event) => { event.preventDefault(); onResolve(false); }}
-      className="ix-panel m-auto w-[min(92vw,26rem)] p-0 text-ix-text backdrop:bg-ix-deep/70"
+      className="ix-panel m-auto w-[min(92vw,26rem)] p-0 text-ix-text backdrop:bg-[rgba(8,17,21,0.62)] backdrop:backdrop-blur-[3px]"
     >
       <div className="space-y-3 p-6">
         <h2 id="ix-confirm-title" className="text-base font-semibold">{title}</h2>

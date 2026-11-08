@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/portal-shell";
 import { getSessionToken, requireSuperAdmin } from "@/lib/auth";
 import { listAdministrators, type AdministratorStatus } from "@/lib/administrators";
 import { listOrganizations } from "@/lib/organizations";
@@ -42,11 +42,13 @@ export default async function OrganizationsPage() {
     : [];
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <PortalHeader user={user} current="organizations" supportUnread={supportUnread ?? 0} />
-
-      <main className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">
-        <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">
+    <PortalShell user={user} current="organizations" supportUnread={supportUnread ?? 0}>
+      <nav aria-label="On this page" className="-mb-2 flex flex-wrap gap-2 text-xs font-medium">
+        {[["#register", "Register organization"], ["#organizations", "Organizations"], ["#administrators", "Administrators & invitations"]].map(([href, label]) => (
+          <a key={href} href={href} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-ix-mist transition hover:border-ix-butter/30 hover:bg-ix-butter/10 hover:text-ix-butter">{label}</a>
+        ))}
+      </nav>
+        <section id="register" className="scroll-mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">
           <div>
             <h2 className="text-base font-semibold text-white">Register Organization</h2>
             <p className="text-xs text-slate-400">Create a new tenant organization on the platform.</p>
@@ -54,7 +56,7 @@ export default async function OrganizationsPage() {
           <OrganizationForm demoMode={demoMode} />
         </section>
 
-        <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
+        <section id="organizations" className="scroll-mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-white">Organizations</h2>
@@ -132,7 +134,7 @@ export default async function OrganizationsPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">
+        <section id="administrators" className="scroll-mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">
           <AdministratorPanel organizations={organizationOptions} demoMode={demoMode} />
 
           {!adminsResult.ok ? (
@@ -205,7 +207,6 @@ export default async function OrganizationsPage() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+    </PortalShell>
   );
 }
