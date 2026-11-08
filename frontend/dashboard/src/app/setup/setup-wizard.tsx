@@ -16,15 +16,15 @@ type Props = {
   email: string;
 };
 
-const card = "rounded-[22px] border border-[#E4E8E2] bg-white/95 p-6 shadow-[0_6px_24px_rgba(35,55,42,0.035)] sm:p-9";
-const label = "block text-sm font-medium text-[#1B211D]";
+const card = "rounded-[22px] border border-ix-mist/15 bg-ix-deep/70 p-6 shadow-[0_6px_24px_rgba(35,55,42,0.035)] sm:p-9";
+const label = "block text-sm font-medium text-ix-text";
 const input =
-  "mt-2 block w-full rounded-xl border border-[#E4E8E2] bg-[#F7F8F5] px-4 py-3 text-[15px] text-[#1B211D] placeholder-[#777F79]/70 outline-none transition duration-200 focus:border-[#658675] focus:bg-white focus:ring-2 focus:ring-[#658675]/25 motion-reduce:transition-none";
+  "mt-2 block w-full rounded-xl border border-ix-mist/15 bg-ix-mist/10 px-4 py-3 text-[15px] text-ix-text placeholder-ix-muted/60 outline-none transition duration-200 focus:border-ix-accent focus:bg-ix-deep/70 focus:ring-2 focus:ring-ix-accent/25 motion-reduce:transition-none";
 const primary =
-  "inline-flex min-h-11 items-center justify-center rounded-xl bg-[#426B58] px-6 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-[#365a49] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#658675]/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex min-h-11 items-center justify-center rounded-xl bg-ix-action px-6 py-2.5 text-sm font-medium text-white transition duration-200 hover:bg-ix-action-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 const secondary =
-  "inline-flex min-h-11 items-center justify-center rounded-xl border border-[#E4E8E2] bg-white px-5 py-2.5 text-sm font-medium text-[#426B58] transition duration-200 hover:bg-[#E8F0EA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#658675]/40 disabled:opacity-50 motion-reduce:transition-none";
-const errorText = "mt-2 text-sm text-[#a4442f]";
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-5 py-2.5 text-sm font-medium text-ix-sea transition duration-200 hover:bg-ix-sea/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:opacity-50 motion-reduce:transition-none";
+const errorText = "mt-2 text-sm text-red-300";
 
 const STEPS = ["Company", "You", "Review"];
 
@@ -188,13 +188,13 @@ export default function SetupWizard(props: Props) {
           <li key={name} aria-current={state === "current" ? "step" : undefined} className="flex flex-1 items-center gap-2">
             <span
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition duration-300 motion-reduce:transition-none ${
-                state === "todo" ? "border border-[#E4E8E2] bg-white text-[#777F79]" : state === "current" ? "bg-[#426B58] text-white" : "bg-[#E8F0EA] text-[#426B58]"
+                state === "todo" ? "border border-ix-mist/15 bg-ix-deep/55 text-ix-muted" : state === "current" ? "bg-ix-action text-white" : "bg-ix-sea/15 text-ix-sea"
               }`}
             >
               {state === "done" ? "✓" : n}
             </span>
-            <span className={`hidden text-sm sm:block ${state === "current" ? "font-medium text-[#1B211D]" : "text-[#777F79]"}`}>{name}</span>
-            {n < STEPS.length && <span className={`h-px flex-1 transition-colors duration-300 motion-reduce:transition-none ${n < step ? "bg-[#A8BEB0]" : "bg-[#E4E8E2]"}`} />}
+            <span className={`hidden text-sm sm:block ${state === "current" ? "font-medium text-ix-text" : "text-ix-muted"}`}>{name}</span>
+            {n < STEPS.length && <span className={`h-px flex-1 transition-colors duration-300 motion-reduce:transition-none ${n < step ? "bg-ix-sage" : "bg-ix-mist/15"}`} />}
           </li>
         );
       })}
@@ -204,9 +204,9 @@ export default function SetupWizard(props: Props) {
   const LogoBadge = ({ size = "h-14 w-14" }: { size?: string }) =>
     logoUrl ? (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={logoUrl} alt="Company logo" className={`${size} rounded-2xl border border-[#E4E8E2] bg-white object-contain p-1`} />
+      <img src={logoUrl} alt="Company logo" className={`${size} rounded-2xl border border-ix-mist/15 bg-ix-deep/55 object-contain p-1`} />
     ) : (
-      <span className={`${size} flex items-center justify-center rounded-2xl bg-[#E8F0EA] text-lg font-semibold text-[#426B58]`}>{monogram(companyName)}</span>
+      <span className={`${size} flex items-center justify-center rounded-2xl bg-ix-sea/15 text-lg font-semibold text-ix-sea`}>{monogram(companyName)}</span>
     );
 
   // ---- a newly invited administrator of an already configured company: just their own profile -------------------------------------
@@ -216,12 +216,12 @@ export default function SetupWizard(props: Props) {
         <div className="mb-6 flex items-center gap-4">
           <LogoBadge />
           <div>
-            <p className="text-sm text-[#777F79]">You are joining</p>
+            <p className="text-sm text-ix-muted">You are joining</p>
             <p className="text-lg font-semibold tracking-tight">{companyName}</p>
           </div>
         </div>
         <h1 id="welcome-heading" className="text-2xl font-semibold tracking-tight">Welcome, let&apos;s confirm your name</h1>
-        <p className="mt-2 text-[15px] text-[#777F79]">Your company workspace is already set up. Check the name that will represent you, then continue.</p>
+        <p className="mt-2 text-[15px] text-ix-muted">Your company workspace is already set up. Check the name that will represent you, then continue.</p>
         <div className="mt-7 space-y-5">
           <div>
             <label htmlFor="full-name" className={label}>Administrator full name</label>
@@ -230,7 +230,7 @@ export default function SetupWizard(props: Props) {
           </div>
           <div>
             <label htmlFor="email" className={label}>Account email</label>
-            <input id="email" value={props.email} readOnly className={`${input} cursor-not-allowed text-[#777F79]`} />
+            <input id="email" value={props.email} readOnly className={`${input} cursor-not-allowed text-ix-muted`} />
           </div>
         </div>
         {formError && <p role="alert" className={`${errorText} mt-4`}>{formError}</p>}
@@ -248,16 +248,16 @@ export default function SetupWizard(props: Props) {
         {step === 1 && (
           <>
             <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Welcome to Impex</h1>
-            <p className="mt-2 text-[15px] text-[#777F79]">Let&apos;s personalize your company workspace before you get started.</p>
+            <p className="mt-2 text-[15px] text-ix-muted">Let&apos;s personalize your company workspace before you get started.</p>
 
             <div className="mt-8">
               <span className={label} id="logo-label">Company logo</span>
               {logoUrl ? (
-                <div className="mt-2 flex flex-wrap items-center gap-5 rounded-2xl border border-[#E4E8E2] bg-[#F7F8F5] p-5">
+                <div className="mt-2 flex flex-wrap items-center gap-5 rounded-2xl border border-ix-mist/15 bg-ix-mist/10 p-5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={logoUrl} alt="Your company logo" className="h-24 w-24 rounded-2xl border border-[#E4E8E2] bg-white object-contain p-1.5" />
+                  <img src={logoUrl} alt="Your company logo" className="h-24 w-24 rounded-2xl border border-ix-mist/15 bg-ix-deep/55 object-contain p-1.5" />
                   <div className="space-y-3">
-                    <p className="text-sm text-[#777F79]">{uploading ? "Updating…" : "Looks good. You can replace or remove it before you finish."}</p>
+                    <p className="text-sm text-ix-muted">{uploading ? "Updating…" : "Looks good. You can replace or remove it before you finish."}</p>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading} className={secondary}>Replace logo</button>
                       <button type="button" onClick={removeLogo} disabled={uploading} className={secondary}>Remove</button>
@@ -275,13 +275,13 @@ export default function SetupWizard(props: Props) {
                   onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}
                   onDrop={onDrop}
-                  className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#658675]/40 motion-reduce:transition-none ${
-                    dragging ? "border-[#658675] bg-[#E8F0EA]" : "border-[#A8BEB0] bg-[#F7F8F5] hover:bg-[#E8F0EA]/60"
+                  className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 motion-reduce:transition-none ${
+                    dragging ? "border-ix-sea bg-ix-sea/15" : "border-ix-sage/60 bg-ix-mist/10 hover:bg-ix-mist/10"
                   }`}
                 >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#E8F0EA] text-xl text-[#426B58]" aria-hidden="true">↑</span>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ix-sea/15 text-xl text-ix-sea" aria-hidden="true">↑</span>
                   <span className="mt-3 text-[15px] font-medium">{uploading ? "Uploading…" : "Drag and drop your logo here, or click to browse"}</span>
-                  <span id="logo-help" className="mt-1 text-sm text-[#777F79]">PNG, JPEG or WebP · up to 2 MB · at least 64 × 64 pixels</span>
+                  <span id="logo-help" className="mt-1 text-sm text-ix-muted">PNG, JPEG or WebP · up to 2 MB · at least 64 × 64 pixels</span>
                 </div>
               )}
               <input ref={fileInput} type="file" accept={LOGO_ACCEPT} className="sr-only" tabIndex={-1} aria-label="Choose a logo file" onChange={(e) => void upload(e.target.files?.[0])} />
@@ -304,7 +304,7 @@ export default function SetupWizard(props: Props) {
         {step === 2 && (
           <>
             <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Tell us about yourself</h1>
-            <p className="mt-2 text-[15px] text-[#777F79]">Set the name that will represent you across your workspace.</p>
+            <p className="mt-2 text-[15px] text-ix-muted">Set the name that will represent you across your workspace.</p>
             <div className="mt-8">
               <label htmlFor="full-name" className={label}>Administrator full name</label>
               <input id="full-name" value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={100} autoComplete="name" className={input} />
@@ -321,38 +321,38 @@ export default function SetupWizard(props: Props) {
         {step === 3 && (
           <>
             <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Review and complete</h1>
-            <p className="mt-2 text-[15px] text-[#777F79]">Check that everything looks right. You can go back to change anything.</p>
+            <p className="mt-2 text-[15px] text-ix-muted">Check that everything looks right. You can go back to change anything.</p>
 
-            <dl className="mt-7 divide-y divide-[#E4E8E2] rounded-2xl border border-[#E4E8E2] bg-[#F7F8F5]">
+            <dl className="mt-7 divide-y divide-ix-mist/10 rounded-2xl border border-ix-mist/15 bg-ix-mist/10">
               <div className="flex items-center justify-between gap-4 p-4">
                 <div className="flex items-center gap-4">
                   <LogoBadge />
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-[#777F79]">Company</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ix-muted">Company</dt>
                     <dd className="text-[15px] font-medium">{companyName}</dd>
                   </div>
                 </div>
-                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-[#426B58] hover:underline">Edit</button>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-sea hover:underline">Edit</button>
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-[#777F79]">Administrator</dt>
+                  <dt className="text-xs uppercase tracking-wide text-ix-muted">Administrator</dt>
                   <dd className="text-[15px] font-medium">{fullName}</dd>
                 </div>
-                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-[#426B58] hover:underline">Edit</button>
+                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-ix-sea hover:underline">Edit</button>
               </div>
               <div className="p-4">
-                <dt className="text-xs uppercase tracking-wide text-[#777F79]">Account email</dt>
+                <dt className="text-xs uppercase tracking-wide text-ix-muted">Account email</dt>
                 <dd className="text-[15px] font-medium">{props.email}</dd>
               </div>
             </dl>
 
-            <p className="mt-7 text-sm font-medium text-[#777F79]">How it will look in your dashboard</p>
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-[#1f2937] px-4 py-3" aria-label="Dashboard branding preview" role="img">
+            <p className="mt-7 text-sm font-medium text-ix-muted">How it will look in your dashboard</p>
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-ix-deep px-4 py-3" aria-label="Dashboard branding preview" role="img">
               <div className="flex items-center gap-3">
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoUrl} alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
+                  <img src={logoUrl} alt="" className="h-9 w-9 rounded-lg bg-ix-deep/55 object-contain p-0.5" />
                 ) : (
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">{monogram(companyName)}</span>
                 )}

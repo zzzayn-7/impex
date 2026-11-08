@@ -497,7 +497,7 @@ def main() -> int:
         [t.start() for t in threads]
         [t.join(60) for t in threads]
         check("two different changes reviewed against the same state: one wins (200), the other is told to review again (409)", sorted(outcomes) == [200, 409], outcomes)
-        status, body = sa_api("PUT", f"/api/organizations/{org_ids['b']}/modules", {"changes": {"sales": False}, "expected_revision": 0})
+        status, body = sa_api("PUT", f"/api/organizations/{org_ids['b']}/modules", {"changes": {"sales": not enabled("b")["sales"]}, "expected_revision": 0})  # (a real change: switching sales to what it already is would be a no-op)
         check("a stale review is refused by name", status == 409 and body.get("code") == "stale_revision", (status, body))
         check("each confirmed change is exactly one batch in the history", len({h["batch_id"] for h in history("b") if h["action"] in ("enabled", "disabled")}) == 2, history("b"))
         # leave B with only Inventory for the isolation checks

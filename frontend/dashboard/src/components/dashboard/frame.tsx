@@ -1,34 +1,39 @@
 import LogoutButton from "@/components/logout-button";
-import { navGroups } from "@/lib/dashboard-nav";
+import { navGroups, PAGE_META, type PageKey } from "@/lib/dashboard-nav";
 import { monogram } from "@/lib/setup-validation";
-import type { HeaderOrganization } from "@/components/portal-header";
 import type { TenantAdmin } from "@/lib/tenant-auth";
 import { MenuButton, NavProvider, Sidebar } from "./sidebar";
 
-// The Organization Dashboard's chrome: the atmospheric background, the icon-rail sidebar and a slim glass header. It is used by the dashboard
-// page ONLY (its own route group); every other page keeps the portal's existing header. The page content sits in a column with constant left
-// padding for the 76px rail, so the sidebar expanding (an overlay) never moves it.
+// The Organization Portal's shell: the atmospheric background, the icon-rail sidebar and a slim glass header. EVERY authenticated page of the
+// portal is rendered inside it (through PortalFrame), so there is exactly one navigation and one header. The content column keeps a constant left
+// padding for the 76px rail, so the sidebar expanding (an overlay) never moves anything. `data-section` gives the page its section accent.
+
+export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null; modules?: string[] };
 
 const initialsOf = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "OA";
 
-export default function DashboardFrame({
-  admin, organization, children, title = "Dashboard", currentHref = "/",
+const WIDTH = { wide: "max-w-[1400px]", default: "max-w-7xl", narrow: "max-w-5xl" } as const;
+const ACCENTED = new Set(["inventory", "purchasing", "sales"]);
+
+export default function PortalShell({
+  admin, organization, children, current = "dashboard", width = "default",
 }: {
   admin: TenantAdmin;
   organization: HeaderOrganization | null;
   children: React.ReactNode;
-  title?: string;
-  currentHref?: string;
+  current?: PageKey;
+  width?: keyof typeof WIDTH;
 }) {
   const groups = navGroups(organization?.modules);
+  const page = PAGE_META[current];
   return (
-    <div className="ix-dash">
+    <div className="ix-dash" data-section={ACCENTED.has(page.section) ? page.section : undefined}>
       <NavProvider>
-        <Sidebar groups={groups} currentHref={currentHref} />
-        <div className="min-w-0 lg:pl-[104px]">
+        <Sidebar groups={groups} currentHref={page.href} />
+        <div className="min-w-0 lg:pl-[104px] print:pl-0">
           <header className="print:hidden px-4 pt-4 sm:px-6 lg:px-8">
-            <div className="ix-glass mx-auto flex h-16 max-w-[1400px] items-center gap-3 rounded-2xl px-3 sm:px-4">
+            <div className={`ix-glass mx-auto flex h-16 ${WIDTH[width]} items-center gap-3 rounded-2xl px-3 sm:px-4`}>
               <MenuButton />
               <div className="flex min-w-0 items-center gap-3">
                 {organization && organization.has_logo ? (
@@ -55,7 +60,7 @@ export default function DashboardFrame({
                 <ol className="flex items-center gap-2 text-sm">
                   <li className="text-ix-muted">Organization</li>
                   <li aria-hidden="true" className="text-ix-muted/60">/</li>
-                  <li><h1 className="font-semibold text-ix-text">{title}</h1></li>
+                  <li><h1 className="font-semibold text-ix-text">{page.title}</h1></li>
                 </ol>
               </nav>
 
@@ -71,7 +76,7 @@ export default function DashboardFrame({
               </div>
             </div>
           </header>
-          <main className="mx-auto w-full max-w-[1400px] px-4 pb-12 pt-5 sm:px-6 lg:px-8">{children}</main>
+          <main className={`mx-auto w-full ${WIDTH[width]} px-4 pb-12 pt-5 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
         </div>
       </NavProvider>
     </div>

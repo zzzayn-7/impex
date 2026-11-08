@@ -9,7 +9,7 @@ const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
   cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }),
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },

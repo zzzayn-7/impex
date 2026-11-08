@@ -77,20 +77,20 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
   const common = { settings, onSaved, onConflict, setDirty, syncKey };
 
   return (
-    <div className="space-y-6 rounded-3xl bg-[#EEEDE8] p-4 text-[#1B211D] sm:p-8" style={{ fontFamily: 'Inter, Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+    <div className="space-y-6 rounded-3xl bg-transparent p-4 text-ix-text sm:p-8" style={{ fontFamily: 'Inter, Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#1B211D]">Settings</h1>
-        <p className="mt-1 text-sm text-[#777F79]">Manage your company, your own profile and how Impex shows your business. Changes are saved to your organization and apply for every administrator.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-ix-text">Settings</h1>
+        <p className="mt-1 text-sm text-ix-muted">Manage your company, your own profile and how Impex shows your business. Changes are saved to your organization and apply for every administrator.</p>
       </div>
 
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-[#E4E8E2] bg-white px-3.5 py-1.5 text-xs font-medium text-[#426B58] transition hover:bg-[#EAF2ED] motion-reduce:transition-none">{s.label}</a>)}
+        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-sea transition hover:bg-ix-sea/15 motion-reduce:transition-none">{s.label}</a>)}
       </nav>
 
       {notice && (
         <div className="sticky top-2 z-10"><Notice kind={notice.kind}>{notice.text}</Notice></div>
       )}
-      {dirtyCount > 0 && <p role="note" className="rounded-xl border border-[#E7D9A8] bg-[#FBF5DF] px-4 py-2.5 text-sm text-[#6B5410]">You have unsaved changes in {dirtyCount} {dirtyCount === 1 ? "section" : "sections"}. Save them before you leave this page.</p>}
+      {dirtyCount > 0 && <p role="note" className="rounded-xl border border-amber-200/25 bg-amber-100/10 px-4 py-2.5 text-sm text-amber-100">You have unsaved changes in {dirtyCount} {dirtyCount === 1 ? "section" : "sections"}. Save them before you leave this page.</p>}
 
       <CompanySection {...common} />
       <BrandingSection {...common} name={settings.company.name} />
@@ -98,30 +98,30 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
       <PreferencesSection {...common} now={now} />
       <ModulesSection modules={modules} />
 
-      <section aria-labelledby="history-title" className="rounded-2xl border border-[#E4E8E2] bg-white p-5 sm:p-7">
+      <section aria-labelledby="history-title" className="rounded-2xl border border-ix-mist/15 bg-ix-deep/55 p-5 sm:p-7">
         <details>
-          <summary id="history-title" className="cursor-pointer text-lg font-semibold tracking-tight text-[#1B211D]">Recent changes</summary>
-          <p className="mt-2 text-xs text-[#777F79]">Every change to your company profile, branding and preferences is recorded permanently: what changed, who changed it and when.</p>
+          <summary id="history-title" className="cursor-pointer text-lg font-semibold tracking-tight text-ix-text">Recent changes</summary>
+          <p className="mt-2 text-xs text-ix-muted">Every change to your company profile, branding and preferences is recorded permanently: what changed, who changed it and when.</p>
           {history.items.length === 0 ? (
-            <p className="mt-4 text-sm text-[#777F79]">No changes yet.</p>
+            <p className="mt-4 text-sm text-ix-muted">No changes yet.</p>
           ) : (
-            <ol className="mt-4 divide-y divide-[#E4E8E2]">
+            <ol className="mt-4 divide-y divide-ix-mist/10">
               {history.items.map((item) => (
                 <li key={item.id} className="py-3 text-sm">
-                  <p className="font-medium text-[#1B211D]">{FIELD_LABELS[item.field] ?? item.field}</p>
-                  <p className="text-[#777F79]">
-                    {item.field === "logo" ? `Logo ${item.new_value ?? "changed"}` : <>{shorten(item.old_value)} → <span className="text-[#1B211D]">{shorten(item.new_value)}</span></>}
+                  <p className="font-medium text-ix-text">{FIELD_LABELS[item.field] ?? item.field}</p>
+                  <p className="text-ix-muted">
+                    {item.field === "logo" ? `Logo ${item.new_value ?? "changed"}` : <>{shorten(item.old_value)} → <span className="text-ix-text">{shorten(item.new_value)}</span></>}
                   </p>
-                  <p className="text-xs text-[#777F79]">{item.changed_by_name ?? item.changed_by_email ?? "An administrator"} · {formatDateTime(item.created_at, prefs)}</p>
+                  <p className="text-xs text-ix-muted">{item.changed_by_name ?? item.changed_by_email ?? "An administrator"} · {formatDateTime(item.created_at, prefs)}</p>
                 </li>
               ))}
             </ol>
           )}
-          {history.total > history.items.length && <p className="mt-2 text-xs text-[#777F79]">Showing the latest {history.items.length} of {history.total}.</p>}
+          {history.total > history.items.length && <p className="mt-2 text-xs text-ix-muted">Showing the latest {history.items.length} of {history.total}.</p>}
         </details>
       </section>
 
-      <p className="text-xs text-[#777F79]">Need something changed that you cannot edit here? <a href="/support/new?change=other" className={linkClass}>Ask the Impex team</a>.</p>
+      <p className="text-xs text-ix-muted">Need something changed that you cannot edit here? <a href="/support/new?change=other" className={linkClass}>Ask the Impex team</a>.</p>
     </div>
   );
 }

@@ -8,7 +8,7 @@ const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
   cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }),
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -141,7 +141,7 @@ describe("Scan Product page", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await ScanLayout({ children: "PAGE" }));
     expect(html).toContain("PAGE");
-    expect(html.match(/<a[^>]*aria-current="page"[^>]*>([^<]*)</)?.[1]).toBe("Scan Product");
+    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Scan Product");
     for (const href of ["/", "/products", "/warehouses", "/stock", "/scan", "/movements"]) expect(html).toContain(`href="${href}"`);
   });
 });

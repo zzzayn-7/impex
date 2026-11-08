@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 
 function Problem({ title, text }: { title: string; text: string }) {
   return (
-    <div role="alert" className="mx-auto max-w-xl space-y-2 rounded-2xl border border-[#E4E8E2] bg-[#EEEDE8] p-6 text-center">
-      <p className="text-sm font-semibold text-[#1B211D]">{title}</p>
-      <p className="text-xs text-[#777F79]">{text}</p>
+    <div role="alert" className="mx-auto max-w-xl space-y-2 rounded-2xl border border-ix-mist/15 bg-transparent p-6 text-center">
+      <p className="text-sm font-semibold text-ix-text">{title}</p>
+      <p className="text-xs text-ix-muted">{text}</p>
     </div>
   );
 }

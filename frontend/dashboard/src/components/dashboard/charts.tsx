@@ -4,7 +4,10 @@ import { toPlot } from "@/lib/dashboard-metrics";
 // <title> tooltips, and every chart has a text alternative (an aria-label that summarises it, and a visually hidden table of the exact values).
 // Geometry uses numbers; every value that is READ on the screen is the exact string it came from.
 
-export const SERIES_COLORS = { teal: "#568E8F", sea: "#86B6AA", sage: "#A6C1B2", slate: "#7D98A3", mist: "#D8E8E3" } as const;
+// The foundation (teal, sea, sage, slate, mist) plus the three accents: sales/invoices mint, purchasing pale butter, inventory/stock powder blue.
+export const SERIES_COLORS = { teal: "#568E8F", sea: "#86B6AA", sage: "#A6C1B2", slate: "#7D98A3", mist: "#D8E8E3", mint: "#96C5B8", butter: "#E8D8A4", blue: "#A7C7D8" } as const;
+
+const BAR_GRADIENT = { teal: "from-ix-teal to-ix-sea", blue: "from-ix-blue/60 to-ix-blue", mint: "from-ix-mint/60 to-ix-mint", butter: "from-ix-butter/60 to-ix-butter" } as const;
 
 export type Point = { label: string; value: string; text: string }; // value: exact string (geometry only); text: how to write it
 export type Series = { name: string; color: string; points: Point[] };
@@ -136,7 +139,7 @@ export function ColumnChart({ series, label }: { series: Series[]; label: string
 }
 
 /** Horizontal rounded bars with the exact value at the end of each. */
-export function BarList({ items, label }: { items: { name: string; hint?: string; value: number; text: string }[]; label: string }) {
+export function BarList({ items, label, accent = "teal" }: { items: { name: string; hint?: string; value: number; text: string }[]; label: string; accent?: keyof typeof BAR_GRADIENT }) {
   const max = Math.max(1, ...items.map((i) => i.value));
   return (
     <ul aria-label={label} className="space-y-3">
@@ -147,7 +150,7 @@ export function BarList({ items, label }: { items: { name: string; hint?: string
             <span className="shrink-0 font-medium tabular-nums text-ix-mist">{item.text}</span>
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-ix-deep/50" role="presentation">
-            <div className="h-full rounded-full bg-gradient-to-r from-ix-teal to-ix-sea" style={{ width: `${Math.max(item.value > 0 ? 4 : 0, (item.value / max) * 100)}%` }} />
+            <div className={`h-full rounded-full bg-gradient-to-r ${BAR_GRADIENT[accent]}`} style={{ width: `${Math.max(item.value > 0 ? 4 : 0, (item.value / max) * 100)}%` }} />
           </div>
         </li>
       ))}

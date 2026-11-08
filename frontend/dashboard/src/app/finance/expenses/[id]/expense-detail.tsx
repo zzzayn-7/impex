@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { api, EXPENSE_NOTICE, EXPENSE_STATUS_LABELS, EXPENSE_STATUS_STYLE, jsonBody, money } from "@/lib/finance-browser";
 import type { ExpenseDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
@@ -14,6 +15,7 @@ const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
  *  deleted; a posted one can only be reversed (a mirror entry and a reason). It never implies a bank or a payment. */
 export default function ExpenseDetailView({ expense: initial }: { expense: ExpenseDetail }) {
   const router = useRouter();
+  const [confirm, confirmDialog] = useConfirm();
   const [expense, setExpense] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export default function ExpenseDetailView({ expense: initial }: { expense: Expen
   }
 
   async function discard() {
-    if (busy || !window.confirm("Delete this draft expense? This cannot be undone.")) return;
+    if (busy || !(await confirm({ title: "Delete draft expense", message: "Delete this draft expense? This cannot be undone.", confirmLabel: "Delete" }))) return;
     setBusy(true);
     setError(null);
     const r = await api(`/api/finance/expenses/${expense.id}`, { method: "DELETE" });
@@ -57,6 +59,7 @@ export default function ExpenseDetailView({ expense: initial }: { expense: Expen
   const draft = expense.status === "draft";
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-mono text-xl font-semibold text-white">{expense.number}</h2>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { api, ENTRY_STATUS_LABELS, ENTRY_STATUS_STYLE, FINANCE_NOTICE, jsonBody, money, SOURCE_LABELS } from "@/lib/finance-browser";
 import type { EntryDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
@@ -14,6 +15,7 @@ const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
  *  be reversed (a new mirror entry, with a reason); a draft can be edited, posted or discarded. */
 export default function EntryDetailView({ entry: initial }: { entry: EntryDetail }) {
   const router = useRouter();
+  const [confirm, confirmDialog] = useConfirm();
   const [entry, setEntry] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export default function EntryDetailView({ entry: initial }: { entry: EntryDetail
   }
 
   async function discard() {
-    if (busy || !window.confirm("Discard this draft? This cannot be undone.")) return;
+    if (busy || !(await confirm({ title: "Discard draft", message: "Discard this draft? This cannot be undone.", confirmLabel: "Discard" }))) return;
     setBusy(true);
     setError(null);
     const r = await api(`/api/finance/journal-entries/${entry.id}`, { method: "DELETE" });
@@ -70,6 +72,7 @@ export default function EntryDetailView({ entry: initial }: { entry: EntryDetail
 
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-mono text-xl font-semibold text-white">{entry.entry_number ?? "Draft journal entry"}</h2>

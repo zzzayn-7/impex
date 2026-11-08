@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import DashboardFrame from "@/components/dashboard/frame";
 import { MenuButton, NavProvider, Sidebar } from "@/components/dashboard/sidebar";

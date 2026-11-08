@@ -5,7 +5,7 @@ import { alphaOrg, betaOrg, orgAdmin, orgAdminB } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({ cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }) }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -20,7 +20,7 @@ const OrganizationDashboard = async () => DashboardLayout({ children: await Dash
 import SettingsLayout from "@/app/settings/layout";
 import SettingsPage from "@/app/settings/page";
 import NewTicketPage from "@/app/support/new/page";
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/dashboard/frame";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -182,18 +182,18 @@ describe("the Settings page shows what the services hold, in five sections", () 
 
 describe("Settings in the portal", () => {
   it("is in the menu (marked current on its page), without recolouring or moving anything else", () => {
-    const html = renderToStaticMarkup(<PortalHeader admin={orgAdmin as any} current="settings" organization={{ name: "Acme", modules: [] }} />);
-    expect(html).toMatch(/<a[^>]*href="\/settings"[^>]*>Settings<\/a>/);
-    expect(html).toMatch(/aria-current="page"[^>]*>Settings</);
+    const html = renderToStaticMarkup(<PortalShell admin={orgAdmin as any} current="settings" organization={{ name: "Acme", modules: [] }}>{null}</PortalShell>);
+    expect(html).toMatch(/<a[^>]*href="\/settings"[^>]*>.*?Settings<\/span><\/a>/);
     expect(html).toContain('href="/support"');
-    expect(html).toContain("bg-slate-900/60"); // the header keeps its own theme: the ivory palette is scoped to the Settings content
+    expect(html).toContain("ix-dash"); // the same glass shell as every other page (one sidebar, one header)
   });
 
-  it("the Settings content carries the scoped ivory theme", async () => {
+  it("the Settings content uses the portal's glass design (level-2 panels), not a separate light theme", async () => {
     backend();
     const html = await render(SettingsPage());
-    for (const color of ["#EEEDE8", "#426B58", "#1B211D", "#777F79", "#E4E8E2", "#658675"]) expect(html.toLowerCase()).toContain(color.toLowerCase());
-    expect(html).toContain("bg-white"); // the cards are pure white (#FFFFFF)
+    expect(html).toContain("ix-panel"); // the cards: slightly more opaque glass, for long forms
+    expect(html).toContain("text-ix-text");
+    expect(html).not.toMatch(/#EEEDE8|#1B211D|#426B58|bg-white/i); // the old ivory / white palette is gone
   });
 
   it("the layout redirects an administrator whose setup is not finished, and an invalid session", async () => {

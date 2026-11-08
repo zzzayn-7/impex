@@ -195,7 +195,7 @@ def main() -> int:
 
         print("\n== 1. the Settings page and what is behind it")
         s, html, loc = page("a1", "/settings")
-        check("/settings opens for a configured administrator, in the portal, with Settings in the menu and current", s == 200 and 'href="/settings"' in html and re.search(r'aria-current="page"[^>]*>Settings<', html), (s, loc))
+        check("/settings opens for a configured administrator, in the portal, with Settings in the menu and current", s == 200 and 'href="/settings"' in html and re.search(r'aria-current="page"[^>]*>.*?Settings</span></a>', html, re.S), (s, loc))
         check("it has the five sections", all(t in html for t in ("Company profile", "Company branding", "Administrator profile", "Business preferences", "Enabled modules")))
         row = org_row("a")
         check("the company section shows the organization's real name and contact e-mail from PostgreSQL", row[0] in html and row[4] in html and "Settings Check Alpha" in html and "ops-a@example.org" in html)

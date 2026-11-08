@@ -4,13 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import ClientAccountView from "@/app/clients/[id]/client-account";
 import InvoiceDetailView from "@/app/invoices/[id]/invoice-detail";
 import InvoiceForm from "@/app/invoices/invoice-form";
 import InvoiceIndex from "@/app/invoices/invoice-index";
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/dashboard/frame";
 import DispatchDetailView from "@/app/dispatches/[id]/dispatch-detail";
 
 const now = "2026-11-07T10:00:00+00:00";
@@ -157,12 +157,11 @@ describe("Invoices index", () => {
 });
 
 describe("navigation", () => {
-  it("has an Invoices link, marked current on its own pages", () => {
-    render(<PortalHeader admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }} />);
+  it("has an Invoices link in the shared sidebar (the current page is highlighted from the address)", () => {
+    render(<PortalShell admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }}>{null}</PortalShell>);
     const link = screen.getByRole("link", { name: "Invoices" });
     expect(link.getAttribute("href")).toBe("/invoices");
-    expect(link.getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Dispatches" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Dispatches" }).getAttribute("href")).toBe("/dispatches");
   });
 });
 

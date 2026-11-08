@@ -242,7 +242,7 @@ describe("the /setup page", () => {
     expect(layout).toContain("Sign out");
     expect(layout).toContain("SETUP-CONTENT");
     expect(layout).not.toContain("Products");
-    expect(layout).toContain("#EEEDE8");
+    expect(layout).toContain("ix-dash"); // the same dark slate-teal atmosphere as the portal, without its navigation
   });
 
   it("when the Organization Service is down: a recoverable error, no wizard, setup not assumed complete", async () => {

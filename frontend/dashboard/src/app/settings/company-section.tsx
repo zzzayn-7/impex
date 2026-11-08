@@ -116,8 +116,8 @@ export default function CompanySection({ settings, onSaved, onConflict, setDirty
       <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => { setDraft(saved); setErrors({}); setTouched({}); setError(null); }} />
 
       <div className="mt-8" aria-label="Registered company information">
-        <h3 className="text-sm font-semibold text-[#1B211D]">Registered information</h3>
-        <p className="mt-1 text-xs text-[#777F79]">These belong to your organization&apos;s registration and cannot be edited here. If one needs to change, ask the Impex team: you will get a request that is already filled in.</p>
+        <h3 className="text-sm font-semibold text-ix-text">Registered information</h3>
+        <p className="mt-1 text-xs text-ix-muted">These belong to your organization&apos;s registration and cannot be edited here. If one needs to change, ask the Impex team: you will get a request that is already filled in.</p>
         <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           {RESTRICTED.map((item) => (
             <ReadOnly key={item.label} label={item.label} value={item.value(settings)} mono={item.mono}

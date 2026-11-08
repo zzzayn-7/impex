@@ -1,26 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { TabNavigation } from "@/components/ui/page";
 import { MODULE_PAGES } from "@/lib/modules";
 
-// The Finance module's own navigation: Financial Overview, Accounts, Expenses, Journal Entries (the pages of MODULE_PAGES.finance).
+// The Finance module's own navigation: Financial Overview, Accounts, Expenses, Journal Entries (the pages of MODULE_PAGES.finance). The current tab is
+// the one whose route is the longest prefix of the address, so a nested page (a journal entry, a new expense) keeps its tab.
 export default function FinanceTabs() {
   const pathname = usePathname() ?? "/finance";
-  const active = (href: string) => (href === "/finance" ? pathname === "/finance" : pathname === href || pathname.startsWith(`${href}/`));
-  return (
-    <nav aria-label="Finance" className="print:hidden mb-6 flex flex-wrap gap-1 border-b border-slate-800 pb-3">
-      {MODULE_PAGES.finance.map((page) => (
-        <Link
-          key={page.href}
-          href={page.href}
-          aria-current={active(page.href) ? "page" : undefined}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${active(page.href) ? "bg-indigo-600/15 text-indigo-300" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
-        >
-          {page.label}
-        </Link>
-      ))}
-    </nav>
-  );
+  const matches = MODULE_PAGES.finance.filter((page) => (page.href === "/finance" ? pathname === "/finance" : pathname === page.href || pathname.startsWith(`${page.href}/`)));
+  const current = matches.sort((a, b) => b.href.length - a.href.length)[0]?.href ?? "";
+  return <TabNavigation label="Finance" tabs={MODULE_PAGES.finance.map((p) => ({ href: p.href, label: p.label }))} current={current} />;
 }

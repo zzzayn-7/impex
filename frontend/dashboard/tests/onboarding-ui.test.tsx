@@ -4,10 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import SetupWizard from "@/app/setup/setup-wizard";
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/dashboard/frame";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 type Call = { url: string; method: string; body: any; headers: any };
@@ -404,10 +404,10 @@ describe("a new administrator of an already configured company", () => {
 // =====================================================================================================
 // branding in the portal header
 // =====================================================================================================
-describe("the portal header shows the company identity", () => {
+describe("the portal shell shows the company identity", () => {
   const admin = { full_name: "Ada Lovelace", email: "ada@acme.example" } as any;
   it("logo, company name, platform name and the administrator's name", () => {
-    render(<PortalHeader admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: true, logo_version: "9" }} />);
+    render(<PortalShell admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: true, logo_version: "9" }}>{null}</PortalShell>);
     expect((screen.getByAltText("Alpha Trading GmbH logo") as HTMLImageElement).getAttribute("src")).toBe("/api/organization/logo?v=9");
     expect(screen.getByText("Admin Portal")).toBeTruthy();
     expect(screen.getByText("Alpha Trading GmbH")).toBeTruthy();
@@ -415,20 +415,20 @@ describe("the portal header shows the company identity", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
   it("a monogram when there is no logo, and the platform mark when there is no organization at all", () => {
-    const { unmount } = render(<PortalHeader admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: false }} />);
+    const { unmount } = render(<PortalShell admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: false }}>{null}</PortalShell>);
     expect(screen.getByText("AT")).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
     unmount();
-    render(<PortalHeader admin={admin} current="dashboard" />);
-    expect(screen.getByText("IX")).toBeTruthy();
+    render(<PortalShell admin={admin} current="dashboard">{null}</PortalShell>);
+    expect(screen.getAllByText("IX").length).toBeGreaterThan(0); // the platform mark (in the sidebar and the header)
     expect(screen.getByText("Organization workspace")).toBeTruthy();
   });
-  it("keeps the navigation exactly as it was", () => {
-    render(<PortalHeader admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false, modules: ["inventory", "purchasing", "sales"] }} />);
+  it("lists every enabled page with its route", () => {
+    render(<PortalShell admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false, modules: ["inventory", "purchasing", "sales"] }}>{null}</PortalShell>);
     const links = screen.getAllByRole("link").map((l) => [l.textContent, l.getAttribute("href")]);
     expect(links).toContainEqual(["Dashboard", "/"]);
     expect(links).toContainEqual(["Invoices", "/invoices"]);
     expect(links).toContainEqual(["Goods Receipts", "/goods-receipts"]);
-    expect(screen.getByRole("link", { name: "Invoices" }).getAttribute("aria-current")).toBe("page");
+    expect(links).toContainEqual(["Help & Support", "/support"]);
   });
 });

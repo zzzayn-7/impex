@@ -16,16 +16,22 @@ import Icon, { type IconKey } from "./icons";
 
 type Props = { admin: TenantAdmin; organizationResult: OrganizationResult; data: DashboardData };
 
+// The decorative accent of each part of the business (never a status colour): Inventory powder blue, Purchasing pale butter, Sales sea-glass mint.
+type Tone = "blue" | "yellow" | "mint" | "sea";
+const TEXT_TONE: Record<Tone, string> = { blue: "text-ix-blue", yellow: "text-ix-butter", mint: "text-ix-mint", sea: "text-ix-sea" };
+const WELL_TONE: Record<Tone, string> = { blue: "bg-ix-blue/15 text-ix-blue", yellow: "bg-ix-butter/15 text-ix-butter", mint: "bg-ix-mint/15 text-ix-mint", sea: "bg-ix-sea/15 text-ix-sea" };
+const MODULE_TONE = { inventory: "blue", purchasing: "yellow", sales: "mint", finance: "sea" } as const;
+
 const unavailable = "Could not be loaded just now. Please refresh in a moment.";
 const grid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]";
 const wideGrid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]";
 
-function Kpi({ icon, label, value, unit, context, tone }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn" }) {
+function Kpi({ icon, label, value, unit, context, tone, accent = "sea" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: "blue" | "yellow" | "mint" | "sea" }) {
   return (
-    <GlassCard small lift className="p-5" aria-label={label}>
+    <GlassCard small lift className="ix-kpi p-5" aria-label={label} data-accent={accent}>
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-medium text-ix-muted">{label}</p>
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-ix-mist/15 bg-ix-mist/10 text-ix-sage"><Icon name={icon} className="h-[18px] w-[18px]" /></span>
+        <span className="ix-kpi-icon grid h-9 w-9 shrink-0 place-items-center rounded-xl"><Icon name={icon} className="h-[18px] w-[18px]" /></span>
       </div>
       <p className="mt-3 flex items-baseline gap-1.5 text-[28px] font-semibold leading-none tracking-tight text-ix-text">
         <span className="tabular-nums">{value}</span>
@@ -36,8 +42,8 @@ function Kpi({ icon, label, value, unit, context, tone }: { icon: IconKey; label
   );
 }
 
-function KpiUnavailable({ icon, label }: { icon: IconKey; label: string }) {
-  return <Kpi icon={icon} label={label} value="—" context={<span role="alert">{unavailable}</span>} tone="warn" />;
+function KpiUnavailable({ icon, label, accent }: { icon: IconKey; label: string; accent?: "blue" | "yellow" | "mint" | "sea" }) {
+  return <Kpi icon={icon} label={label} accent={accent} value="—" context={<span role="alert">{unavailable}</span>} tone="warn" />;
 }
 
 /** The currencies other than the headline one, each on its own line (never added to it). */
@@ -70,28 +76,28 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   const kpis: React.ReactNode[] = [];
   if (inventory) {
     kpis.push(inventory.status === "ok" ? (
-      <Kpi key="products" icon="products" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
+      <Kpi key="products" icon="products" accent="blue" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
         context={inventory.data.warehouses.length === 0 ? "No warehouse yet" : `Across ${inventory.data.warehouses.length} active ${inventory.data.warehouses.length === 1 ? "warehouse" : "warehouses"}`} />
-    ) : <KpiUnavailable key="products" icon="products" label="Active products" />);
+    ) : <KpiUnavailable key="products" icon="products" accent="blue" label="Active products" />);
   }
   if (purchasing) {
     kpis.push(purchasing.status === "ok" ? (
-      <Kpi key="orders" icon="orders" label="Open purchase orders" value={String(purchasing.data.open.count)}
+      <Kpi key="orders" icon="orders" accent="yellow" label="Open purchase orders" value={String(purchasing.data.open.count)}
         context={purchasing.data.open.count === 0 ? "Nothing waiting to be received" : (
           <>
             {purchasing.data.open.byCurrency.slice(0, 2).map((t) => <span key={t.currency} className="block">{money(t.amount, t.currency)} on order</span>)}
             {purchasing.data.open.byCurrency.length > 2 && <span className="block">+ {purchasing.data.open.byCurrency.length - 2} more {purchasing.data.open.byCurrency.length - 2 === 1 ? "currency" : "currencies"}</span>}
           </>
         )} />
-    ) : <KpiUnavailable key="orders" icon="orders" label="Open purchase orders" />);
+    ) : <KpiUnavailable key="orders" icon="orders" accent="yellow" label="Open purchase orders" />);
   }
   if (sales) {
     kpis.push(sales.status === "ok" ? (
-      <Kpi key="invoiced" icon="invoices" label="Invoiced this month" value={formatAmount(salesThisMonth, prefs)} unit={headline}
+      <Kpi key="invoiced" icon="invoices" accent="mint" label="Invoiced this month" value={formatAmount(salesThisMonth, prefs)} unit={headline}
         context={salesRows.length === 0 ? "No invoices issued yet" : <>Issued invoices, {monthLabel(month)}<Others totals={Array.from(new Set(salesRows.map((r) => r.currency))).filter((c) => c !== headline).map((c) => ({ currency: c, amount: monthlyTotals(salesRows, [month], c)[0] }))} shown={headline} prefs={prefs} /></>} />
-    ) : <KpiUnavailable key="invoiced" icon="invoices" label="Invoiced this month" />);
+    ) : <KpiUnavailable key="invoiced" icon="invoices" accent="mint" label="Invoiced this month" />);
     kpis.push(sales.status === "ok" ? (
-      <Kpi key="receivables" icon="clients" label="Outstanding receivables" value={formatAmount(amountOf(outstanding, headline), prefs)} unit={headline}
+      <Kpi key="receivables" icon="clients" accent="sea" label="Outstanding receivables" value={formatAmount(amountOf(outstanding, headline), prefs)} unit={headline}
         tone={/[1-9]/.test(amountOf(sales.data.receivables.overdue, headline)) ? "warn" : undefined}
         context={sales.data.receivables.count === 0 ? "No unpaid invoices" : (
           <>
@@ -108,8 +114,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if ((sales || purchasing) && (sales?.status === "ok" || purchasing?.status === "ok")) {
     const series: Series[] = [];
     const toSeries = (name: string, color: string, values: string[]): Series => ({ name, color, points: values.map((v, i) => ({ label: monthLabel(data.months[i]), value: v, text: money(v) })) });
-    if (sales?.status === "ok") series.push(toSeries("Invoiced", SERIES_COLORS.sea, salesByMonth));
-    if (purchasing?.status === "ok") series.push(toSeries("Purchase orders placed", SERIES_COLORS.slate, purchasesByMonth));
+    if (sales?.status === "ok") series.push(toSeries("Invoiced", SERIES_COLORS.mint, salesByMonth));
+    if (purchasing?.status === "ok") series.push(toSeries("Purchase orders placed", SERIES_COLORS.butter, purchasesByMonth));
     const empty = series.every((s) => s.points.every((p) => !/[1-9]/.test(p.value)));
     const truncated = (sales?.status === "ok" && sales.data.trend.truncated) || (purchasing?.status === "ok" && purchasing.data.trend.truncated);
     const others = [...otherSalesCurrencies, ...otherPurchaseCurrencies.filter((c) => !otherSalesCurrencies.includes(c))];
@@ -135,7 +141,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
           return (
             <>
               <StackedBar label={`Open invoices in ${headline}`} parts={[
-                { name: "Paid so far", color: SERIES_COLORS.sea, value: toPlot(amountOf(r.paid, headline)), text: money(amountOf(r.paid, headline)) },
+                { name: "Paid so far", color: SERIES_COLORS.mint, value: toPlot(amountOf(r.paid, headline)), text: money(amountOf(r.paid, headline)) },
                 { name: "Still due", color: SERIES_COLORS.teal, value: toPlot(stillDue), text: money(stillDue) },
                 { name: "Overdue", color: "#C9A27A", value: toPlot(overdue), text: money(overdue) },
               ]} />
@@ -151,7 +157,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
       <GlassCard key="warehouses" className="p-5 sm:p-6" aria-label="Stock by warehouse">
         <CardHeader title="Stock by warehouse" subtitle="Different products held in each active warehouse" />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.warehouses.length === 0 ? <CardNote>No warehouses yet. Add one to start tracking stock.</CardNote> : (
-          <BarList label="Products held per warehouse" items={[...inventory.data.warehouses].sort((a, b) => b.products - a.products || a.code.localeCompare(b.code)).slice(0, 8)
+          <BarList label="Products held per warehouse" accent="blue" items={[...inventory.data.warehouses].sort((a, b) => b.products - a.products || a.code.localeCompare(b.code)).slice(0, 8)
             .map((w) => ({ name: w.name, hint: w.code, value: w.products, text: `${w.products} ${w.products === 1 ? "product" : "products"}` }))} />
         )}
         {inventory.status === "ok" && inventory.data.warehouses.length > 8 && <Footnote>The 8 warehouses holding the most products are shown.</Footnote>}
@@ -163,9 +169,9 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     const mk = (name: string, color: string, pick: (d: (typeof activity)[number]) => number): Series => ({ name, color, points: activity.map((d) => ({ label: dayLabel(d.day), value: String(pick(d)), text: `${pick(d)} ${pick(d) === 1 ? "movement" : "movements"}` })) });
     analytics.push(
       <GlassCard key="activity" className="p-5 sm:p-6" aria-label="Inventory movement activity">
-        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.sea }, { name: "Removed", color: SERIES_COLORS.slate }, { name: "Transferred", color: SERIES_COLORS.sage }]} />} />
+        <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.blue }, { name: "Removed", color: SERIES_COLORS.slate }, { name: "Transferred", color: SERIES_COLORS.sage }]} />} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : !anyActivity ? <CardNote>No stock movements in the last {ACTIVITY_DAYS} days.</CardNote> : (
-          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.sea, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed), mk("Transferred", SERIES_COLORS.sage, (d) => d.transferred)]} />
+          <ColumnChart label={`Stock movements per day, last ${ACTIVITY_DAYS} days`} series={[mk("Added", SERIES_COLORS.blue, (d) => d.added), mk("Removed", SERIES_COLORS.slate, (d) => d.removed), mk("Transferred", SERIES_COLORS.sage, (d) => d.transferred)]} />
         )}
         {inventory.status === "ok" && inventory.data.movementsTruncated && anyActivity && <Footnote>Based on the latest {inventory.data.movements.length} movements.</Footnote>}
       </GlassCard>
@@ -178,11 +184,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (sales) {
     operations.push(
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
-        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-sage hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-mint hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {sales.data.recent.map((i) => row(i.id,
-              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-sage hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
+              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-mint hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
               <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{money(i.total, i.currency_code)}</p><Pill tone={i.status === "paid" ? "good" : i.overdue ? "warn" : i.status === "draft" ? "muted" : "neutral"}>{i.overdue ? "Overdue" : i.status.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
@@ -192,11 +198,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (purchasing) {
     operations.push(
       <GlassCard key="pos" className="p-5 sm:p-6" aria-label="Open purchase orders">
-        <CardHeader title="Open purchase orders" action={<Link href="/purchase-orders" className="text-xs font-medium text-ix-sage hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Open purchase orders" action={<Link href="/purchase-orders" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
         {purchasing.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : purchasing.data.recentOpen.length === 0 ? <CardNote>No purchase orders waiting to be received.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {purchasing.data.recentOpen.map((o) => row(o.id,
-              <div className="min-w-0"><Link href={`/purchase-orders/${o.id}`} className="font-mono text-sm font-semibold text-ix-sage hover:text-ix-text">{o.number}</Link><p className="truncate text-xs text-ix-muted">{o.supplier.name}{o.expected_delivery_date ? ` · due ${formatDate(o.expected_delivery_date, prefs)}` : ""}</p></div>,
+              <div className="min-w-0"><Link href={`/purchase-orders/${o.id}`} className="font-mono text-sm font-semibold text-ix-butter hover:text-ix-text">{o.number}</Link><p className="truncate text-xs text-ix-muted">{o.supplier.name}{o.expected_delivery_date ? ` · due ${formatDate(o.expected_delivery_date, prefs)}` : ""}</p></div>,
               <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{money(o.total_amount, o.currency_code)}</p><Pill tone="neutral">{o.status.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
@@ -206,7 +212,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (inventory) {
     operations.push(
       <GlassCard key="movements" className="p-5 sm:p-6" aria-label="Recent stock movements">
-        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-sage hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-blue hover:text-ix-text">View all</Link>} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.movements.length === 0 ? <CardNote>No stock movements yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {inventory.data.movements.slice(0, 5).map((m) => row(m.id,
@@ -240,12 +246,12 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
 
-  const actions: { label: string; href: string; icon: IconKey }[] = [];
-  if (enabled.includes("inventory")) actions.push({ label: "Scan a product", href: "/scan", icon: "scan" }, { label: "Adjust stock", href: "/stock", icon: "stock" });
-  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices" });
-  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders" });
-  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal" });
-  actions.push({ label: "Contact support", href: "/support/new", icon: "support" });
+  const actions: { label: string; href: string; icon: IconKey; tone: Tone }[] = [];
+  if (enabled.includes("inventory")) actions.push({ label: "Scan a product", href: "/scan", icon: "scan", tone: "blue" }, { label: "Adjust stock", href: "/stock", icon: "stock", tone: "blue" });
+  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "mint" });
+  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "yellow" });
+  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "sea" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "sea" });
+  actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "sea" });
 
   return (
     <div className="space-y-5">
@@ -309,7 +315,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
                     <p className="mt-1 text-xs leading-relaxed text-ix-muted">{MODULE_DESCRIPTIONS[key]}</p>
                     <ul className="mt-3 flex flex-wrap gap-1.5">
                       {MODULE_PAGES[key].map((page) => (
-                        <li key={page.href}><Link href={page.href} className="inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium text-ix-sage transition-colors hover:bg-ix-mist/12 hover:text-ix-text">{page.label}</Link></li>
+                        <li key={page.href}><Link href={page.href} className={`inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-ix-mist/10 hover:text-ix-text ${TEXT_TONE[MODULE_TONE[key]]}`}>{page.label}</Link></li>
                       ))}
                     </ul>
                   </div>
@@ -325,7 +331,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
               {actions.map((a) => (
                 <li key={a.href}>
                   <Link href={a.href} className="flex h-12 items-center gap-3 rounded-2xl border border-ix-mist/12 bg-ix-mist/5 px-3 text-sm font-medium text-ix-text transition-colors hover:bg-ix-mist/12">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-ix-teal/25 text-ix-sage"><Icon name={a.icon} className="h-4 w-4" /></span>{a.label}
+                    <span className={`grid h-8 w-8 place-items-center rounded-xl ${WELL_TONE[a.tone]}`}><Icon name={a.icon} className="h-4 w-4" /></span>{a.label}
                     <Icon name="arrowRight" className="ml-auto h-4 w-4 text-ix-muted" />
                   </Link>
                 </li>

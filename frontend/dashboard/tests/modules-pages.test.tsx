@@ -7,7 +7,7 @@ import { alphaOrg, orgAdmin } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({ cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }) }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -33,7 +33,7 @@ import SuppliersLayout from "@/app/suppliers/layout";
 import SupportLayout from "@/app/support/layout";
 import NewTicketPage from "@/app/support/new/page";
 import WarehousesLayout from "@/app/warehouses/layout";
-import PortalHeader from "@/components/portal-header";
+import PortalShell from "@/components/dashboard/frame";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -140,8 +140,8 @@ describe("a page whose module is not enabled is not shown", () => {
 
 describe("the navigation lists only what is enabled", () => {
   const nav = (modules: string[] | undefined, current: any = "dashboard") =>
-    renderToStaticMarkup(<PortalHeader admin={orgAdmin as any} current={current} organization={modules === undefined ? { name: "Acme" } : { name: "Acme", modules }} />);
-  const labels = (html: string) => [...html.matchAll(/<a[^>]*href="[^"]*"[^>]*>([^<]*)<\/a>/g)].map((m) => m[1].replace("&amp;", "&"));
+    renderToStaticMarkup(<PortalShell admin={orgAdmin as any} current={current} organization={modules === undefined ? { name: "Acme" } : { name: "Acme", modules }}>{null}</PortalShell>);
+  const labels = (html: string) => [...html.matchAll(/<a[^>]*href="[^"]*"[^>]*>(.*?)<\/a>/g)].map((m) => m[1].replace(/<[^>]+>/g, "").replace("&amp;", "&"));
   const same = (actual: string[], expected: string[]) => expect([...actual].sort()).toEqual([...expected].sort());
 
   it("everything enabled: the whole menu", () => {
@@ -161,7 +161,7 @@ describe("the navigation lists only what is enabled", () => {
   it("nothing enabled, an unknown list or no organization: only Dashboard and Help & Support", () => {
     same(labels(nav([])), ["Dashboard", "Help & Support", "Settings"]);
     same(labels(nav(undefined)), ["Dashboard", "Help & Support", "Settings"]);
-    same(labels(renderToStaticMarkup(<PortalHeader admin={orgAdmin as any} current="dashboard" />)), ["Dashboard", "Help & Support", "Settings"]);
+    same(labels(renderToStaticMarkup(<PortalShell admin={orgAdmin as any} current="dashboard">{null}</PortalShell>)), ["Dashboard", "Help & Support", "Settings"]);
     same(labels(nav(["sales"])), ["Dashboard", "Help & Support", "Settings"]); // Sales without Inventory is not usable
   });
   it("Help & Support is always in the menu, and a disabled module's links are not in the page at all", () => {

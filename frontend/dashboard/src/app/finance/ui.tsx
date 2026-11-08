@@ -1,30 +1,35 @@
 import Link from "next/link";
 
+import { ErrorState } from "@/components/ui/page";
+import { buttonClass, fieldClass as sharedFieldClass } from "@/components/ui/controls";
+import { InsetPanel } from "@/components/ui/glass";
 import { ACTION_LABELS } from "@/lib/finance-browser";
 import type { AuditLine } from "@/lib/finance";
 
-// Small pieces shared by the Finance pages (plain presentation, no data fetching).
-export const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
-export const selectClass = "mt-1.5 block max-w-[14rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
-export const primaryButton = "inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500 disabled:opacity-60";
-export const secondaryButton = "inline-flex min-h-10 items-center rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60";
-export const dangerButton = "inline-flex min-h-10 items-center rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-60";
+// Small pieces shared by the Finance pages. The look comes from the portal's shared design system (components/ui/*): the same buttons, fields and
+// surfaces as every other section. Colours here carry meaning where they appear on a status (green posted, amber draft, red failed); the section
+// accent is decorative only.
+export const fieldClass = sharedFieldClass;
+export const selectClass = "mt-1.5 block max-w-[14rem] rounded-xl border border-ix-mist/15 bg-ix-deep/50 px-3 py-2 text-sm text-ix-text outline-none focus:border-ix-accent/70 focus:ring-2 focus:ring-ix-accent/20";
+export const primaryButton = buttonClass.primary;
+export const secondaryButton = buttonClass.secondary;
+export const dangerButton = buttonClass.destructive;
 
 export function Pill({ children, style }: { children: React.ReactNode; style: string }) {
   return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>{children}</span>;
 }
 
 export function InfoNotice({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs leading-relaxed text-slate-400">{children}</p>;
+  return <InsetPanel className="px-4 py-3 text-xs leading-relaxed text-ix-muted">{children}</InsetPanel>;
 }
 
 export function Unavailable({ reason, what }: { reason: "unauthorized" | "forbidden" | "not-found" | "unavailable"; what: string }) {
   return (
-    <div role="alert" className="rounded-lg border border-slate-700 bg-slate-950/50 px-4 py-3 text-sm text-slate-300">
+    <ErrorState>
       {reason === "forbidden"
         ? `Your organization is currently inactive or unavailable, so ${what} cannot be used. Please contact your platform administrator.`
         : `${what[0].toUpperCase()}${what.slice(1)} are temporarily unavailable. Please refresh in a moment.`}
-    </div>
+    </ErrorState>
   );
 }
 
@@ -32,7 +37,7 @@ export function Missing({ back, what }: { back: React.ReactNode; what: string })
   return (
     <div className="space-y-4">
       {back}
-      <p role="alert" className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">{what} not found.</p>
+      <p role="alert" className="rounded-2xl border border-dashed border-ix-mist/15 px-4 py-10 text-center text-sm text-ix-muted">{what} not found.</p>
     </div>
   );
 }
@@ -47,8 +52,8 @@ const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
 export function History({ items }: { items: AuditLine[] }) {
   if (items.length === 0) return null;
   return (
-    <section aria-label="History" className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
-      <h3 className="text-sm font-semibold text-white">History</h3>
+    <section aria-label="History" className="ix-panel space-y-2 p-4 sm:p-5">
+      <h3 className="text-sm font-semibold text-ix-text">History</h3>
       <ol className="space-y-1.5 text-xs text-slate-300">
         {items.map((h) => (
           <li key={h.seq} className="flex flex-wrap gap-x-2">

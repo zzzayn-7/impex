@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_SINGULAR, ACCOUNT_TYPES, api, jsonBody } from "@/lib/finance-browser";
 import type { Account, AccountType } from "@/lib/finance";
 import { dangerButton, fieldClass, InfoNotice, Pill, primaryButton, secondaryButton, selectClass } from "../ui";
@@ -14,6 +15,7 @@ const EMPTY: Draft = { code: "", name: "", accountType: "expense", description: 
  *  never deleted, deactivated or re-typed; an account with postings keeps its code and type; an unused account can be deleted. */
 export default function AccountsManager({ initial }: { initial: Account[] }) {
   const router = useRouter();
+  const [confirm, confirmDialog] = useConfirm();
   const [accounts, setAccounts] = useState(initial);
   const [type, setType] = useState<AccountType | "">("");
   const [state, setState] = useState<"" | "active" | "inactive">("");
@@ -82,7 +84,7 @@ export default function AccountsManager({ initial }: { initial: Account[] }) {
   }
 
   async function remove(account: Account) {
-    if (busy || !window.confirm(`Delete ${account.code} ${account.name}? This cannot be undone.`)) return;
+    if (busy || !(await confirm({ title: "Delete account", message: `Delete ${account.code} ${account.name}? This cannot be undone.`, confirmLabel: "Delete" }))) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -95,6 +97,7 @@ export default function AccountsManager({ initial }: { initial: Account[] }) {
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">Accounts</h2>

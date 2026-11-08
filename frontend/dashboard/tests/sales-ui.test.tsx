@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 vi.mock("@/lib/camera", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/camera")>()),
   createBrowserDecoder: async () => ({ name: "fake", decode: async () => null }),

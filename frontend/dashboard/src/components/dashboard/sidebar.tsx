@@ -2,8 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-import type { NavGroup } from "@/lib/dashboard-nav";
+import { activeHref, type NavGroup } from "@/lib/dashboard-nav";
 import Icon from "./icons";
 
 // The dashboard's navigation. On a desktop it is a fixed 76px icon rail that EXPANDS OVER the page (a fixed-position overlay: the page itself
@@ -49,6 +50,8 @@ const label = "ix-nav-label whitespace-nowrap text-sm font-medium opacity-0 tran
 export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHref: string }) {
   const { mobileOpen, setMobileOpen, pinned, setPinned } = useNav();
   const ref = useRef<HTMLElement>(null);
+  // The current item follows the address, so nested pages ("/invoices/123", "/finance/journal/new") keep their parent highlighted.
+  const current = activeHref(usePathname(), groups, currentHref);
 
   const dismiss = useCallback(() => {
     setPinned(false);
@@ -83,7 +86,7 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
           if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
         }}
         className={[
-          "ix-glass group fixed z-40 flex flex-col overflow-hidden",
+          "ix-glass group fixed z-40 flex flex-col overflow-hidden print:hidden",
           // desktop: an icon rail inset from the edges that grows over the page
           "lg:inset-y-3 lg:left-3 lg:w-[76px] lg:translate-x-0 lg:visible lg:hover:w-[256px] lg:focus-within:w-[256px] lg:data-[pinned=true]:w-[256px] lg:transition-[width,box-shadow] lg:duration-200 lg:ease-out",
           "lg:hover:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)] lg:focus-within:shadow-[0_24px_48px_-20px_rgba(4,12,15,0.8)]",
@@ -120,17 +123,17 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
               </div>
               <ul className="space-y-1">
                 {group.items.map((item) => {
-                  const active = item.href === currentHref;
+                  const active = item.href === current;
                   return (
                     <li key={item.key}>
                       <Link
                         href={item.href}
                         title={item.label}
                         aria-current={active ? "page" : undefined}
-                        className={`relative flex h-11 items-center rounded-2xl transition-colors duration-200 ${active ? "bg-ix-sea/20 text-ix-text shadow-[inset_0_0_0_1px_rgba(134,182,170,0.28)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
+                        className={`relative flex h-11 items-center rounded-2xl transition-colors duration-200 ${active ? "bg-ix-butter/10 text-ix-text shadow-[inset_0_0_0_1px_rgba(232,216,164,0.26)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
                       >
-                        {active && <span aria-hidden="true" className="absolute -left-3 top-2.5 h-6 w-1 rounded-r-full bg-ix-sea" />}
-                        <span className="grid h-11 w-[52px] shrink-0 place-items-center"><Icon name={item.icon} /></span>
+                        {active && <span aria-hidden="true" className="absolute -left-3 top-2.5 h-6 w-1 rounded-r-full bg-ix-butter" />}
+                        <span className={`grid h-11 w-[52px] shrink-0 place-items-center ${active ? "text-ix-butter" : ""}`}><Icon name={item.icon} /></span>
                         <span className={label}>{item.label}</span>
                       </Link>
                     </li>

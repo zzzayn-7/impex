@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 // The ZXing / BarcodeDetector decoder needs a real camera frame; tests swap in a decoder that "sees" one code.
 const decoderState = { code: "IMX-ABC234DEFGHJ" as string | null };

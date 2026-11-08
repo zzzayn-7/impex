@@ -77,11 +77,11 @@ export default function PreferencesSection({ settings, onSaved, onConflict, setD
         </Field>
       </div>
 
-      <div className="mt-5 rounded-xl border border-[#E4E8E2] bg-[#F8F8F4] px-4 py-3" aria-label="Preview">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#777F79]">Preview</p>
-        <p className="mt-1.5 text-sm text-[#1B211D]">Now: <span className="font-medium">{formatDateTime(now, previewPrefs)}</span> · Amount: <span className="font-medium">{formatDecimal("1234567.89", previewPrefs, 2)} {draft.default_currency}</span></p>
+      <div className="mt-5 rounded-xl border border-ix-mist/15 bg-ix-mist/10 px-4 py-3" aria-label="Preview">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ix-muted">Preview</p>
+        <p className="mt-1.5 text-sm text-ix-text">Now: <span className="font-medium">{formatDateTime(now, previewPrefs)}</span> · Amount: <span className="font-medium">{formatDecimal("1234567.89", previewPrefs, 2)} {draft.default_currency}</span></p>
       </div>
-      <p className="mt-3 text-xs text-[#777F79]">
+      <p className="mt-3 text-xs text-ix-muted">
         These are defaults and display settings only. Changing them never converts or rewrites anything already recorded: issued invoices, purchase orders, payments, stock quantities and stored times keep exactly the values and the currency they were made with.
       </p>
 

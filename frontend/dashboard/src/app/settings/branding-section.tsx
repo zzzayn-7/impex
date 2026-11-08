@@ -27,7 +27,7 @@ export function HeaderPreview({ name, logoSrc }: { name: string; logoSrc: string
       <div className="flex items-center gap-3">
         {logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoSrc} alt="" className="h-9 w-9 rounded-lg bg-white object-contain p-0.5" />
+          <img src={logoSrc} alt="" className="h-9 w-9 rounded-lg bg-ix-deep/55 object-contain p-0.5" />
         ) : (
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-lg font-bold text-white">{monogram(name)}</div>
         )}
@@ -110,15 +110,15 @@ export default function BrandingSection({ settings, onSaved, onConflict, setDirt
     <Card id="branding" title="Company branding" description="Your logo appears in the portal header. PNG, JPEG or WebP, up to 2 MB.">
       <div className="grid gap-6 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#777F79]">{preview ? "Selected logo" : "Current logo"}</p>
-          <div className="flex h-44 items-center justify-center rounded-2xl border border-dashed border-[#CBD3C9] bg-[#F8F8F4] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ix-muted">{preview ? "Selected logo" : "Current logo"}</p>
+          <div className="flex h-44 items-center justify-center rounded-2xl border border-dashed border-ix-mist/30 bg-ix-mist/10 p-4">
             {preview || currentSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={preview ?? currentSrc ?? ""} alt={preview ? "Selected logo preview" : "Current company logo"} className="max-h-full max-w-full rounded-lg object-contain" />
             ) : (
               <div className="text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#426B58] text-2xl font-bold text-white">{monogram(name)}</div>
-                <p className="mt-2 text-xs text-[#777F79]">No logo: the monogram is shown</p>
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-ix-action text-2xl font-bold text-white">{monogram(name)}</div>
+                <p className="mt-2 text-xs text-ix-muted">No logo: the monogram is shown</p>
               </div>
             )}
           </div>
@@ -126,30 +126,30 @@ export default function BrandingSection({ settings, onSaved, onConflict, setDirt
 
         <div className="space-y-4">
           <div>
-            <label htmlFor="logo-file" className="block text-xs font-semibold uppercase tracking-wide text-[#777F79]">{hasLogo ? "Replace logo" : "Upload logo"}</label>
+            <label htmlFor="logo-file" className="block text-xs font-semibold uppercase tracking-wide text-ix-muted">{hasLogo ? "Replace logo" : "Upload logo"}</label>
             <input ref={inputRef} id="logo-file" type="file" accept={LOGO_ACCEPT} onChange={choose} disabled={busy}
-              className="mt-1.5 block w-full text-sm text-[#1B211D] file:mr-3 file:rounded-xl file:border file:border-[#E4E8E2] file:bg-white file:px-4 file:py-2 file:text-sm file:font-medium file:text-[#1B211D] hover:file:bg-[#F3F5F1]" />
-            <p className="mt-1.5 text-xs text-[#777F79]">The picture is checked and re-encoded on the server. Choose a square or wide logo of at least 64 × 64 pixels.</p>
+              className="mt-1.5 block w-full text-sm text-ix-text file:mr-3 file:rounded-xl file:border file:border-ix-mist/15 file:bg-ix-mist/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-ix-text hover:file:bg-ix-mist/10" />
+            <p className="mt-1.5 text-xs text-ix-muted">The picture is checked and re-encoded on the server. Choose a square or wide logo of at least 64 × 64 pixels.</p>
           </div>
 
           <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#777F79]">How it will look in your header</p>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ix-muted">How it will look in your header</p>
             <HeaderPreview name={name} logoSrc={preview ?? currentSrc} />
           </div>
 
           {error && <Notice kind="error">{error}</Notice>}
 
           {confirmRemove ? (
-            <div role="alertdialog" aria-label="Remove the company logo" className="space-y-3 rounded-xl border border-[#B3402A]/30 bg-[#FBEDE9] p-4">
-              <p className="text-sm text-[#8A2F1D]">Remove your logo? The header will show your company monogram instead. Invoices that were already issued keep the branding they were issued with.</p>
+            <div role="alertdialog" aria-label="Remove the company logo" className="space-y-3 rounded-xl border border-red-300/30 bg-red-400/10 p-4">
+              <p className="text-sm text-red-200">Remove your logo? The header will show your company monogram instead. Invoices that were already issued keep the branding they were issued with.</p>
               <div className="flex gap-2">
-                <button type="button" onClick={remove} disabled={busy} className="inline-flex min-h-10 items-center rounded-xl bg-[#B3402A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9a3622] disabled:opacity-50">{busy ? "Removing…" : "Yes, remove logo"}</button>
+                <button type="button" onClick={remove} disabled={busy} className="inline-flex min-h-10 items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">{busy ? "Removing…" : "Yes, remove logo"}</button>
                 <button type="button" onClick={() => setConfirmRemove(false)} disabled={busy} className={quietButton}>Keep it</button>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className={`text-xs ${dirty ? "font-medium text-[#8A6A12]" : "text-[#777F79]"}`} aria-live="polite">{dirty ? "You have an unsaved logo." : "All changes saved."}</p>
+              <p className={`text-xs ${dirty ? "font-medium text-amber-100" : "text-ix-muted"}`} aria-live="polite">{dirty ? "You have an unsaved logo." : "All changes saved."}</p>
               <div className="flex gap-2">
                 {dirty && <button type="button" onClick={clear} disabled={busy} className={quietButton}>Discard</button>}
                 {!dirty && hasLogo && <button type="button" onClick={() => setConfirmRemove(true)} disabled={busy} className={quietButton}>Remove logo</button>}

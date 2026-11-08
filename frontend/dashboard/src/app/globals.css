@@ -45,19 +45,55 @@ body {
   }
 }
 
-/* ------------------------------------------------------------------------------------------------------------------------------
-   Organization Dashboard (Step 22A). Everything below is namespaced with .ix-dash / .ix-glass, so no other page is affected.
-   Palette: deep slate #172A32, blue-grey #324D58, muted teal #568E8F, sea-glass #86B6AA, sage #A6C1B2, mist #D8E8E3.
-   ------------------------------------------------------------------------------------------------------------------------------ */
+/* ==============================================================================================================================
+   Organization Portal theme (Steps 22A + 22B). One design system for the whole authenticated portal:
+     .ix-dash      the page wrapper (slate-teal atmosphere); .ix-glass / .ix-panel / .ix-inset  the three surface levels
+     data-section  sets the SECTION ACCENT; every legacy "indigo-300" link and highlight follows it (see tailwind.config.ts)
+   Nothing here applies outside .ix-dash, and the skin for older pages is screen-only: printing is handled at the bottom.
+   ============================================================================================================================== */
 .ix-dash {
+  /* palette */
+  --ix-deep: #172a32;
+  --ix-slate: #324d58;
+  --ix-teal: #568e8f;
+  --ix-sea: #86b6aa;
+  --ix-sage: #a6c1b2;
+  --ix-mist: #d8e8e3;
+  --ix-text: #edf4f1;
+  --ix-muted: #b5cbc9;
+  /* the three accents (and their "r g b" triplets, for translucent use) */
+  --ix-accent-yellow: #e8d8a4;
+  --ix-accent-mint: #96c5b8;
+  --ix-accent-blue: #a7c7d8;
+  --ix-accent-yellow-rgb: 232 216 164;
+  --ix-accent-mint-rgb: 150 197 184;
+  --ix-accent-blue-rgb: 167 199 216;
+  /* the current section accent: the default is the sea-glass of the foundation */
+  --ix-accent-rgb: 134 182 170;
+  --ix-accent-soft-rgb: 190 218 209;
+  /* surfaces, borders, shadows, radii, focus */
+  --ix-border: rgba(216, 232, 227, 0.13);
+  --ix-border-strong: rgba(216, 232, 227, 0.22);
+  --ix-shadow: 0 14px 32px -18px rgba(4, 12, 15, 0.6);
+  --ix-radius-lg: 22px;
+  --ix-radius-md: 18px;
+  --ix-radius-sm: 14px;
+  --ix-focus: rgb(var(--ix-accent-rgb) / 0.55);
+
   position: relative;
   min-height: 100vh;
-  color: #edf4f1;
-  background-color: #172a32;
+  color: var(--ix-text);
+  background-color: var(--ix-deep);
   isolation: isolate;
 }
 
-/* The atmosphere: a quiet slate foundation with two restrained ambient lights. It is one fixed layer, never animated, never blurred. */
+/* The accent of each part of the portal: Inventory powder blue, Purchasing pale butter, Sales sea-glass mint. Finance, Settings, Support and the
+   dashboard keep the sea-glass of the foundation. Only decorative colour changes: status colours (success, warning, error) are separate. */
+.ix-dash[data-section="inventory"] { --ix-accent-rgb: 167 199 216; --ix-accent-soft-rgb: 205 224 233; }
+.ix-dash[data-section="purchasing"] { --ix-accent-rgb: 232 216 164; --ix-accent-soft-rgb: 243 234 200; }
+.ix-dash[data-section="sales"] { --ix-accent-rgb: 150 197 184; --ix-accent-soft-rgb: 196 224 215; }
+
+/* The atmosphere: a quiet slate foundation with restrained ambient lights. One fixed layer: never animated, never blurred. */
 .ix-dash::before {
   content: "";
   position: fixed;
@@ -71,22 +107,17 @@ body {
     linear-gradient(165deg, #1b333c 0%, #172a32 48%, #13232a 100%);
 }
 
-/* Frosted glass: translucent layered surface, real background blur, a thin cool border, a soft light on the upper edge. */
+/* Level 1 - main cards: noticeable frosted glass, a soft light along the upper edge, a thin cool border. */
 .ix-glass {
-  border-radius: 22px;
-  border: 1px solid rgba(216, 232, 227, 0.13);
+  border-radius: var(--ix-radius-lg);
+  border: 1px solid var(--ix-border);
   background:
     linear-gradient(158deg, rgba(216, 232, 227, 0.11) 0%, rgba(134, 182, 170, 0.06) 38%, rgba(23, 42, 50, 0.3) 100%),
     rgba(50, 77, 88, 0.3);
-  box-shadow:
-    inset 0 1px 0 rgba(237, 244, 241, 0.16),
-    inset 0 -1px 0 rgba(23, 42, 50, 0.35),
-    0 14px 32px -18px rgba(4, 12, 15, 0.6);
+  box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.16), inset 0 -1px 0 rgba(23, 42, 50, 0.35), var(--ix-shadow);
   -webkit-backdrop-filter: blur(18px) saturate(115%);
   backdrop-filter: blur(18px) saturate(115%);
 }
-
-/* The light along the top edge. */
 .ix-glass::before {
   content: "";
   position: absolute;
@@ -97,71 +128,148 @@ body {
   -webkit-mask: linear-gradient(#000, transparent 70%);
   mask: linear-gradient(#000, transparent 70%);
 }
+.ix-glass-sm { border-radius: var(--ix-radius-md); }
 
-.ix-glass-sm {
-  border-radius: 18px;
+/* Level 2 - tables and form containers: a little more opaque for readability, a lighter blur, the same rounded silhouette. */
+.ix-panel {
+  border-radius: var(--ix-radius-lg);
+  border: 1px solid var(--ix-border);
+  background: linear-gradient(160deg, rgba(216, 232, 227, 0.08) 0%, rgba(23, 42, 50, 0.42) 100%), rgba(36, 60, 70, 0.5);
+  box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.12), var(--ix-shadow);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
-.ix-glass-lift {
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+/* Level 3 - nested panels: almost opaque, no blur of their own (blur never stacks inside blur). */
+.ix-inset {
+  border-radius: var(--ix-radius-sm);
+  border: 1px solid rgba(216, 232, 227, 0.1);
+  background: rgba(14, 29, 35, 0.42);
 }
 
+.ix-glass-lift { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease; }
 .ix-glass-lift:hover {
   transform: translateY(-2px);
-  border-color: rgba(216, 232, 227, 0.22);
-  box-shadow:
-    inset 0 1px 0 rgba(237, 244, 241, 0.2),
-    inset 0 -1px 0 rgba(23, 42, 50, 0.35),
-    0 18px 36px -18px rgba(4, 12, 15, 0.7);
+  border-color: var(--ix-border-strong);
+  box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.2), inset 0 -1px 0 rgba(23, 42, 50, 0.35), 0 18px 36px -18px rgba(4, 12, 15, 0.7);
 }
 
-/* No backdrop-filter (older browsers): a calm, more opaque surface keeps every label readable. */
+/* A figure card: a very faint light on the upper edge in its accent colour, and a tinted icon well. */
+.ix-kpi[data-accent="blue"] { --kpi: var(--ix-accent-blue-rgb); }
+.ix-kpi[data-accent="yellow"] { --kpi: var(--ix-accent-yellow-rgb); }
+.ix-kpi[data-accent="mint"] { --kpi: var(--ix-accent-mint-rgb); }
+.ix-kpi[data-accent="sea"] { --kpi: 134 182 170; }
+.ix-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 0 22px auto 22px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--kpi, 134 182 170) / 0.55), transparent);
+}
+.ix-kpi-icon {
+  color: rgb(var(--kpi, 134 182 170));
+  background: rgb(var(--kpi, 134 182 170) / 0.12);
+  border: 1px solid rgb(var(--kpi, 134 182 170) / 0.24);
+}
+
+/* No backdrop-filter (older browsers): calm, more opaque surfaces keep every label readable. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .ix-glass {
-    background: linear-gradient(158deg, rgba(48, 76, 86, 0.96), rgba(32, 56, 65, 0.96));
+  .ix-glass, .ix-panel { background: linear-gradient(158deg, rgba(48, 76, 86, 0.96), rgba(32, 56, 65, 0.96)); }
+}
+
+@keyframes ix-shimmer { 0% { opacity: 0.55; } 50% { opacity: 0.9; } 100% { opacity: 0.55; } }
+.ix-skeleton { border-radius: 12px; background: rgba(216, 232, 227, 0.1); animation: ix-shimmer 1.8s ease-in-out infinite; }
+
+.ix-scroll { scrollbar-width: none; }
+.ix-scroll::-webkit-scrollbar { display: none; }
+
+.ix-dash :focus-visible { outline: 2px solid var(--ix-focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------------------------------------------------------------------
+   The skin for pages written with Tailwind slate/indigo classes (Inventory, Purchasing, Sales, Finance, Support ...). The palette itself is
+   remapped in tailwind.config.ts; this adds the shapes: glass cards, rounded fields and buttons, contained tables. Screen only.
+   ------------------------------------------------------------------------------------------------------------------------------ */
+@media screen {
+  /* cards and panels (rounded-xl / rounded-2xl on a translucent slate surface) become level-2 panels */
+  .ix-dash :is(.rounded-xl, .rounded-2xl)[class*="bg-slate-9"][class*="/"]:not(thead):not(tr) {
+    border-radius: var(--ix-radius-lg);
+    border-color: var(--ix-border);
+    background: linear-gradient(160deg, rgba(216, 232, 227, 0.08) 0%, rgba(23, 42, 50, 0.42) 100%), rgba(36, 60, 70, 0.5);
+    box-shadow: inset 0 1px 0 rgba(237, 244, 241, 0.12), var(--ix-shadow);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
   }
-}
+  /* nested panels */
+  .ix-dash :is(.rounded-lg, .rounded-xl)[class*="bg-slate-950/"] {
+    border-radius: var(--ix-radius-sm);
+    border-color: rgba(216, 232, 227, 0.1);
+    background: rgba(14, 29, 35, 0.42);
+  }
+  /* corners: nothing sharp */
+  .ix-dash .rounded-md { border-radius: 12px; }
+  .ix-dash .rounded-lg { border-radius: var(--ix-radius-sm); }
+  .ix-dash .rounded-xl { border-radius: var(--ix-radius-md); }
+  .ix-dash .overflow-x-auto { border-radius: var(--ix-radius-sm); scrollbar-width: thin; scrollbar-color: rgba(166, 193, 178, 0.35) transparent; }
 
-/* A glass skeleton for loading states. */
-@keyframes ix-shimmer {
-  0% { opacity: 0.55; }
-  50% { opacity: 0.9; }
-  100% { opacity: 0.55; }
-}
-.ix-skeleton {
-  border-radius: 12px;
-  background: rgba(216, 232, 227, 0.1);
-  animation: ix-shimmer 1.8s ease-in-out infinite;
-}
+  /* fields */
+  .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]) {
+    border-radius: 12px;
+    border-color: rgba(216, 232, 227, 0.16);
+    background-color: rgba(11, 25, 31, 0.5);
+    color: var(--ix-text);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"]):focus {
+    outline: none;
+    border-color: rgb(var(--ix-accent-rgb) / 0.75);
+    box-shadow: 0 0 0 3px rgb(var(--ix-accent-rgb) / 0.2);
+  }
+  .ix-dash :is(input, textarea)::placeholder { color: rgba(181, 203, 201, 0.6); }
+  .ix-dash select option { background: #1c323b; color: var(--ix-text); }
+  .ix-dash input[type="checkbox"], .ix-dash input[type="radio"] { accent-color: #86b6aa; }
+  .ix-dash input[type="date"] { color-scheme: dark; }
 
-/* Quiet scrollbars inside the sidebar. */
-.ix-scroll {
-  scrollbar-width: none;
-}
-.ix-scroll::-webkit-scrollbar {
-  display: none;
-}
+  /* buttons: the general action is a calm deep sea-glass fill; secondary buttons are glass with a thin border */
+  .ix-dash :is(button, a)[class*="bg-indigo-600"] {
+    border-radius: 12px;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 18px -10px rgba(4, 12, 15, 0.7);
+  }
+  .ix-dash :is(button, a)[class*="bg-indigo-600"]:hover:not(:disabled) { background-color: #4a8184; }
+  .ix-dash :is(button, a)[class*="border-slate-700"] { border-radius: 12px; background-color: rgba(216, 232, 227, 0.04); }
+  .ix-dash :is(button, a)[class*="border-slate-700"]:hover:not(:disabled) { background-color: rgba(216, 232, 227, 0.1); }
 
-.ix-dash :focus-visible {
-  outline: 2px solid rgba(166, 193, 178, 0.85);
-  outline-offset: 2px;
+  /* tables */
+  .ix-dash table { border-collapse: collapse; }
+  .ix-dash thead { background-color: rgba(11, 25, 31, 0.28); }
+  .ix-dash thead th { letter-spacing: 0.04em; }
+  .ix-dash tbody tr { transition: background-color 140ms ease; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ix-dash *,
-  .ix-dash *::before,
-  .ix-dash *::after {
+  .ix-dash *, .ix-dash *::before, .ix-dash *::after {
     animation: none !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  .ix-glass-lift:hover {
-    transform: none;
-  }
+  .ix-glass-lift:hover { transform: none; }
 }
 
+/* Printing (an invoice, a label, a list): clean black on white, no atmosphere, no glass, no navigation. Machine-readable codes keep their own
+   white background and black ink. */
 @media print {
-  .ix-dash::before {
-    display: none;
+  .ix-dash { background: #fff !important; color: #000 !important; }
+  .ix-dash::before { display: none !important; }
+  .ix-dash * {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: #000 !important;
+    border-color: #999 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
+  .ix-dash .bg-white, .ix-dash .bg-white * { background-color: #fff !important; }
 }

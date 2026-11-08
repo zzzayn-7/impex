@@ -5,7 +5,7 @@ import { alphaOrg, betaOrg, orgAdmin, orgAdminB, superAdmin } from "./helpers";
 
 const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({ cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }) }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -102,7 +102,7 @@ describe("the Help & Support layout", () => {
     const html = await render(SupportLayout({ children: "PAGE-CONTENT" }));
     expect(html).toContain('href="/support"');
     expect(html).toContain("Help &amp; Support");
-    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*>Help &amp; Support<\/a>|<a[^>]*>Help &amp; Support<\/a>/);
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*>.*?Help &amp; Support<\/span><\/a>/);
     expect(html).toContain("PAGE-CONTENT");
     expect(html).toContain("Alpha Trading GmbH");
   });

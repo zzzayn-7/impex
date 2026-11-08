@@ -7,7 +7,7 @@ const jar: Record<string, string> = {};
 vi.mock("next/headers", () => ({
   cookies: () => ({ get: (name: string) => (name in jar ? { name, value: jar[name] } : undefined) }),
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", () => ({ usePathname: () => null,
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -317,8 +317,8 @@ describe("layouts (run before the page streams)", () => {
     for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Admin Portal", "Dashboard", "Products", "Warehouses", "Stock", "Movements", "Sign out"]) {
       expect(html, expected).toContain(expected);
     }
-    const current = html.match(/<a[^>]*aria-current="page"[^>]*>([^<]*)</);
-    expect(current?.[1]).toBe(label);
+    const current = (html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "");
+    expect(current).toBe(label);
     for (const href of ["/", "/products", "/warehouses", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
   });
 });
