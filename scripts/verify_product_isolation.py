@@ -120,7 +120,7 @@ def main() -> int:
         return status, html.replace("<!-- -->", ""), location
 
     def create(key, **overrides):
-        body = {"sku": "ISO-1", "name": "Item", "category": "General", "unit": "pcs", "costPrice": "1.00", "sellingPrice": "2.00",
+        body = {"sku": "ISO-1", "name": "Item", "unit": "pcs", "costPrice": "1.00", "sellingPrice": "2.00",
                 "currencyCode": "USD", **overrides}
         status, text, _, _ = portal(key, "POST", "/api/products", body)
         created.add("products", jbody(text).get("product", {}).get("id"))
@@ -156,11 +156,11 @@ def main() -> int:
 
         print("\n== 1. create products through the portal (each in their own catalog)")
         made = {"a": {}, "b": {}}
-        spec = {"a": [("ISO-BOLT", "IsoAlpha steel bolt", "Hardware", "7318.15"), ("ISO-NUT", "IsoAlpha steel nut", "Hardware", ""), ("SHARED-1", "IsoAlpha shared item", "Common", "")],
-                "b": [("ISO-SCARF", "IsoBeta silk scarf", "Textiles", ""), ("SHARED-1", "IsoBeta shared item", "Common", "")]}
+        spec = {"a": [("ISO-BOLT", "IsoAlpha steel bolt", "7318.15"), ("ISO-NUT", "IsoAlpha steel nut", ""), ("SHARED-1", "IsoAlpha shared item", "")],
+                "b": [("ISO-SCARF", "IsoBeta silk scarf", ""), ("SHARED-1", "IsoBeta shared item", "")]}
         for key in ("a", "b"):
-            for sku, name, category, hs in spec[key]:
-                status, body = create(key, sku=sku, name=name, category=category, hsCode=hs)
+            for sku, name, hs in spec[key]:
+                status, body = create(key, sku=sku, name=name, hsCode=hs)
                 made[key][sku] = body.get("product", {})
                 check(f"{key.upper()} creates {sku} (201)", status == 201 and body.get("product", {}).get("sku") == sku, (status, body))
         check("the same SKU ('SHARED-1') can exist in both catalogs", made["a"]["SHARED-1"].get("id") != made["b"]["SHARED-1"].get("id"))
@@ -178,26 +178,28 @@ def main() -> int:
         print("\n== 3. the Products page shows each organization only its own catalog")
         for key, other in (("a", "b"), ("b", "a")):
             status, html, _ = page(key)
-            own_names = [n for _, n, _, _ in spec[key]]
-            other_names = [n for _, n, _, _ in spec[other]]
+            own_names = [n for _, n, _ in spec[key]]
+            other_names = [n for _, n, _ in spec[other]]
             check(f"page {key.upper()} lists all of {key.upper()}'s products", status == 200 and all(n in html for n in own_names), status)
             check(f"...and none of {other.upper()}'s", not any(n in html for n in other_names) and f"Isolation Products {'Beta' if key == 'a' else 'Alpha'}" not in html)
         status, html, _ = page("a", "?q=bolt")
         check("search finds the matching product only", "IsoAlpha steel bolt" in html and "IsoAlpha steel nut" not in html)
+        status, html, _ = page("a", "?q=steel")
+        check("a search matching two products finds both and nothing else", "IsoAlpha steel bolt" in html and "IsoAlpha steel nut" in html and "IsoAlpha shared item" not in html)
         status, html, _ = page("a", "?category=Hardware")
-        check("category filter works", "IsoAlpha steel bolt" in html and "IsoAlpha steel nut" in html and "IsoAlpha shared item" not in html)
+        check("products have no category: an old ?category= in the address is ignored", status == 200 and "IsoAlpha shared item" in html and "Category" not in html)
         status, html, _ = page("a", "?q=scarf")
         check("A cannot find B's product by searching for it", "IsoBeta silk scarf" not in html and "No products match" in html)
         status, html, _ = page("a", f"?organization_id={org_ids['b']}&org={org_ids['b']}")
         check("an organization id in the URL changes nothing", status == 200 and "IsoAlpha steel bolt" in html and "IsoBeta" not in html)
 
         print("\n== 4. the organization cannot be chosen by the browser")
-        status, text, _, _ = portal("a", "POST", "/api/products", {"sku": "ISO-SNEAKY", "name": "IsoAlpha sneaky", "category": "General", "unit": "pcs",
+        status, text, _, _ = portal("a", "POST", "/api/products", {"sku": "ISO-SNEAKY", "name": "IsoAlpha sneaky", "unit": "pcs",
                                     "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD", "organization_id": org_ids["b"], "organizationId": org_ids["b"]})
         created.add("products", jbody(text).get("product", {}).get("id"))
         owner = psql("impex_inventory", f"SELECT organization_id FROM products WHERE id = '{jbody(text).get('product', {}).get('id')}'")
         check("a product 'sent for' organization B is stored under A (the signed-in administrator's organization)", status == 201 and owner == org_ids["a"], (status, owner))
-        status, text, _, _ = call(INVENTORY, "POST", "/api/v1/inventory/products", {"sku": "ISO-DIRECT", "name": "x", "category": "c", "unit": "pcs",
+        status, text, _, _ = call(INVENTORY, "POST", "/api/v1/inventory/products", {"sku": "ISO-DIRECT", "name": "x", "unit": "pcs",
                                   "cost_price": "1", "selling_price": "2", "currency_code": "USD", "organization_id": org_ids["b"]}, bearer(tokens["a"]))
         check("the Inventory Service itself rejects an organization_id in the body (422)", status == 422, (status, text[:100]))
         check("nothing was stored for it", psql("impex_inventory", "SELECT count(*) FROM products WHERE sku = 'ISO-DIRECT'") == "0")
@@ -226,7 +228,7 @@ def main() -> int:
         status, text, _, _ = portal("b", "PATCH", f"/api/products/{scarf['id']}", {"name": "IsoBeta silk scarf v2", "sellingPrice": "17.25", "description": "Updated"})
         body = jbody(text).get("product", {})
         check("B edits their product (200)", status == 200 and body.get("name") == "IsoBeta silk scarf v2" and body.get("selling_price") == "17.2500", (status, text))
-        check("only the edited fields changed", body.get("cost_price") == scarf["cost_price"] and body.get("sku") == "ISO-SCARF" and body.get("category") == "Textiles")
+        check("only the edited fields changed", body.get("cost_price") == scarf["cost_price"] and body.get("sku") == "ISO-SCARF" and "category" not in body)
         check("the edit moved updated_at forward", body.get("updated_at", "") > scarf["updated_at"])
         status, text, _, _ = portal("b", "PATCH", f"/api/products/{scarf['id']}", {"sku": "shared-1"})
         check("editing the SKU to one already in B's catalog is rejected (409)", status == 409, (status, text))

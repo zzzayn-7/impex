@@ -133,7 +133,7 @@ def main() -> int:
         return call(TENANT_PORTAL, method, path, body, headers, cookies={"impex_tenant_session": cookies[key]})
 
     def product(key, sku, name, unit="pcs"):
-        _, text, _ = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "category": "SO check", "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
+        _, text, _ = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
         body = jbody(text).get("product", {})
         created.add("products", body.get("id"))
         return body

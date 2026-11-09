@@ -1,10 +1,10 @@
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -88,8 +88,7 @@ def sku_conflict(sku: str) -> HTTPException:
 
 @app.get(f"{PREFIX}/products", response_model=ProductList, tags=["Products"])
 def list_products(
-    q: Optional[str] = Query(default=None, max_length=100, description="Search SKU, name, description, category, HS code"),
-    category: Optional[str] = Query(default=None, max_length=100),
+    q: Optional[str] = Query(default=None, max_length=100, description="Search SKU, name, description, HS code"),
     status_filter: Literal["active", "archived", "all"] = Query(default="active", alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -104,12 +103,9 @@ def list_products(
                 Product.sku.ilike(pattern, escape="\\"),
                 Product.name.ilike(pattern, escape="\\"),
                 Product.description.ilike(pattern, escape="\\"),
-                Product.category.ilike(pattern, escape="\\"),
                 Product.hs_code.ilike(pattern, escape="\\"),
             )
         )
-    if category and category.strip():
-        filters.append(func.lower(Product.category) == category.strip().lower())
     if status_filter == "active":
         filters.append(Product.is_active.is_(True))
     elif status_filter == "archived":
@@ -125,13 +121,6 @@ def list_products(
     ).all()
     annotate_unit_lock(db, tenant, items)
     return ProductList(items=items, total=total, limit=limit, offset=offset)
-
-
-@app.get(f"{PREFIX}/categories", response_model=List[str], tags=["Products"])
-def list_categories(tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    """The distinct categories used in the tenant's own catalog (for filter drop-downs)."""
-    query = scoped_select(Product, tenant).with_only_columns(Product.category).distinct().order_by(Product.category)
-    return list(db.scalars(query))
 
 
 @app.post(f"{PREFIX}/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED, tags=["Products"])

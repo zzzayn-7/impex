@@ -34,3 +34,6 @@ class User(Base):
     # First-time onboarding: NULL until the administrator has confirmed their own profile. The authoritative record
     # (never a cookie or browser storage).
     profile_setup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The person's own colour theme for the portals: identifiers of the approved palettes only (see app/theme.py). NULL = never chosen (the default theme).
+    theme_background: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    theme_accent: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)

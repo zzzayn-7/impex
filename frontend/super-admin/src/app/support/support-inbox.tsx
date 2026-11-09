@@ -131,7 +131,7 @@ export default function SupportInbox({ list, filters }: { list: InboxPage; filte
                       <td className="px-2 py-3 align-top text-slate-300">{t.requester_name}</td>
                       <td className="max-w-[16rem] px-2 py-3 align-top">
                         <Link href={`/support/${t.id}`} className={`block truncate hover:text-white ${t.unread ? "font-semibold text-white" : "text-slate-200"}`}>{t.subject}</Link>
-                        {t.awaiting_staff && <span className="mt-0.5 block text-[11px] text-ix-butter">Awaiting your reply</span>}
+                        {t.awaiting_staff && <span className="mt-0.5 block text-[11px] text-ix-accent-text">Awaiting your reply</span>}
                       </td>
                       <td className="px-2 py-3 align-top text-slate-300">{CATEGORY_LABELS[t.category]}</td>
                       <td className="px-2 py-3 align-top"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLE[t.priority]}`}>{PRIORITY_LABELS[t.priority]}</span></td>

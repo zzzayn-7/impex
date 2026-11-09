@@ -16,8 +16,8 @@ def legacy_product(engine, org, sku, name):
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE products DISABLE TRIGGER trg_products_sku_not_a_barcode"))
         try:
-            conn.execute(text("INSERT INTO products (organization_id, sku, name, category, unit, cost_price, selling_price, currency_code) "
-                              "VALUES (:o, :s, :n, 'c', 'pcs', 1, 1, 'USD')"), {"o": org, "s": sku, "n": name})
+            conn.execute(text("INSERT INTO products (organization_id, sku, name, unit, cost_price, selling_price, currency_code) "
+                              "VALUES (:o, :s, :n, 'pcs', 1, 1, 'USD')"), {"o": org, "s": sku, "n": name})
         finally:
             conn.execute(text("ALTER TABLE products ENABLE TRIGGER trg_products_sku_not_a_barcode"))
 
@@ -117,7 +117,7 @@ def test_a_retired_barcode_is_410(api, shop):
     api.client.post(f"{PRODUCTS_URL}/{shop['bolt']['id']}/identifiers/{created['id']}/retire", headers=api.headers)
     gone = resolve(api, "OLD-EAN")
     assert gone.status_code == 410 and "retired" in gone.json()["detail"]
-    assert api.client.post(PRODUCTS_URL, json={"sku": "OLD-EAN", "name": "x", "category": "c", "unit": "pcs", "cost_price": "1", "selling_price": "1", "currency_code": "USD"},
+    assert api.client.post(PRODUCTS_URL, json={"sku": "OLD-EAN", "name": "x", "unit": "pcs", "cost_price": "1", "selling_price": "1", "currency_code": "USD"},
                            headers=api.headers).status_code == 409  # the retired text stays reserved: it cannot become someone's SKU
 
 
@@ -225,7 +225,7 @@ def world(two_orgs):
     data = {}
     for who in ("alpha", "beta"):
         org = two_orgs[who]
-        product = org.product(sku="SHARED-SKU", name=f"{who} gadget", category=f"{who}-cat")
+        product = org.product(sku="SHARED-SKU", name=f"{who} gadget")
         other = org.product(sku=f"{who.upper()}-ONLY", name=f"{who} exclusive")
         org.add(product, 7 if who == "alpha" else 99)
         register(org, product, "SHARED-EAN-13")

@@ -20,12 +20,12 @@ const L1 = "e0000000-0000-4000-8000-000000000001";
 const W1 = "22222222-2222-4222-8222-222222222222";
 
 const product = (id: string, sku: string, name: string, unit: string, extra: Record<string, unknown> = {}) => ({
-  id, sku, name, description: null, category: "G", unit, unit_allows_fractions: unit === "kg", unit_locked: false, hs_code: null, cost_price: "1", selling_price: "2", currency_code: "USD",
+  id, sku, name, description: null, unit, unit_allows_fractions: unit === "kg", unit_locked: false, hs_code: null, cost_price: "1", selling_price: "2", currency_code: "USD",
   is_active: true, created_at: now, updated_at: now, ...extra,
 });
 const result = (p: ReturnType<typeof product>) => ({
   matched_by: "sku", identifier_kind: null, product: p,
-  stock: { product_id: p.id, sku: p.sku, name: p.name, category: "G", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3" },
+  stock: { product_id: p.id, sku: p.sku, name: p.name, unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active, total_quantity: "3" },
 });
 const CATALOG: Record<string, any> = {
   "BOLT-1": result(product(BOLT, "BOLT-1", "Steel bolt", "pcs")), FLOUR: result(product(FLOUR, "FLOUR", "Flour", "kg")),

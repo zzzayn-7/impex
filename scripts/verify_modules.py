@@ -232,7 +232,7 @@ def main() -> int:
 
     # ---- business records ----------------------------------------------------------------------------------------------------------
     def product(who, sku, name, unit="pcs"):
-        _, data, _, _ = tenant(who, "POST", "/api/products", {"sku": sku, "name": name, "category": "Module check", "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
+        _, data, _, _ = tenant(who, "POST", "/api/products", {"sku": sku, "name": name, "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
         body = jbody(data).get("product", {})
         created.add("products", body.get("id"))
         return body
@@ -358,7 +358,7 @@ def main() -> int:
         check("the module request form is pre-filled with fixed wording as a Change Request", s == 200 and "Request to activate the Sales module" in html and "change_request" in html, s)
         s, html, loc = tpage("a1", "/support/new?module=%3Cscript%3Ealert(1)%3C/script%3E")
         check("nothing in the address is used as text: no live markup, no pre-filled request", s == 200 and "<script>alert(1)" not in html and "Request to activate" not in html)
-        s, body = tapi("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "category": "change_request", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
+        s, body = tapi("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         ticket = (body or {}).get("ticket", {})
         check("A1 opens that request as a ticket (201)", s == 201 and ticket.get("ticket_number"), (s, body))
         check("the ticket changed NOTHING: modules, revision and history are exactly as they were", enabled("a") == {"inventory": True, "purchasing": False, "sales": False, "finance": False} and revision("a") == rev_before and len(history("a")) == hist_before)
@@ -540,7 +540,7 @@ def main() -> int:
         apply("c", {"sales": True})
         s, body = tapi("c1", "GET", "/api/sales/clients")
         check("enabling Sales for C does not skip its setup (still setup_required)", s == 403 and body.get("code") == "setup_required", (s, body))
-        s, body = tapi("c1", "POST", "/api/support/tickets", {"subject": "Setup help", "category": "general_inquiry", "message": "I am stuck on the logo step."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
+        s, body = tapi("c1", "POST", "/api/support/tickets", {"subject": "Setup help", "message": "I am stuck on the logo step."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         check("C1 can still open a support ticket during setup", s == 201, (s, body))
         apply("c", {"sales": False})
 

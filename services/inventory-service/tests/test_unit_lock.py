@@ -67,7 +67,7 @@ def test_resending_the_current_unit_is_not_a_change(api, setup):
     assert response.status_code == 200 and response.json()["name"] == "Palm oil 5L" and response.json()["unit"] == "litre"
 
 
-@pytest.mark.parametrize("field,value", [("name", "New name"), ("sku", "OIL-2"), ("category", "Oils"), ("cost_price", "3.5"),
+@pytest.mark.parametrize("field,value", [("name", "New name"), ("sku", "OIL-2"), ("cost_price", "3.5"),
                                           ("selling_price", "5"), ("description", "d"), ("hs_code", "1511.90"), ("currency_code", "EUR")])
 def test_every_other_field_stays_editable_after_movements(api, setup, field, value):
     api.add(setup["product"], 1)

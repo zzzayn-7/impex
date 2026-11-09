@@ -41,7 +41,7 @@ export async function inventoryRequest(
 }
 
 // ---- reading (used by the server-rendered Products page) -----------------------------------------------
-export type ProductFilters = { q: string; category: string; status: "active" | "archived" | "all"; page: number };
+export type ProductFilters = { q: string; status: "active" | "archived" | "all"; page: number };
 export const PAGE_SIZE = 25;
 
 export type ProductListResult =
@@ -57,15 +57,9 @@ function reason(result: InventoryResult): "unauthorized" | "forbidden" | "unavai
 export async function listProducts(token: string, filters: ProductFilters): Promise<ProductListResult> {
   const params = new URLSearchParams({ status: filters.status, limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
   if (filters.q) params.set("q", filters.q);
-  if (filters.category) params.set("category", filters.category);
   const result = await inventoryRequest("GET", `/api/v1/inventory/products?${params}`, token);
   if (!result || result.status !== 200) return { ok: false, reason: reason(result) };
   return { ok: true, products: result.data.items, total: result.data.total, limit: result.data.limit, offset: result.data.offset };
-}
-
-export async function listCategories(token: string): Promise<string[]> {
-  const result = await inventoryRequest("GET", "/api/v1/inventory/categories", token);
-  return result?.status === 200 && Array.isArray(result.data) ? result.data : [];
 }
 
 // ---- failures from write calls, turned into safe responses for the browser ------------------------------
@@ -132,11 +126,10 @@ export async function listProductChoices(token: string, status: "active" | "all"
   return result.ok ? result.items : [];
 }
 
-export type StockFilters = { q: string; category: string; inStockOnly: boolean; status: "active" | "archived" | "all"; page: number };
+export type StockFilters = { q: string; inStockOnly: boolean; status: "active" | "archived" | "all"; page: number };
 export function listStock(token: string, filters: StockFilters) {
   const params = pageParams(filters.page, filters.status);
   if (filters.q) params.set("q", filters.q);
-  if (filters.category) params.set("category", filters.category);
   if (filters.inStockOnly) params.set("in_stock_only", "true");
   return getPaged<StockProduct>("/api/v1/inventory/stock", params, token);
 }

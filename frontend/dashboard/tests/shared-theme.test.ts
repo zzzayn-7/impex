@@ -10,6 +10,12 @@ const read = (p: string) => readFileSync(join(root, p), "utf-8");
 describe("the shared theme stays shared", () => {
   const globals = read("src/app/globals.css");
 
+  it("the navigation rail never shows a scrollbar: the hide rule outranks the page-wide thin-scrollbar rules, and the rail still scrolls", () => {
+    expect(globals).toMatch(/\.ix-dash \.ix-scroll\s*\{[^}]*scrollbar-width:\s*none/);
+    expect(globals).toMatch(/\.ix-dash \.ix-scroll::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+    expect(read("src/components/dashboard/sidebar.tsx")).toMatch(/<nav[^>]*className="ix-scroll [^"]*overflow-y-auto/);
+  });
+
   it("globals.css holds no styling that belongs to one component of this portal", () => {
     expect(globals).not.toContain(".ix-qty");
   });

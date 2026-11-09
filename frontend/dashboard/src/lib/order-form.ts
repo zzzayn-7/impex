@@ -9,7 +9,6 @@ export type PickerProduct = {
   product_id: string;
   sku: string;
   name: string;
-  category?: string;
   unit: string;
   unit_allows_fractions: boolean;
   total_quantity: string;

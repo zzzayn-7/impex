@@ -295,7 +295,7 @@ describe("navigation and layouts", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (layout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe(label);
-    for (const href of ["/", "/products", "/stock", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/stock", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
   });
 });
 

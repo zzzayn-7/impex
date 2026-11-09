@@ -35,7 +35,7 @@ function ModuleRow({ moduleKey, on }: { moduleKey: ModuleKey; on: boolean }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-ix-text">{MODULE_LABELS[moduleKey]}</h3>
-            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${on ? "border-ix-butter/40 bg-ix-butter/15 text-ix-butter" : "border-ix-mist/15 bg-ix-mist/10 text-ix-muted"}`}>{on ? "Enabled" : "Not enabled"}</span>
+            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${on ? "border-ix-accent-text/40 bg-ix-butter/15 text-ix-accent-text" : "border-ix-mist/15 bg-ix-mist/10 text-ix-muted"}`}>{on ? "Enabled" : "Not enabled"}</span>
             {needs.length > 0 && <span className="text-xs text-ix-muted">Requires {needs.join(", ")}</span>}
           </div>
           <p className="mt-1 text-xs text-ix-muted">{MODULE_DESCRIPTIONS[moduleKey]}</p>
@@ -44,7 +44,7 @@ function ModuleRow({ moduleKey, on }: { moduleKey: ModuleKey; on: boolean }) {
         {on ? (
           <Link href={MODULE_PAGES[moduleKey][0].href} className={`${linkClass} text-sm`}>Open {MODULE_PAGES[moduleKey][0].label}</Link>
         ) : (
-          <Link href={`/support/new?module=${moduleKey}`} className="inline-flex min-h-10 items-center rounded-xl border border-ix-butter px-4 py-2 text-sm font-semibold text-ix-butter hover:bg-ix-butter/15">Request access</Link>
+          <Link href={`/support/new?module=${moduleKey}`} className="inline-flex min-h-10 items-center rounded-xl border border-ix-accent-text px-4 py-2 text-sm font-semibold text-ix-accent-text hover:bg-ix-butter/15">Request access</Link>
         )}
       </div>
     </li>

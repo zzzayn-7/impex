@@ -15,14 +15,14 @@ import {
 } from "@/lib/product-validation";
 
 const valid: ProductFormValues = {
-  sku: "WID-001", name: "Widget", description: "", category: "Hardware", unit: "pcs", hsCode: "", costPrice: "10.50",
+  sku: "WID-001", name: "Widget", description: "", unit: "pcs", hsCode: "", costPrice: "10.50",
   sellingPrice: "15.99", currencyCode: "USD",
 };
 
 describe("normalizeProduct", () => {
   it("tidies text, upper-cases SKU and currency, and leaves money untouched as a string", () => {
-    expect(normalizeProduct({ sku: " wid-001 ", name: "  Steel   bolt ", currencyCode: "usd", costPrice: " 0.1 ", category: " Hard  ware " })).toEqual({
-      sku: "WID-001", name: "Steel bolt", currencyCode: "USD", costPrice: "0.1", category: "Hard ware",
+    expect(normalizeProduct({ sku: " wid-001 ", name: "  Steel   bolt ", currencyCode: "usd", costPrice: " 0.1 " })).toEqual({
+      sku: "WID-001", name: "Steel bolt", currencyCode: "USD", costPrice: "0.1",
     });
   });
 });
@@ -34,7 +34,7 @@ describe("validateProduct", () => {
 
   it.each([
     ["sku", { sku: "" }], ["sku", { sku: "has space" }], ["sku", { sku: "bad#" }], ["sku", { sku: "X".repeat(65) }],
-    ["name", { name: "" }], ["name", { name: "N".repeat(256) }], ["category", { category: "" }], ["unit", { unit: "" }],
+    ["name", { name: "" }], ["name", { name: "N".repeat(256) }], ["unit", { unit: "" }],
     ["unit", { unit: "U".repeat(21) }], ["description", { description: "D".repeat(2001) }],
     ["hsCode", { hsCode: "12" }], ["hsCode", { hsCode: "abcd" }], ["hsCode", { hsCode: "8517.1" }],
     ["costPrice", { costPrice: "" }], ["costPrice", { costPrice: "-1" }], ["costPrice", { costPrice: "1.23456" }],
@@ -64,7 +64,7 @@ describe("validateProduct", () => {
 describe("request bodies", () => {
   it("creating omits blank optional fields, keeps money as the exact strings, and has no organization field", () => {
     const body = toCreateBody({ ...valid, costPrice: "0.1", sellingPrice: "0.2" });
-    expect(body).toEqual({ sku: "WID-001", name: "Widget", category: "Hardware", unit: "pcs", cost_price: "0.1", selling_price: "0.2", currency_code: "USD" });
+    expect(body).toEqual({ sku: "WID-001", name: "Widget", unit: "pcs", cost_price: "0.1", selling_price: "0.2", currency_code: "USD" });
     expect(Object.keys(body).join()).not.toMatch(/org|tenant/i);
     expect(toCreateBody({ ...valid, description: "d", hsCode: "8517" })).toMatchObject({ description: "d", hs_code: "8517" });
   });
@@ -91,9 +91,9 @@ describe("money display (strings only, never floating point)", () => {
 
   it("round-trips a product into the edit form without losing precision", () => {
     const product: Product = {
-      id: "1", sku: "A-1", name: "A", description: null, category: "C", unit: "pcs", hs_code: null, cost_price: "0.1000",
+      id: "1", sku: "A-1", name: "A", description: null, unit: "pcs", hs_code: null, cost_price: "0.1000",
       selling_price: "1234567.8912", currency_code: "USD", is_active: true, created_at: "", updated_at: "",
     };
-    expect(productToForm(product)).toEqual({ ...EMPTY_PRODUCT, sku: "A-1", name: "A", category: "C", unit: "pcs", costPrice: "0.10", sellingPrice: "1234567.8912" });
+    expect(productToForm(product)).toEqual({ ...EMPTY_PRODUCT, sku: "A-1", name: "A", unit: "pcs", costPrice: "0.10", sellingPrice: "1234567.8912" });
   });
 });

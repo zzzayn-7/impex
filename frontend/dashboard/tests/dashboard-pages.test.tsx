@@ -127,12 +127,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the dashboard shows real figures", () => {
-  it("has the glass frame: a rail sidebar, a header with the company and the administrator, and a heading", async () => {
+  it("has the glass frame: a rail sidebar, a header with the page name and the administrator's avatar card, and a heading", async () => {
     const html = await render();
     expect(html).toContain('class="ix-dash"');
     expect(html).toContain('aria-label="Primary"');
     expect(html).toContain("Alpha Trading GmbH");
-    expect(html).toContain("Admin Portal");
+    expect(html).not.toContain("Admin Portal"); // the page name replaced the company block
+    expect(html).toContain("Organization Admin"); // the role, in the avatar's card
     expect(html).toContain("Olivia Owner");
     expect(html).toContain("Sign out");
     expect(html).toContain("Welcome, Olivia Owner");
@@ -267,7 +268,7 @@ describe("modules that are not enabled", () => {
 
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
-    for (const href of ["/", "/products", "/stock", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
+    for (const href of ["/", "/stock", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
       "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
     for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
   });

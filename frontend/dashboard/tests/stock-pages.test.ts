@@ -25,7 +25,7 @@ const id = () => crypto.randomUUID();
 const now = "2026-11-04T10:00:00+00:00";
 
 const product = (sku: string, name: string, unit = "pcs", extra: Record<string, unknown> = {}) => ({
-  id: id(), sku, name, description: null, category: "General", unit, unit_allows_fractions: unit === "kg", hs_code: null, cost_price: "1.0000",
+  id: id(), sku, name, description: null, unit, unit_allows_fractions: unit === "kg", hs_code: null, cost_price: "1.0000",
   selling_price: "2.0000", currency_code: "USD", is_active: true, created_at: now, updated_at: now, ...extra,
 });
 
@@ -38,11 +38,11 @@ function makeOrg(prefix: "alpha" | "beta"): Org {
     products: [bolt, flour],
     stock: [
       {
-        product_id: bolt.id, sku: bolt.sku, name: bolt.name, category: "General", unit: "pcs", unit_allows_fractions: false, is_active: true,
+        product_id: bolt.id, sku: bolt.sku, name: bolt.name, unit: "pcs", unit_allows_fractions: false, is_active: true,
         total_quantity: "1234.0000",
       },
       {
-        product_id: flour.id, sku: flour.sku, name: flour.name, category: "General", unit: "kg", unit_allows_fractions: true, is_active: true,
+        product_id: flour.id, sku: flour.sku, name: flour.name, unit: "kg", unit_allows_fractions: true, is_active: true,
         total_quantity: "0.1000",
       },
     ],
@@ -131,7 +131,7 @@ describe("Stock page", () => {
     stubWorld({ ...normalWorld(), orgs: { "token-alpha": { ...makeOrg("alpha"), products: [] } } });
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(StockPage as Page);
-    expect(html).toContain("Create a product first");
+    expect(html).toContain("No products yet");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Add stock/);
   });
 
@@ -270,12 +270,13 @@ describe("layouts (run before the page streams)", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await layout({ children: "PAGE-CONTENT" }));
-    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Admin Portal", "Dashboard", "Products", "Stock", "Movements", "Sign out"]) {
+    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Dashboard", "Stock", "Movements", "Sign out"]) {
       expect(html, expected).toContain(expected);
     }
     const current = (html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "");
     expect(current).toBe(label);
-    for (const href of ["/", "/products", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
+    expect(html).not.toContain('href="/products"'); // no standalone Products entry
     expect(html).not.toContain("/warehouses");
   });
 });

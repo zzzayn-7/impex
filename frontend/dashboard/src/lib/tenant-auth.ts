@@ -13,6 +13,9 @@ export type AuthUser = {
   created_at: string;
   // null until the administrator has confirmed their own profile (first-time onboarding). The Auth Service is the record.
   profile_setup_completed_at?: string | null;
+  // The administrator's own colour theme (identifiers of the approved palettes), or null when they never chose one.
+  theme_background?: string | null;
+  theme_accent?: string | null;
 };
 
 export type TenantAdmin = AuthUser & { role: "organization-admin"; organization_id: string; is_active: true };

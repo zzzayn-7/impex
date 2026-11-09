@@ -22,11 +22,11 @@ import { TENANT_SESSION_COOKIE } from "@/lib/session";
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 const product = (sku: string, name: string, extra: Record<string, unknown> = {}) => ({
-  id: crypto.randomUUID(), sku, name, description: null, category: "General", unit: "pcs", hs_code: null, cost_price: "10.5000",
+  id: crypto.randomUUID(), sku, name, description: null, unit: "pcs", hs_code: null, cost_price: "10.5000",
   selling_price: "15.9900", currency_code: "USD", is_active: true, created_at: "2026-11-04T10:00:00+00:00", updated_at: "2026-11-04T10:00:00+00:00", ...extra,
 });
-const alphaProducts = [product("ALPHA-1", "Alpha steel bolt", { category: "Hardware", hs_code: "7318.15" }), product("ALPHA-2", "Alpha nut", { category: "Hardware" })];
-const betaProducts = [product("BETA-1", "Beta silk scarf", { category: "Textiles", cost_price: "0.1000", selling_price: "1234567.8912", currency_code: "EUR" })];
+const alphaProducts = [product("ALPHA-1", "Alpha steel bolt", { hs_code: "7318.15" }), product("ALPHA-2", "Alpha nut")];
+const betaProducts = [product("BETA-1", "Beta silk scarf", { cost_price: "0.1000", selling_price: "1234567.8912", currency_code: "EUR" })];
 
 type World = {
   catalogs: Record<string, unknown[]>; // token -> that organization's products
@@ -50,7 +50,6 @@ function stubWorld(world: World) {
         if (world.inventoryStatus) return json(world.inventoryStatus, { detail: "x" });
         const own = world.catalogs[token];
         if (!own) return json(401, {});
-        if (url.includes("/categories")) return json(200, [...new Set((own as any[]).map((p) => p.category))].sort());
         const params = new URL(url).searchParams;
         const q = (params.get("q") ?? "").toLowerCase();
         const items = (own as any[]).filter((p) => !q || `${p.sku} ${p.name}`.toLowerCase().includes(q));
@@ -83,7 +82,7 @@ describe("Products page", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render();
-    for (const expected of ["Products", "Add Product", "Alpha steel bolt", "ALPHA-1", "7318.15", "10.50 USD", "15.99 USD", "Hardware", "Active", "Showing 1–2 of 2", "Edit", "Archive"]) {
+    for (const expected of ["Products", "Add Product", "Alpha steel bolt", "ALPHA-1", "7318.15", "10.50 USD", "15.99 USD", "Active", "Showing 1–2 of 2", "Edit", "Archive"]) {
       expect(html, expected).toContain(expected);
     }
   });
@@ -105,18 +104,18 @@ describe("Products page", () => {
 
     expect(alphaHtml).toContain("Alpha steel bolt");
     expect(betaHtml).toContain("Beta silk scarf");
-    for (const leak of ["Beta silk scarf", "BETA-1", "Textiles"]) expect(alphaHtml, `alpha page leaked ${leak}`).not.toContain(leak);
-    for (const leak of ["Alpha steel bolt", "ALPHA-1", "ALPHA-2", "Hardware", "7318.15"]) expect(betaHtml, `beta page leaked ${leak}`).not.toContain(leak);
+    for (const leak of ["Beta silk scarf", "BETA-1"]) expect(alphaHtml, `alpha page leaked ${leak}`).not.toContain(leak);
+    for (const leak of ["Alpha steel bolt", "ALPHA-1", "ALPHA-2", "7318.15"]) expect(betaHtml, `beta page leaked ${leak}`).not.toContain(leak);
   });
 
   it("asks the Inventory Service with the session token and only whitelisted query parameters", async () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    await render({ q: "bolt", category: "Hardware", status: "all", page: "2" });
+    await render({ q: "bolt", category: "Hardware", status: "all", page: "2" }); // a leftover category in an old bookmark is simply ignored
     const [call] = productCalls();
     const url = new URL(call.url);
     expect(url.origin + url.pathname).toBe("http://inventory-service:8002/api/v1/inventory/products");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ q: "bolt", category: "Hardware", status: "all", limit: "25", offset: "25" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ q: "bolt", status: "all", limit: "25", offset: "25" });
     expect(call.headers.Authorization).toBe("Bearer token-alpha");
     expect(Object.keys(call.headers)).toEqual(["Authorization"]);
   });
@@ -200,7 +199,7 @@ describe("Products layout (runs before the page streams)", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await renderLayout();
-    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Admin Portal", "Dashboard", 'aria-current="page"', "Products", "Sign out"]) {
+    for (const expected of ["PAGE-CONTENT", "Alpha Trading GmbH", "Dashboard", "Products", "Sign out"]) {
       expect(html, expected).toContain(expected);
     }
   });

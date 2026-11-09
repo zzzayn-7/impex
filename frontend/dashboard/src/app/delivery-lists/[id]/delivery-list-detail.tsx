@@ -299,7 +299,7 @@ function ManualAdd({ list, onChanged }: { list: Detail; onChanged: (message: str
         <button type="submit" disabled={looking || !code.trim()} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">{looking ? "Looking…" : "Find product"}</button>
       </form>
       {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-      {found && !found.product.is_active && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{found.product.name} is archived and cannot be added. Restore it in Products first.</p>}
+      {found && !found.product.is_active && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{found.product.name} is archived and cannot be added. Restore it from the Stock page first.</p>}
       {found && found.product.is_active && (
         <AddItemForm
           key={found.product.id}

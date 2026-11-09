@@ -18,7 +18,6 @@ function parseFilters(searchParams: SearchParams): StockFilters {
   const status = first(searchParams.status);
   return {
     q: (first(searchParams.q) ?? "").trim().slice(0, 100),
-    category: "",
     inStockOnly: first(searchParams.inStock) === "1",
     status: status === "archived" || status === "all" ? status : "active",
     page: Math.max(1, Math.min(10000, parseInt(first(searchParams.page) ?? "1", 10) || 1)),

@@ -17,11 +17,10 @@ from app.models import Product
 from conftest import bearer
 
 URL = "/api/v1/inventory/products"
-CATEGORIES = "/api/v1/inventory/categories"
 
 
 def payload(**overrides):
-    return {"sku": "SKU-1", "name": "Thing", "category": "General", "unit": "pcs", "cost_price": "1.00",
+    return {"sku": "SKU-1", "name": "Thing", "unit": "pcs", "cost_price": "1.00",
             "selling_price": "2.00", "currency_code": "USD", **overrides}
 
 
@@ -34,8 +33,8 @@ def world(directory, client):
     products = {}
     for key, token in (("alpha", "admin-alpha"), ("beta", "admin-beta")):
         products[key] = [
-            client.post(URL, json=payload(sku=f"{key.upper()}-1", name=f"{key} bolt", category=f"{key}-cat"), headers=bearer(token)).json(),
-            client.post(URL, json=payload(sku="SHARED-SKU", name=f"{key} shared", category="Common"), headers=bearer(token)).json(),
+            client.post(URL, json=payload(sku=f"{key.upper()}-1", name=f"{key} bolt"), headers=bearer(token)).json(),
+            client.post(URL, json=payload(sku="SHARED-SKU", name=f"{key} shared"), headers=bearer(token)).json(),
         ]
     return {"alpha": alpha, "beta": beta, "products": products}
 
@@ -59,9 +58,6 @@ def test_search_and_filters_cannot_find_the_other_tenants_products(client, world
     alpha = bearer("admin-alpha")
     assert client.get(URL, params={"q": "BETA-1"}, headers=alpha).json()["total"] == 0
     assert client.get(URL, params={"q": "beta"}, headers=alpha).json()["total"] == 0
-    assert client.get(URL, params={"category": "beta-cat"}, headers=alpha).json()["total"] == 0
-    assert client.get(CATEGORIES, headers=alpha).json() == ["Common", "alpha-cat"]
-    assert client.get(CATEGORIES, headers=bearer("admin-beta")).json() == ["Common", "beta-cat"]
 
 
 def test_viewing_another_tenants_product_is_indistinguishable_from_a_missing_one(client, world):
@@ -139,7 +135,7 @@ def test_no_endpoint_declares_an_organization_input(client):
 
 
 # --- who may use the service ---------------------------------------------------------
-@pytest.mark.parametrize("method,path", [("GET", URL), ("POST", URL), ("GET", CATEGORIES),
+@pytest.mark.parametrize("method,path", [("GET", URL), ("POST", URL),
                                          ("GET", URL + "/00000000-0000-4000-8000-000000000000"),
                                          ("PATCH", URL + "/00000000-0000-4000-8000-000000000000"),
                                          ("POST", URL + "/00000000-0000-4000-8000-000000000000/archive")])
@@ -170,7 +166,7 @@ def test_an_inactive_organization_cannot_touch_its_products_but_others_are_unaff
     product_id = world["products"]["alpha"][0]["id"]
     directory.organizations[world["alpha"]]["is_active"] = False
     alpha = bearer("admin-alpha")
-    calls = [("GET", URL, None), ("POST", URL, payload(sku="X")), ("GET", CATEGORIES, None), ("GET", f"{URL}/{product_id}", None),
+    calls = [("GET", URL, None), ("POST", URL, payload(sku="X")), ("GET", f"{URL}/{product_id}", None),
             ("PATCH", f"{URL}/{product_id}", {"name": "n"}), ("POST", f"{URL}/{product_id}/archive", None),
             ("POST", f"{URL}/{product_id}/restore", None)]
     for method, path, body in calls:

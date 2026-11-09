@@ -6,7 +6,6 @@ export type ProductFormValues = {
   sku: string;
   name: string;
   description: string;
-  category: string;
   unit: string;
   hsCode: string;
   costPrice: string;
@@ -22,7 +21,6 @@ export type Product = {
   sku: string;
   name: string;
   description: string | null;
-  category: string;
   unit: string;
   hs_code: string | null;
   cost_price: string;
@@ -42,14 +40,13 @@ export const CURRENCY_RE = /^[A-Z]{3}$/;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const EMPTY_PRODUCT: ProductFormValues = {
-  sku: "", name: "", description: "", category: "", unit: "", hsCode: "", costPrice: "", sellingPrice: "", currencyCode: "USD",
+  sku: "", name: "", description: "", unit: "", hsCode: "", costPrice: "", sellingPrice: "", currencyCode: "USD",
 };
 
 const NORMALIZERS: { [K in keyof ProductFormValues]: (value: string) => string } = {
   sku: (v) => v.trim().toUpperCase(),
   name: (v) => v.trim().replace(/\s+/g, " "),
   description: (v) => v.trim(),
-  category: (v) => v.trim().replace(/\s+/g, " "),
   unit: (v) => v.trim(),
   hsCode: (v) => v.trim(),
   costPrice: (v) => v.trim(),
@@ -67,14 +64,13 @@ export function normalizeProduct<T extends Partial<ProductFormValues>>(values: T
   return out as T;
 }
 
-const REQUIRED: (keyof ProductFormValues)[] = ["sku", "name", "category", "unit", "costPrice", "sellingPrice", "currencyCode"];
+const REQUIRED: (keyof ProductFormValues)[] = ["sku", "name", "unit", "costPrice", "sellingPrice", "currencyCode"];
 
 const CHECKS: { [K in keyof ProductFormValues]: (value: string) => string | undefined } = {
   sku: (v) =>
     !v ? "Enter a SKU." : v.length > 64 ? "SKU must be 64 characters or fewer." : !SKU_RE.test(v) ? "SKU may contain only letters, digits and . _ - /" : undefined,
   name: (v) => (!v ? "Enter the product name." : v.length > 255 ? "Name must be 255 characters or fewer." : undefined),
   description: (v) => (v.length > 2000 ? "Description must be 2000 characters or fewer." : undefined),
-  category: (v) => (!v ? "Enter a category." : v.length > 100 ? "Category must be 100 characters or fewer." : undefined),
   unit: (v) => (!v ? "Enter the unit of measurement (e.g. pcs, kg)." : v.length > 20 ? "Unit must be 20 characters or fewer." : undefined),
   hsCode: (v) => (v && !HS_RE.test(v) ? "HS code must look like 8517, 8517.12 or 8517.12.00." : undefined),
   costPrice: (v) => (!v ? "Enter the cost price." : !MONEY_RE.test(v) ? "Use a number with at most 4 decimals, e.g. 12.50." : undefined),
@@ -103,7 +99,6 @@ export function toCreateBody(v: ProductFormValues) {
     sku: v.sku,
     name: v.name,
     ...(v.description ? { description: v.description } : {}),
-    category: v.category,
     unit: v.unit,
     ...(v.hsCode ? { hs_code: v.hsCode } : {}),
     cost_price: v.costPrice,
@@ -113,7 +108,7 @@ export function toCreateBody(v: ProductFormValues) {
 }
 
 const API_NAMES: { [K in keyof ProductFormValues]: string } = {
-  sku: "sku", name: "name", description: "description", category: "category", unit: "unit", hsCode: "hs_code",
+  sku: "sku", name: "name", description: "description", unit: "unit", hsCode: "hs_code",
   costPrice: "cost_price", sellingPrice: "selling_price", currencyCode: "currency_code",
 };
 
@@ -152,7 +147,6 @@ export function productToForm(product: Product): ProductFormValues {
     sku: product.sku,
     name: product.name,
     description: product.description ?? "",
-    category: product.category,
     unit: product.unit,
     hsCode: product.hs_code ?? "",
     costPrice: plainDecimal(product.cost_price),

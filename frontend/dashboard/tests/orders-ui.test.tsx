@@ -24,8 +24,8 @@ const clients = [
   { id: "c2", name: "Beta Trading", contact_person: null, email: null, phone: null, address: null, is_active: true, created_at: now, updated_at: now },
 ];
 const PRODUCTS = [
-  { product_id: WATER, sku: "WATER", name: "Water bottle", category: "Drinks", unit: "pcs", unit_allows_fractions: false, is_active: true, total_quantity: "500.0000", reserved_quantity: "400.0000", available_quantity: "100.0000" },
-  { product_id: FLOUR, sku: "FLOUR", name: "Flour", category: "Food", unit: "kg", unit_allows_fractions: true, is_active: true, total_quantity: "20.0000", reserved_quantity: "0.0000", available_quantity: "20.0000" },
+  { product_id: WATER, sku: "WATER", name: "Water bottle", unit: "pcs", unit_allows_fractions: false, is_active: true, total_quantity: "500.0000", reserved_quantity: "400.0000", available_quantity: "100.0000" },
+  { product_id: FLOUR, sku: "FLOUR", name: "Flour", unit: "kg", unit_allows_fractions: true, is_active: true, total_quantity: "20.0000", reserved_quantity: "0.0000", available_quantity: "20.0000" },
 ];
 
 const summary = (id: string, number: string, list: string, listNumber: string, extra: Record<string, unknown> = {}) => ({
@@ -62,14 +62,14 @@ beforeEach(() => {
     if (handlers[key]) return handlers[key](body, init);
     if (url.startsWith("/api/sales/order-products")) {
       const q = (new URL(url, "http://x").searchParams.get("q") ?? "").toLowerCase();
-      const items = PRODUCTS.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+      const items = PRODUCTS.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
       return json(200, { items, total: items.length, limit: 20, offset: 0 });
     }
     if (url.startsWith("/api/scan/resolve")) {
       const code = (new URL(url, "http://x").searchParams.get("code") ?? "").toUpperCase();
       const stock = PRODUCTS.find((p) => p.sku === code);
       if (!stock) return json(404, { error: "No product" });
-      return json(200, { matched_by: "sku", identifier_kind: null, product: { id: stock.product_id, sku: stock.sku, name: stock.name, category: stock.category, unit: stock.unit, is_active: stock.is_active }, stock });
+      return json(200, { matched_by: "sku", identifier_kind: null, product: { id: stock.product_id, sku: stock.sku, name: stock.name, unit: stock.unit, is_active: stock.is_active }, stock });
     }
     if (url === "/api/sales/clients" && init.method === "POST") return json(201, { client: { id: "c-new", name: body.name, is_active: true, contact_person: null, email: null } });
     if (url === "/api/sales/orders" && init.method === "POST") return json(201, { order: { id: O1, number: "SO-000001" }, pending: false, replayed: false });
@@ -252,10 +252,10 @@ describe("Create Order", () => {
   it("opens with the organization's inventory listed in the Products-tab layout, with stock figures and an Add and a Drop button per row", async () => {
     render(<CreateOrderForm clients={clients as any} />);
     const table = await screen.findByRole("table", { name: "Inventory" });
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Category", "Unit", "On hand", "Booked", "Available", "Quantity", "Actions"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Unit", "On hand", "Booked", "Available", "Quantity", "Actions"]);
     const row = within(table).getByText("Water bottle").closest("tr")! as HTMLElement;
     expect(row.textContent).toContain("WATER");
-    expect(row.textContent).toContain("Drinks");
+    expect(row.textContent).not.toContain("Drinks"); // products have no category
     expect(row.textContent).toContain("500"); // on hand
     expect(row.textContent).toContain("400"); // booked
     expect(row.textContent).toContain("100"); // available

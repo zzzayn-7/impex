@@ -10,13 +10,15 @@ export type StockProduct = {
   product_id: string;
   sku: string;
   name: string;
-  category: string;
   unit: string;
   unit_allows_fractions: boolean;
   is_active: boolean;
   total_quantity: string; // PHYSICAL stock on hand
   reserved_quantity?: string; // committed to sales orders, not yet dispatched
   available_quantity?: string; // on hand minus reserved: what a new order or a manual stock-out can still take
+  cost_price?: string | null; // the product's own prices, shown on the Stock page
+  selling_price?: string | null;
+  currency_code?: string | null;
 };
 
 export type MovementType = "opening" | "in" | "out";

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ro
 
 import DashboardFrame from "@/components/dashboard/frame";
 import { MenuButton, NavProvider, Sidebar } from "@/components/dashboard/sidebar";
-import { navGroups } from "@/lib/dashboard-nav";
+import { navGroups, PAGE_ICON, PAGE_META } from "@/lib/dashboard-nav";
 
 afterEach(cleanup);
 
@@ -38,7 +38,8 @@ describe("the sidebar's structure", () => {
       expect(link.textContent!.trim().length).toBeGreaterThan(0); // the name is in the DOM, so a screen reader reads it while the rail is collapsed
     }
     expect(within(nav).getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBe("page");
-    expect(within(nav).getByRole("link", { name: "Products" }).getAttribute("aria-current")).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Stock" }).getAttribute("aria-current")).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "Products" }), "there is no standalone Products entry").toBeNull();
   });
 
   it("groups the pages, and lists only what is enabled", () => {
@@ -67,7 +68,7 @@ describe("the sidebar's structure", () => {
 
   it("labels are in the page but faded out while collapsed, and fade in on hover, focus or pinning", () => {
     render(<Shell />);
-    const label = screen.getByText("Products");
+    const label = screen.getByText("Movements");
     expect(label.className).toContain("opacity-0");
     expect(label.className).toContain("group-hover:opacity-100");
     expect(label.className).toContain("group-focus-within:opacity-100");
@@ -102,7 +103,7 @@ describe("keyboard use", () => {
     expect(document.activeElement).toBe(screen.getByRole("link", { name: "Dashboard" }));
     await user.click(screen.getByRole("button", { name: "Expand navigation" }));
     expect(aside().getAttribute("data-pinned")).toBe("true");
-    screen.getByRole("link", { name: "Products" }).focus();
+    screen.getByRole("link", { name: "Stock" }).focus();
     await user.keyboard("{Escape}");
     expect(aside().getAttribute("data-pinned")).toBe("false");
     expect(aside().contains(document.activeElement)).toBe(false); // focus left the rail, so :focus-within no longer holds it open
@@ -147,28 +148,89 @@ describe("the mobile drawer (no hover involved)", () => {
 });
 
 describe("the header", () => {
-  it("carries the company, the page title, the administrator and Sign out - and no control that does nothing", () => {
+  it("names the page in big bold type; on the right only the avatar and the red Sign out icon (no text, no control that does nothing)", () => {
     render(<DashboardFrame admin={admin} organization={organization as any}>content</DashboardFrame>);
     const header = screen.getByRole("banner");
-    expect(within(header).getByText("Alpha Trading GmbH")).toBeTruthy();
-    expect(within(header).getByText("AT")).toBeTruthy(); // the monogram, since there is no logo
-    expect(within(header).getByRole("heading", { level: 1, name: "Dashboard" })).toBeTruthy();
-    expect(within(header).getByText("Olivia Owner")).toBeTruthy();
-    expect(within(header).getByRole("button", { name: "Sign out" })).toBeTruthy();
+    const title = within(header).getByRole("heading", { level: 1, name: "Dashboard" });
+    expect(title.className).toContain("font-bold");
+    expect(title.className).toContain("text-xl");
+    expect(within(header).queryByRole("navigation", { name: "Breadcrumb" })).toBeNull(); // no "Organization / Dashboard" trail
+    expect(header.textContent).not.toContain("Admin Portal");
+    const avatar = within(header).getByRole("button", { name: "Account: Olivia Owner" });
+    expect(avatar.textContent).toBe("OO");
+    const signOut = within(header).getByRole("button", { name: "Sign out" });
+    expect(signOut.textContent).toBe(""); // icon only
+    expect(signOut.querySelector("svg")).toBeTruthy();
+    expect(signOut.className).toContain("text-red-400");
+    expect(signOut.className).not.toMatch(/\bborder\b/); // a bare icon: no circle or frame
     expect(within(header).queryByRole("searchbox")).toBeNull(); // no decorative search or notification bell
     expect(within(header).queryByRole("button", { name: /search|notification/i })).toBeNull();
+    // the only controls: the phone menu button (hidden on large screens), the avatar and Sign out
+    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Customize Theme", "Account: Olivia Owner", "Sign out"]);
   });
 
-  it("shows the company's own logo when it has one", () => {
-    render(<DashboardFrame admin={admin} organization={{ ...organization, has_logo: true, logo_version: "9" } as any}>content</DashboardFrame>);
+  it("every page's name is preceded by its own icon, in yellow, the same drawing its sidebar entry uses", () => {
+    const sidebarPaths = (html: HTMLElement) => [...html.querySelectorAll("path")].map((p) => p.getAttribute("d")).join("|");
+    const seen = new Set<string>();
+    for (const key of Object.keys(PAGE_META) as Array<keyof typeof PAGE_META>) {
+      const { unmount } = render(<DashboardFrame admin={admin} organization={{ ...organization, modules: ["inventory", "purchasing", "sales", "finance"] } as any} current={key}>content</DashboardFrame>);
+      const header = screen.getByRole("banner");
+      const heading = within(header).getByRole("heading", { level: 1 });
+      expect(heading.textContent, key).toBe(PAGE_META[key].title);
+      const icon = heading.parentElement!.querySelector("svg")!;
+      expect(icon, key).toBeTruthy();
+      expect(icon.getAttribute("class"), key).toContain("text-ix-accent-text"); // yellow
+      expect(icon.getAttribute("aria-hidden"), key).toBe("true"); // decorative: the name is the heading's
+      expect(!!(icon.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING), `${key}: icon first, then the name`).toBe(true);
+      expect(heading.querySelector("svg"), key).toBeNull();
+      const drawing = sidebarPaths(icon as unknown as HTMLElement);
+      expect(drawing.length, key).toBeGreaterThan(0);
+      seen.add(`${PAGE_ICON[key]}`);
+      const link = [...document.querySelectorAll("aside a")].find((a) => a.getAttribute("href") === PAGE_META[key].href);
+      if (link) expect(sidebarPaths(link.querySelector("svg") as unknown as HTMLElement), `${key}: same drawing as the sidebar`).toBe(drawing);
+      unmount();
+    }
+    expect(seen.size).toBeGreaterThan(10); // the pages do not all share one icon
+  });
+
+  it("the avatar's card holds the name, the role, the user id and the organization, and shows on hover, focus and tap", async () => {
+    const user = userEvent.setup();
+    render(<DashboardFrame admin={admin} organization={organization as any}>content</DashboardFrame>);
+    const card = screen.getByRole("group", { name: "Account details", hidden: true });
+    expect(card.className).toContain("invisible"); // closed: not seen and not read out
+    for (const text of ["Olivia Owner", "owner@acme.example", "Organization Admin", "u", "Alpha Trading GmbH"]) expect(within(card).getAllByText(text, { exact: true }).length, text).toBeGreaterThan(0);
+    expect(within(card).getByText("Role")).toBeTruthy();
+    expect(within(card).getByText("User ID")).toBeTruthy();
+    const avatar = screen.getByRole("button", { name: "Account: Olivia Owner" });
+    await user.hover(avatar);
+    expect(card.className).toContain("visible");
+    expect(card.className).not.toContain("invisible");
+    await user.unhover(avatar);
+    expect(card.className).toContain("invisible");
+    act(() => avatar.focus()); // the keyboard
+    expect(document.activeElement).toBe(avatar);
+    expect(card.className).not.toContain("invisible");
+    await user.keyboard("{Escape}");
+    expect(card.className).toContain("invisible");
+    expect(avatar.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("shows the company's own logo beside its name in the card when it has one, and a monogram when not", () => {
+    const { unmount } = render(<DashboardFrame admin={admin} organization={{ ...organization, has_logo: true, logo_version: "9" } as any}>content</DashboardFrame>);
     const logo = screen.getByAltText("Alpha Trading GmbH logo") as HTMLImageElement;
     expect(logo.getAttribute("src")).toBe("/api/organization/logo?v=9");
+    expect(screen.getByRole("group", { name: "Account details", hidden: true }).contains(logo)).toBe(true);
+    unmount();
+    render(<DashboardFrame admin={admin} organization={organization as any}>content</DashboardFrame>);
+    expect(screen.queryByAltText("Alpha Trading GmbH logo")).toBeNull();
+    expect(within(screen.getByRole("group", { name: "Account details", hidden: true })).getByText("AT")).toBeTruthy();
   });
 
-  it("falls back to the platform name when the organization could not be read, and lists no business page", () => {
+  it("without a readable organization the header still names the page, the card has no organization row, and no business page is listed", () => {
     render(<DashboardFrame admin={admin} organization={null}>content</DashboardFrame>);
-    expect(screen.getByText("IMPEX Organization Portal")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Products" })).toBeNull();
+    expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "Dashboard" })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Account details", hidden: true })).queryByText("Organization")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Stock" })).toBeNull();
     expect(screen.getByRole("link", { name: "Help & Support" })).toBeTruthy();
   });
 });

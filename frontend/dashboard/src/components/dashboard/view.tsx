@@ -19,7 +19,7 @@ type Props = { admin: TenantAdmin; organizationResult: OrganizationResult; data:
 
 // ONE decorative accent (pale butter yellow). A figure or action is either "yellow" (the few that matter most) or "neutral" (slate-grey). Never a status.
 type Tone = "yellow" | "neutral";
-const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-butter", neutral: "bg-ix-mist/10 text-ix-mist" };
+const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-accent-text", neutral: "bg-ix-mist/10 text-ix-mist" };
 
 const unavailable = "Could not be loaded just now. Please refresh in a moment.";
 const grid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]";
@@ -173,11 +173,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (sales) {
     operations.push(
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
-        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {sales.data.recent.map((i) => row(i.id,
-              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-butter hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
+              <div className="min-w-0"><Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-ix-accent-text hover:text-ix-text">{i.number ?? "Draft"}</Link><p className="truncate text-xs text-ix-muted">{i.client.name} · {formatDate(i.invoice_date, prefs)}</p></div>,
               <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{money(i.total, i.currency_code)}</p><Pill tone={i.status === "paid" ? "good" : i.overdue ? "warn" : i.status === "draft" ? "muted" : "neutral"}>{i.overdue ? "Overdue" : i.status.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
@@ -187,11 +187,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (purchasing) {
     operations.push(
       <GlassCard key="pos" className="p-5 sm:p-6" aria-label="Open purchase orders">
-        <CardHeader title="Open purchase orders" action={<Link href="/purchase-orders" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Open purchase orders" action={<Link href="/purchase-orders" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {purchasing.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : purchasing.data.recentOpen.length === 0 ? <CardNote>No purchase orders waiting to be received.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {purchasing.data.recentOpen.map((o) => row(o.id,
-              <div className="min-w-0"><Link href={`/purchase-orders/${o.id}`} className="font-mono text-sm font-semibold text-ix-butter hover:text-ix-text">{o.number}</Link><p className="truncate text-xs text-ix-muted">{o.supplier.name}{o.expected_delivery_date ? ` · due ${formatDate(o.expected_delivery_date, prefs)}` : ""}</p></div>,
+              <div className="min-w-0"><Link href={`/purchase-orders/${o.id}`} className="font-mono text-sm font-semibold text-ix-accent-text hover:text-ix-text">{o.number}</Link><p className="truncate text-xs text-ix-muted">{o.supplier.name}{o.expected_delivery_date ? ` · due ${formatDate(o.expected_delivery_date, prefs)}` : ""}</p></div>,
               <div className="shrink-0 text-right"><p className="text-sm font-medium tabular-nums text-ix-text">{money(o.total_amount, o.currency_code)}</p><Pill tone="neutral">{o.status.replace("_", " ")}</Pill></div>))}
           </ul>
         )}
@@ -201,7 +201,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (inventory) {
     operations.push(
       <GlassCard key="movements" className="p-5 sm:p-6" aria-label="Recent stock movements">
-        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-butter hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.movements.length === 0 ? <CardNote>No stock movements yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {inventory.data.movements.slice(0, 5).map((m) => row(m.id,
@@ -304,7 +304,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
                     <p className="mt-1 text-xs leading-relaxed text-ix-muted">{MODULE_DESCRIPTIONS[key]}</p>
                     <ul className="mt-3 flex flex-wrap gap-1.5">
                       {MODULE_PAGES[key].map((page) => (
-                        <li key={page.href}><Link href={page.href} className={`inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium transition-colors hover:border-ix-butter/30 hover:bg-ix-butter/10 hover:text-ix-butter text-ix-mist`}>{page.label}</Link></li>
+                        <li key={page.href}><Link href={page.href} className={`inline-flex rounded-full border border-ix-mist/15 bg-ix-mist/5 px-2.5 py-1 text-xs font-medium transition-colors hover:border-ix-accent-text/30 hover:bg-ix-butter/10 hover:text-ix-accent-text text-ix-mist`}>{page.label}</Link></li>
                       ))}
                     </ul>
                   </div>

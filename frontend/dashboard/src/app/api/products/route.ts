@@ -10,6 +10,20 @@ function fail(error: string, status: number, fieldErrors?: unknown) {
   return NextResponse.json({ error, fieldErrors }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+// SEARCH the signed-in administrator's active products by SKU, name, description or HS code (the product selector of a purchase order uses this).
+// Read-only. Only the search text and a small page size are read from the URL; whose catalog it is comes from the session, inside the Inventory Service.
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get(TENANT_SESSION_COOKIE)?.value;
+  if (!token) return fail("You are not signed in.", 401);
+  const q = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
+  const limit = Math.max(1, Math.min(20, parseInt(req.nextUrl.searchParams.get("limit") ?? "8", 10) || 8));
+  const params = new URLSearchParams({ status: "active", limit: String(limit) });
+  if (q) params.set("q", q);
+  const result = await inventoryRequest("GET", `/api/v1/inventory/products?${params}`, token);
+  if (!result || result.status !== 200) return failureResponse(result);
+  return NextResponse.json({ items: result.data.items, total: result.data.total }, { headers: { "Cache-Control": "no-store" } });
+}
+
 // CREATE a product in the signed-in administrator's catalog.
 //
 // Protected: the session token comes from the HttpOnly tenant cookie and is sent to the Inventory Service as a

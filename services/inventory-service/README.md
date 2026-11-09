@@ -14,12 +14,11 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | Method & path | Purpose |
 | :--- | :--- |
 | `POST /products` | create a product |
-| `GET /products?q=&category=&status=active\|archived\|all&limit=&offset=` | list / search / filter (paged) |
+| `GET /products?q=&status=active\|archived\|all&limit=&offset=` | list / search / filter (paged) |
 | `GET /products/{id}` | view one |
 | `PATCH /products/{id}` | update (only the fields sent) |
 | `POST /products/{id}/archive` / `restore` | archive (soft delete) / restore |
-| `GET /categories` | the organization's own categories |
-| `GET /stock?q=&category=&in_stock_only=&status=` | overview: per product the quantity in stock |
+| `GET /stock?q=&in_stock_only=&status=` | overview: per product the quantity in stock |
 | `GET /stock/movements?product_id=&type=` | the ledger, newest first (read-only) |
 | `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product |
 | `POST /products/{id}/identifiers/generate` | give the product its Impex label code (QR + Code 128); repeating returns the same code |
@@ -40,7 +39,7 @@ Every `POST /stock/*` needs an **`Idempotency-Key`** header (8-100 characters of
 request answers `201`; a retry with the same key and the same body answers `200` with `"replayed": true` and changes
 nothing; the same key with a different body answers `409`. A request that fails (e.g. insufficient stock) does not use up its key.
 
-A product has: SKU (unique per organization, stored upper-case), name, description, category, unit of
+A product has: SKU (unique per organization, stored upper-case), name, description, unit of
 measurement, optional HS code, cost price and selling price (both `NUMERIC(14,4)`, exchanged as decimal strings,
 never floats), ISO currency code, active flag and created/updated timestamps.
 Interactive docs: http://localhost:8002/docs

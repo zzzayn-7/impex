@@ -17,11 +17,11 @@ const OLD = "b0000000-0000-4000-8000-000000000003";
 const now = "2026-11-09T10:00:00+00:00";
 
 const product = (id: string, sku: string, name: string, unit: string, active = true) => ({
-  id, sku, name, description: null, category: "General", unit, hs_code: null, cost_price: "1.0000", selling_price: "2.0000", currency_code: "USD", is_active: active,
+  id, sku, name, description: null, unit, hs_code: null, cost_price: "1.0000", selling_price: "2.0000", currency_code: "USD", is_active: active,
   created_at: now, updated_at: now, unit_allows_fractions: unit === "kg",
 });
 const stock = (p: ReturnType<typeof product>, total: string, reserved: string) => ({
-  product_id: p.id, sku: p.sku, name: p.name, category: p.category, unit: p.unit, unit_allows_fractions: p.unit_allows_fractions, is_active: p.is_active,
+  product_id: p.id, sku: p.sku, name: p.name, unit: p.unit, unit_allows_fractions: p.unit_allows_fractions, is_active: p.is_active,
   total_quantity: total, reserved_quantity: reserved, available_quantity: String(Number(total) - Number(reserved)),
 });
 const bolt = product(BOLT, "BOLT-1", "Steel bolt", "pcs");
@@ -290,7 +290,7 @@ describe("Products: Scan Product finds a product in the catalog", () => {
   it("puts the scanned product's SKU in the search and shows it (archived products too); nothing is changed", async () => {
     const { default: ProductCatalog } = await import("@/app/products/product-catalog");
     const user = userEvent.setup();
-    render(<ProductCatalog list={{ ok: true, products: [bolt] as any, total: 1, limit: 25, offset: 0 }} categories={[]} filters={{ q: "", category: "", status: "active", page: 1 }} />);
+    render(<ProductCatalog list={{ ok: true, products: [bolt] as any, total: 1, limit: 25, offset: 0 }} filters={{ q: "", status: "active", page: 1 }} />);
     await user.click(screen.getByRole("button", { name: "Scan Product" }));
     await user.type(scanBox(), "bolt-1{Enter}");
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/products?q=BOLT-1"));

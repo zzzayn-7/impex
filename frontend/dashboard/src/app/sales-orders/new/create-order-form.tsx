@@ -95,7 +95,7 @@ export default function CreateOrderForm({ clients: initialClients }: { clients: 
         <Link href="/delivery-lists" className={buttonClass.secondary}>Cancel</Link>
         <button type="button" onClick={() => setListOpen(true)} className={buttonClass.secondary}>
           View List
-          <span className="rounded-full bg-ix-butter/20 px-2 py-0.5 text-xs font-semibold tabular-nums text-ix-butter">{rows.length}</span>
+          <span className="rounded-full bg-ix-butter/20 px-2 py-0.5 text-xs font-semibold tabular-nums text-ix-accent-text">{rows.length}</span>
         </button>
         <button type="submit" disabled={busy} className={buttonClass.primary}>{busy ? "Saving…" : "Save Order"}</button>
       </div>

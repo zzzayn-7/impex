@@ -86,7 +86,7 @@ function ListBody({ order }: { order: OrderDetail }) {
         <div className="ix-inset overflow-x-auto">
           <table className="w-full min-w-[34rem] text-left text-sm">
             <caption className="sr-only">Products on {order.number}</caption>
-            <thead className="sticky top-0 bg-[rgba(14,29,35,0.92)] text-[11px] uppercase tracking-wide text-ix-muted">
+            <thead className="sticky top-0 bg-[rgb(var(--ix-field-rgb)/0.92)] text-[11px] uppercase tracking-wide text-ix-muted">
               <tr>
                 <th scope="col" className="px-3 py-2.5 font-medium">Product</th>
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">Ordered</th>
@@ -97,7 +97,7 @@ function ListBody({ order }: { order: OrderDetail }) {
             <tbody className="divide-y divide-ix-mist/10">
               {order.lines.map((l: OrderLine) => (
                 <tr key={l.id}>
-                  <td className="px-3 py-2.5"><div className="font-medium text-ix-text">{l.product_name}</div><div className="font-mono text-xs text-ix-butter">{l.product_sku}</div></td>
+                  <td className="px-3 py-2.5"><div className="font-medium text-ix-text">{l.product_name}</div><div className="font-mono text-xs text-ix-accent-text">{l.product_sku}</div></td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">{qty(l.ordered_quantity)} <span className="text-ix-muted">{l.unit}</span></td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">{qty(l.dispatched_quantity)}{l.pending_quantity !== "0.0000" && l.pending_quantity !== "0" && <span className="block text-[11px] text-amber-200">+{qty(l.pending_quantity)} being posted</span>}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-ix-text">{qty(l.remaining_quantity)}</td>
@@ -114,7 +114,7 @@ function ListBody({ order }: { order: OrderDetail }) {
           <ul className="flex flex-wrap gap-2">
             {order.dispatches.map((d) => (
               <li key={d.id}>
-                <Link href={`/dispatches/${d.id}`} className="inline-flex items-center gap-2 rounded-full border border-ix-mist/15 bg-ix-mist/5 px-3 py-1 text-xs text-ix-mist transition-colors hover:border-ix-butter/30 hover:text-ix-butter">
+                <Link href={`/dispatches/${d.id}`} className="inline-flex items-center gap-2 rounded-full border border-ix-mist/15 bg-ix-mist/5 px-3 py-1 text-xs text-ix-mist transition-colors hover:border-ix-accent-text/30 hover:text-ix-accent-text">
                   <span className="font-mono">{d.number}</span><span className="text-ix-muted">{d.status}</span>
                 </Link>
               </li>

@@ -35,7 +35,7 @@ export const STAFF_STATUS_LABELS: Record<TicketStatus, string> = {
 };
 
 export const STATUS_STYLE: Record<TicketStatus, string> = {
-  open: "border-ix-butter/40 bg-ix-butter/15 text-ix-butter",
+  open: "border-ix-accent-text/40 bg-ix-butter/15 text-ix-accent-text",
   in_progress: "border-ix-mist/25 bg-ix-mist/10 text-ix-mist",
   waiting_for_customer: "border-amber-500/20 bg-amber-500/10 text-amber-300",
   resolved: "border-ix-teal/40 bg-ix-teal/15 text-ix-mist",

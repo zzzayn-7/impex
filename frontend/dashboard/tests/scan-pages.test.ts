@@ -28,7 +28,7 @@ const ALPHA_PRODUCT = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718"; // deliberately no
 const BETA_PRODUCT = "7b2d1f1b-2c3d-4e4f-9fa1-b2c3d4e5f607";
 
 const product = (id: string, sku: string, name: string, extra: Record<string, unknown> = {}) => ({
-  id, sku, name, description: null, category: "General", unit: "pcs", unit_allows_fractions: false, unit_locked: false, hs_code: null,
+  id, sku, name, description: null, unit: "pcs", unit_allows_fractions: false, unit_locked: false, hs_code: null,
   cost_price: "1.0000", selling_price: "2.0000", currency_code: "USD", is_active: true, created_at: now, updated_at: now, ...extra,
 });
 const identifier = (productId: string, kind: string, value: string, extra: Record<string, unknown> = {}) => ({
@@ -140,7 +140,7 @@ describe("Scan Product page", () => {
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Stock");
     expect(html).not.toContain("Scan Product"); // no navigation entry
     expect(html).not.toContain('href="/scan"');
-    for (const href of ["/", "/products", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
   });
 });
 
@@ -222,7 +222,7 @@ describe("Product codes & labels page", () => {
 
 describe("the unit of measurement in the product form", () => {
   const form = (p: ReturnType<typeof product>) =>
-    renderToStaticMarkup(createElement(ProductForm, { product: p as any, categories: [], onDone: () => undefined, onCancel: () => undefined }));
+    renderToStaticMarkup(createElement(ProductForm, { product: p as any, onDone: () => undefined, onCancel: () => undefined }));
 
   it("is locked, with the reason, once the product has stock movements", () => {
     const html = form(product(ALPHA_PRODUCT, "ALPHA-1", "Alpha steel bolt", { unit_locked: true }));

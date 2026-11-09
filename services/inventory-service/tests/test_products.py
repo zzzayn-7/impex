@@ -23,7 +23,7 @@ def acme(directory):
 
 def payload(**overrides):
     return {
-        "sku": "WID-001", "name": "Widget", "description": "A very fine widget", "category": "Hardware", "unit": "pcs",
+        "sku": "WID-001", "name": "Widget", "description": "A very fine widget", "unit": "pcs",
         "hs_code": "8479.89", "cost_price": "10.50", "selling_price": "15.99", "currency_code": "USD", **overrides,
     }
 
@@ -44,10 +44,10 @@ def test_create_returns_the_product_and_stores_it_for_the_callers_organization(c
     response = client.post(URL, json=payload(sku=" wid-001 ", currency_code="usd"), headers=headers)
     assert response.status_code == 201
     body = response.json()
-    assert set(body) == {"id", "sku", "name", "description", "category", "unit", "hs_code", "cost_price", "selling_price",
+    assert set(body) == {"id", "sku", "name", "description", "unit", "hs_code", "cost_price", "selling_price",
                          "currency_code", "is_active", "created_at", "updated_at", "unit_allows_fractions", "unit_locked"}  # organization_id is never exposed
     assert (body["sku"], body["currency_code"], body["is_active"]) == ("WID-001", "USD", True)  # normalized
-    assert (body["name"], body["category"], body["unit"], body["hs_code"]) == ("Widget", "Hardware", "pcs", "8479.89")
+    assert (body["name"], body["unit"], body["hs_code"]) == ("Widget", "pcs", "8479.89")
     with session_factory() as db:
         (row,) = db.scalars(select(Product)).all()
         assert str(row.organization_id) == org  # taken from the authenticated user, not from the request
@@ -81,7 +81,7 @@ def test_prices_are_exact_decimals_not_floats(client, acme, engine):
     {"cost_price": "-1"}, {"selling_price": "-0.01"}, {"cost_price": "1.23456"}, {"selling_price": "12345678901"},
     {"cost_price": "abc"}, {"cost_price": None}, {"currency_code": "US"}, {"currency_code": "USDX"}, {"currency_code": "12A"},
     {"sku": ""}, {"sku": "has space"}, {"sku": "bad#sku"}, {"sku": "X" * 65}, {"name": ""}, {"name": "N" * 256},
-    {"category": ""}, {"unit": ""}, {"unit": "U" * 21}, {"hs_code": "12"}, {"hs_code": "abcd"}, {"description": "D" * 2001},
+    {"category": "Hardware"}, {"unit": ""}, {"unit": "U" * 21}, {"hs_code": "12"}, {"hs_code": "abcd"}, {"description": "D" * 2001},
     {"organization_id": "00000000-0000-4000-8000-000000000000"}, {"stock": 5}, {"quantity": 10},
 ])
 def test_invalid_products_are_rejected_and_nothing_is_stored(client, acme, session_factory, overrides):
@@ -94,7 +94,7 @@ def test_invalid_products_are_rejected_and_nothing_is_stored(client, acme, sessi
 
 def test_missing_required_fields_are_rejected(client, acme):
     _, headers = acme
-    for field in ("sku", "name", "category", "unit", "cost_price", "selling_price", "currency_code"):
+    for field in ("sku", "name", "unit", "cost_price", "selling_price", "currency_code"):
         body = payload()
         del body[field]
         assert client.post(URL, json=body, headers=headers).status_code == 422, field
@@ -135,11 +135,11 @@ def test_simultaneous_creates_with_the_same_sku_produce_exactly_one_product(clie
 @pytest.fixture
 def catalog(client, acme):
     _, headers = acme
-    create(client, headers, sku="BOLT-10", name="Steel bolt", category="Hardware", description="M10 hex bolt", hs_code="7318.15")
-    create(client, headers, sku="NUT-10", name="Steel nut", category="Hardware", description="M10 hex nut")
-    create(client, headers, sku="CAB-USB", name="USB cable", category="Electronics", description="1 m cable", hs_code="8544.42")
-    create(client, headers, sku="PHN-01", name="Phone case", category="Electronics", description="Silicone")
-    create(client, headers, sku="BOX-S", name="Small box", category="Packaging", description="Cardboard, 100% recycled_paper")
+    create(client, headers, sku="BOLT-10", name="Steel bolt", description="M10 hex bolt", hs_code="7318.15")
+    create(client, headers, sku="NUT-10", name="Steel nut", description="M10 hex nut")
+    create(client, headers, sku="CAB-USB", name="USB cable", description="1 m cable", hs_code="8544.42")
+    create(client, headers, sku="PHN-01", name="Phone case", description="Silicone")
+    create(client, headers, sku="BOX-S", name="Small box", description="Cardboard, 100% recycled_paper")
     return headers
 
 
@@ -151,10 +151,10 @@ def test_list_returns_the_catalog_ordered_by_name_with_a_total(client, catalog):
 
 @pytest.mark.parametrize("term,expected", [
     ("bolt", ["BOLT-10"]), ("BOLT", ["BOLT-10"]), ("nut-1", ["NUT-10"]), ("hex", ["BOLT-10", "NUT-10"]),
-    ("electronics", ["CAB-USB", "PHN-01"]), ("8544", ["CAB-USB"]), ("cardboard", ["BOX-S"]), ("  steel  ", ["BOLT-10", "NUT-10"]),
+    ("8544", ["CAB-USB"]), ("cardboard", ["BOX-S"]), ("  steel  ", ["BOLT-10", "NUT-10"]),
     ("nothing-matches", []),
 ])
-def test_search_looks_in_sku_name_description_category_and_hs_code(client, catalog, term, expected):
+def test_search_looks_in_sku_name_description_and_hs_code(client, catalog, term, expected):
     assert sorted(skus(client.get(URL, params={"q": term}, headers=catalog))) == expected
 
 
@@ -165,10 +165,11 @@ def test_search_treats_percent_and_underscore_literally(client, catalog):
     assert client.get(URL, params={"q": "_"}, headers=catalog).json()["total"] == 1
 
 
-def test_category_filter_is_case_insensitive_and_combines_with_search(client, catalog):
-    assert sorted(skus(client.get(URL, params={"category": "electronics"}, headers=catalog))) == ["CAB-USB", "PHN-01"]
-    assert skus(client.get(URL, params={"category": "Electronics", "q": "usb"}, headers=catalog)) == ["CAB-USB"]
-    assert client.get(URL, params={"category": "Hardware", "q": "usb"}, headers=catalog).json()["total"] == 0
+def test_there_are_no_categories_any_more(client, catalog):
+    body = client.get(URL, headers=catalog).json()
+    assert all("category" not in item for item in body["items"])
+    assert client.get("/api/v1/inventory/categories", headers=catalog).status_code == 404  # the endpoint is gone
+    assert client.get(URL, params={"q": "hardware"}, headers=catalog).json()["total"] == 0  # and the word is not searched in anything that was a category
 
 
 def test_pagination_reports_the_full_total(client, catalog):
@@ -184,10 +185,6 @@ def test_pagination_reports_the_full_total(client, catalog):
 @pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 201}, {"offset": -1}, {"status": "deleted"}, {"q": "x" * 101}])
 def test_bad_query_parameters_are_rejected(client, catalog, params):
     assert client.get(URL, params=params, headers=catalog).status_code == 422
-
-
-def test_categories_lists_the_distinct_categories(client, catalog):
-    assert client.get("/api/v1/inventory/categories", headers=catalog).json() == ["Electronics", "Hardware", "Packaging"]
 
 
 # --- view and update ------------------------------------------------------------------
@@ -206,7 +203,7 @@ def test_update_changes_only_the_fields_sent(client, acme):
     assert response.status_code == 200
     updated = response.json()
     assert (updated["name"], updated["selling_price"]) == ("Widget Mk II", "17.2500")
-    for unchanged in ("sku", "description", "category", "unit", "hs_code", "cost_price", "currency_code", "created_at"):
+    for unchanged in ("sku", "description", "unit", "hs_code", "cost_price", "currency_code", "created_at"):
         assert updated[unchanged] == product[unchanged], unchanged
     assert updated["updated_at"] > product["updated_at"]
 

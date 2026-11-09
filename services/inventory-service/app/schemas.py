@@ -56,7 +56,6 @@ class ProductCreate(ProductFields):
     sku: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = Field(default=None, max_length=2000)
-    category: str = Field(min_length=1, max_length=100)
     unit: str = Field(min_length=1, max_length=20)
     hs_code: Optional[str] = Field(default=None, max_length=16)
     cost_price: Money
@@ -71,7 +70,6 @@ class ProductUpdate(ProductFields):
     sku: Optional[str] = Field(default=None, min_length=1, max_length=64)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = Field(default=None, max_length=2000)
-    category: Optional[str] = Field(default=None, min_length=1, max_length=100)
     unit: Optional[str] = Field(default=None, min_length=1, max_length=20)
     hs_code: Optional[str] = Field(default=None, max_length=16)
     cost_price: Optional[Money] = None
@@ -83,7 +81,7 @@ class ProductUpdate(ProductFields):
     def _at_least_one_and_no_nulls(self):
         if not self.model_fields_set:
             raise ValueError("Provide at least one field to change.")
-        required = ("sku", "name", "category", "unit", "cost_price", "selling_price", "currency_code", "is_active")
+        required = ("sku", "name", "unit", "cost_price", "selling_price", "currency_code", "is_active")
         for field in required:
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be empty")
@@ -99,7 +97,6 @@ class ProductResponse(BaseModel):
     sku: str
     name: str
     description: Optional[str]
-    category: str
     unit: str
     hs_code: Optional[str]
     cost_price: Decimal
@@ -183,7 +180,6 @@ class StockProduct(BaseModel):
     product_id: uuid.UUID
     sku: str
     name: str
-    category: str
     unit: str
     unit_allows_fractions: bool
     is_active: bool
@@ -191,6 +187,7 @@ class StockProduct(BaseModel):
     reserved_quantity: Decimal = Decimal("0")  # committed to active sales orders, not yet dispatched
     available_quantity: Decimal = Decimal("0")  # on hand minus reserved: what a new order or a manual stock-out can still take
     selling_price: Optional[Decimal] = None  # the catalog's price per unit, and its currency: lets the Sales Service total an order
+    cost_price: Optional[Decimal] = None  # what the product normally costs to buy: shown beside the selling price on the Stock page
     currency_code: Optional[str] = None
 
 

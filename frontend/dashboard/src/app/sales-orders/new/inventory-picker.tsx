@@ -8,7 +8,7 @@ import { api, qty } from "@/lib/sales-browser";
 import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import QuantityInput from "@/components/ui/quantity-input";
 
-// The inventory list of Create Order: the organization's active products in the same layout as the Products tab (product + SKU, category, unit),
+// The inventory list of Create Order: the organization's active products in the same layout as the Stock page (product + SKU, unit),
 // with the stock figures that matter when booking (on hand / booked / available). Search it, or scan a product to find it. Each row has Add and
 // Drop; the quantity can be typed on the row (or later in "View List"). Nothing is sent from here: the order form saves.
 
@@ -81,7 +81,7 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <ScanProductButton
           disabled={disabled}
-          onFound={({ stock, product }) => { setTerm(""); setOffset(0); setScanned({ ...stock, category: stock.category ?? product.category }); }}
+          onFound={({ stock }) => { setTerm(""); setOffset(0); setScanned(stock); }}
         />
         <div className="min-w-0 flex-1">
           <input
@@ -100,8 +100,8 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
       </div>
 
       {scanned && (
-        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ix-butter/25 bg-ix-butter/10 px-4 py-2.5 text-sm">
-          <span className="text-ix-text">Scanned: <strong className="font-semibold">{scanned.name}</strong> <span className="font-mono text-xs text-ix-butter">{scanned.sku}</span></span>
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ix-accent-text/25 bg-ix-butter/10 px-4 py-2.5 text-sm">
+          <span className="text-ix-text">Scanned: <strong className="font-semibold">{scanned.name}</strong> <span className="font-mono text-xs text-ix-accent-text">{scanned.sku}</span></span>
           <button type="button" onClick={() => setScanned(null)} className="text-xs font-medium text-ix-muted underline-offset-2 hover:text-ix-text hover:underline">Show all products</button>
         </div>
       )}
@@ -110,7 +110,7 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
         <p role="alert" className="rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>
       ) : items.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-ix-mist/15 px-4 py-8 text-center text-sm text-ix-muted" role={loading ? "status" : undefined}>
-          {loading ? "Loading inventory…" : term.trim() ? "No active products match your search." : "No products yet. Add products in Products first."}
+          {loading ? "Loading inventory…" : term.trim() ? "No active products match your search." : "No products yet. Register products when you create a purchase order, or from Stock."}
         </p>
       ) : (
         <div className={`ix-inset overflow-x-auto transition-opacity ${loading && !scanned ? "opacity-60" : ""}`} aria-busy={loading && !scanned}>
@@ -119,7 +119,6 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
             <thead className="text-[11px] uppercase tracking-wide text-ix-muted">
               <tr>
                 <th scope="col" className={`${cell} font-medium`}>Product</th>
-                <th scope="col" className={`${cell} font-medium`}>Category</th>
                 <th scope="col" className={`${cell} font-medium`}>Unit</th>
                 <th scope="col" className={`${cell} text-right font-medium`}>On hand</th>
                 <th scope="col" className={`${cell} text-right font-medium`}>Booked</th>
@@ -140,9 +139,8 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
                   <tr key={p.product_id} data-product={p.product_id} className={added ? "bg-ix-butter/[0.06]" : undefined}>
                     <td className={cell}>
                       <div className="font-medium text-ix-text">{p.name}</div>
-                      <div className="font-mono text-xs text-ix-butter">{p.sku}</div>
+                      <div className="font-mono text-xs text-ix-accent-text">{p.sku}</div>
                     </td>
-                    <td className={`${cell} text-xs`}>{p.category || <span className="text-ix-muted">—</span>}</td>
                     <td className={`${cell} text-xs`}>{p.unit}</td>
                     <td className={`${cell} text-right font-mono text-xs tabular-nums text-ix-text`}>{qty(p.total_quantity)}</td>
                     <td className={`${cell} text-right font-mono text-xs tabular-nums text-ix-muted`}>{qty(p.reserved_quantity ?? "0")}</td>
@@ -167,7 +165,7 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
                           disabled={disabled || locked || added || none}
                           aria-label={`Add ${p.name}`}
                           title={locked && !added ? "Select a client first" : none && !added ? "Nothing is available to order" : undefined}
-                          className="rounded-lg border border-ix-butter/40 bg-ix-butter/10 px-3 py-1.5 text-xs font-semibold text-ix-butter transition-colors hover:bg-ix-butter/20 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded-lg border border-ix-accent-text/40 bg-ix-butter/10 px-3 py-1.5 text-xs font-semibold text-ix-accent-text transition-colors hover:bg-ix-butter/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {added ? "Added" : "Add"}
                         </button>

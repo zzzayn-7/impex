@@ -7,10 +7,10 @@ import type { ReactNode } from "react";
 export const inputClass =
   "mt-1.5 block w-full rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-2.5 text-sm text-ix-text placeholder-ix-muted/60 outline-none transition duration-200 focus:border-ix-accent focus:ring-2 focus:ring-ix-accent/25 disabled:bg-ix-mist/5 disabled:text-ix-muted motion-reduce:transition-none";
 export const primaryButton =
-  "inline-flex min-h-10 items-center justify-center rounded-xl bg-ix-butter px-5 py-2 text-sm font-semibold text-ix-deep shadow-sm transition duration-200 hover:bg-ix-butter-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex min-h-10 items-center justify-center rounded-xl bg-ix-butter px-5 py-2 text-sm font-semibold text-ix-on-accent shadow-sm transition duration-200 hover:bg-ix-butter-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 export const quietButton =
   "inline-flex min-h-10 items-center justify-center rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-4 py-2 text-sm font-medium text-ix-text transition duration-200 hover:bg-ix-mist/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
-export const linkClass = "font-medium text-ix-butter underline decoration-ix-muted/40 underline-offset-2 hover:text-ix-text";
+export const linkClass = "font-medium text-ix-accent-text underline decoration-ix-muted/40 underline-offset-2 hover:text-ix-text";
 
 export function Card({ id, title, description, children }: { id: string; title: string; description?: string; children: ReactNode }) {
   return (
@@ -45,7 +45,7 @@ export function ReadOnly({ label, value, mono = false, action }: { label: string
 }
 
 export function Notice({ kind, children }: { kind: "success" | "error" | "info"; children: ReactNode }) {
-  const style = kind === "success" ? "border-ix-butter/40 bg-ix-butter/15 text-ix-butter" : kind === "error" ? "border-red-300/30 bg-red-400/10 text-red-200" : "border-ix-mist/15 bg-ix-mist/10 text-ix-text";
+  const style = kind === "success" ? "border-ix-accent-text/40 bg-ix-butter/15 text-ix-accent-text" : kind === "error" ? "border-red-300/30 bg-red-400/10 text-red-200" : "border-ix-mist/15 bg-ix-mist/10 text-ix-text";
   return <p role={kind === "error" ? "alert" : "status"} className={`rounded-xl border px-4 py-2.5 text-sm ${style}`}>{children}</p>;
 }
 

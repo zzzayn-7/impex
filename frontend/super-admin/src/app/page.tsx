@@ -30,7 +30,7 @@ export default async function SuperAdminDashboard() {
             <div key={idx} data-accent={idx === 0 ? "yellow" : "neutral"} className="ix-glass ix-glass-sm ix-glass-lift ix-kpi relative p-5">
               <p className="text-xs font-medium text-ix-muted">{stat.label}</p>
               <p className="mt-2 text-[28px] font-semibold leading-none tracking-tight text-ix-text">{stat.value}</p>
-              <p className="mt-2 text-xs text-ix-butter">{stat.change}</p>
+              <p className="mt-2 text-xs text-ix-accent-text">{stat.change}</p>
             </div>
           ))}
         </section>

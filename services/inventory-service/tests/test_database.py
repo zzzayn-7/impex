@@ -15,7 +15,7 @@ MIGRATION = Path(__file__).resolve().parent.parent / "alembic" / "versions" / "0
 
 
 def product(org, **overrides):
-    values = dict(organization_id=org, sku="S-1", name="N", category="C", unit="pcs",
+    values = dict(organization_id=org, sku="S-1", name="N", unit="pcs",
                   cost_price="1.00", selling_price="2.00", currency_code="USD")
     values.update(overrides)
     return Product(**values)
@@ -23,7 +23,7 @@ def product(org, **overrides):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0008"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0009"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 
@@ -35,7 +35,7 @@ def test_prices_are_numeric_and_no_column_is_floating_point(engine):
     assert columns["cost_price"] == ("numeric", "NO") and columns["selling_price"] == ("numeric", "NO")
     assert not [c for c, (t, _) in columns.items() if t in ("double precision", "real")]
     assert columns["organization_id"][1] == "NO"  # every product must belong to an organization
-    assert set(columns) == {"id", "organization_id", "sku", "name", "description", "category", "unit", "hs_code", "cost_price",
+    assert set(columns) == {"id", "organization_id", "sku", "name", "description", "unit", "hs_code", "cost_price",
                             "selling_price", "currency_code", "is_active", "created_at", "updated_at"}  # no stock/quantity columns
 
 

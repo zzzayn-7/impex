@@ -81,7 +81,7 @@ describe("one shell for the whole portal", () => {
     }
   });
 
-  it("the header names the page, the company and the administrator", () => {
+  it("the header names the page; the company and the administrator are in the avatar's card", () => {
     const html = shell("invoices");
     expect(html).toMatch(/<h1[^>]*>Invoices<\/h1>/);
     expect(html).toContain("Acme");
@@ -91,7 +91,7 @@ describe("one shell for the whole portal", () => {
   it("the shell is hidden when printing (an invoice or a label prints clean)", () => {
     const html = shell("invoices");
     expect(html).toMatch(/<aside[^>]*print:hidden/);
-    expect(html).toMatch(/<header class="print:hidden/);
+    expect(html).toMatch(/<header class="[^"]*print:hidden/);
     expect(html).toContain("print:pl-0");
   });
 });
@@ -99,7 +99,7 @@ describe("one shell for the whole portal", () => {
 describe("the current page is highlighted, nested routes included", () => {
   const groups = navGroups(["inventory", "purchasing", "sales", "finance"]);
   it.each([
-    ["/", "/"], ["/invoices", "/invoices"], ["/invoices/123/edit", "/invoices"], ["/invoices/new", "/invoices"], ["/products/abc/codes", "/products"],
+    ["/", "/"], ["/invoices", "/invoices"], ["/invoices/123/edit", "/invoices"], ["/invoices/new", "/invoices"], ["/stock/abc", "/stock"],
     ["/finance", "/finance"], ["/finance/accounts", "/finance/accounts"], ["/finance/journal/new", "/finance/journal"], ["/finance/expenses/9", "/finance/expenses"],
     ["/purchase-orders/7", "/purchase-orders"], ["/support/new", "/support"], ["/settings", "/settings"],
   ])("%s -> %s", (path, expected) => {
@@ -109,6 +109,7 @@ describe("the current page is highlighted, nested routes included", () => {
     expect(activeHref("/nowhere", groups, "/stock")).toBe("/stock");
     expect(activeHref(null, groups, "/stock")).toBe("/stock");
     expect(activeHref("/invoicesX", groups, "/stock")).toBe("/stock"); // a prefix must end at a path boundary
+    expect(groups.flatMap((g) => g.items).map((i) => i.href)).not.toContain("/products"); // the compatibility route is reachable but not in the menu
   });
   it("the sidebar marks exactly that entry (and only one)", () => {
     nav.path = "/finance/journal/abc";
@@ -128,25 +129,29 @@ describe("the portal has ONE decorative accent: pale butter yellow", () => {
     for (const key of Object.keys(PAGE_META) as (keyof typeof PAGE_META)[]) expect(shell(key), key).not.toContain("data-section");
     expect(read("src/app/globals.css")).not.toContain("data-section");
   });
-  it("the CSS defines the accent once, as tokens; powder blue and mint no longer exist", () => {
+  it("the CSS defines the DEFAULT theme once, as tokens on :root (original slate-teal + Pale Butter Yellow); powder blue and mint no longer exist", () => {
     const css = read("src/app/globals.css");
-    expect(css).toMatch(/--ix-accent:\s*#e8d8a4/i);
-    expect(css).toMatch(/--ix-accent-hover:\s*#f0e4b8/i);
-    expect(css).toMatch(/--ix-accent-rgb:\s*232 216 164/);
-    expect(css).toMatch(/--ix-on-accent:\s*#172a32/i); // dark slate text on a pale-yellow fill
+    expect(css).toMatch(/--ix-accent-rgb:\s*232 216 164/); // #E8D8A4
+    expect(css).toMatch(/--ix-accent-hover-rgb:\s*240 228 184/); // #F0E4B8
+    expect(css).toMatch(/--ix-on-accent-rgb:\s*23 42 50/); // dark slate text on a pale-yellow fill (#172A32)
+    for (const [token, rgb] of [["deep", "23 42 50"], ["slate", "50 77 88"], ["teal", "86 142 143"], ["mist", "216 232 227"], ["text", "237 244 241"], ["muted", "181 203 201"]]) expect(css, token).toMatch(new RegExp(`--ix-${token}-rgb:\\s*${rgb}`));
     for (const gone of ["#96c5b8", "#a7c7d8", "#86b6aa", "accent-mint", "accent-blue", "150 197 184", "167 199 216"]) expect(css.toLowerCase(), gone).not.toContain(gone);
+    // Tailwind holds no colour of its own: every colour is a variable, so the runtime theme reaches every class. The palettes are in lib/theme.ts.
     const tailwind = read("tailwind.config.ts");
-    for (const hex of ["#E8D8A4", "#F0E4B8", "#172A32", "#324D58", "#568E8F", "#D8E8E3", "#EDF4F1", "#B5CBC9"]) expect(tailwind.toUpperCase(), hex).toContain(hex);
-    for (const gone of ["#96C5B8", "#A7C7D8", "#86B6AA"]) expect(tailwind.toUpperCase(), gone).not.toContain(gone);
+    expect(tailwind).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    const palette = read("src/lib/theme.ts").toUpperCase();
+    for (const hex of ["#E8D8A4", "#172A32", "#35232E", "#E7F0F4", "#252B30", "#292938", "#202F3C"]) expect(palette, hex).toContain(hex);
+    for (const gone of ["#96C5B8", "#A7C7D8", "#86B6AA"]) expect(palette, gone).not.toContain(gone);
   });
   it("the legacy indigo / emerald / sky / violet / teal Tailwind classes all resolve to the accent or to neutral slate", () => {
     const tailwind = read("tailwind.config.ts");
-    expect(tailwind).toMatch(/indigo: butter/);
-    expect(tailwind).toMatch(/emerald: butter/);
-    for (const family of ["sky", "violet", "teal"]) expect(tailwind).toMatch(new RegExp(`${family}: mist`));
+    expect(tailwind).toMatch(/indigo: ramp\("accent"\)/);
+    expect(tailwind).toMatch(/emerald: ramp\("accent"\)/);
+    for (const family of ["sky", "violet", "teal"]) expect(tailwind).toMatch(new RegExp(`${family}: ramp\\("mist"\\)`));
+    expect(tailwind).toMatch(/slate: ramp\("slate"\)/);
   });
-  it("the accent hex codes live ONLY in the theme files (the CSS tokens, the Tailwind palette and the chart palette), not scattered through components", () => {
-    const allowed = ["src/app/globals.css", "tailwind.config.ts", "src/components/dashboard/charts.tsx"].map((p) => join(root, p));
+  it("the accent hex codes live ONLY in the theme files (the palette library and the CSS defaults), not scattered through components", () => {
+    const allowed = ["src/app/globals.css", "tailwind.config.ts", "src/lib/theme.ts"].map((p) => join(root, p));
     const scattered = walk(join(root, "src")).filter((f) => !allowed.includes(f)).filter((f) => /#E8D8A4/i.test(readFileSync(f, "utf-8")));
     expect(scattered).toEqual([]);
   });
@@ -181,7 +186,7 @@ describe("printing", () => {
 describe("the shared UI library", () => {
   it("has three button looks: a calm general action, a glass secondary and an unmistakable destructive one", () => {
     expect(buttonClass.primary).toContain("bg-ix-butter");
-    expect(buttonClass.primary).toContain("text-ix-deep"); // dark slate text on pale yellow
+    expect(buttonClass.primary).toContain("text-ix-on-accent"); // dark slate text on pale yellow
     expect(buttonClass.secondary).toContain("border-ix-mist/20");
     expect(buttonClass.destructive).toMatch(/red/);
     for (const looks of Object.values(buttonClass)) expect(looks).toMatch(/min-h-11/); // touch-friendly
@@ -274,8 +279,8 @@ describe("confirmation dialogs", () => {
 describe("the dashboard's accents", () => {
   it("each figure card keeps the glass and is either pale yellow or neutral slate", () => {
     const css = read("src/app/globals.css");
-    expect(css).toMatch(/\.ix-kpi\s*\{\s*--kpi:\s*var\(--ix-accent-rgb\)/);
-    expect(css).toMatch(/\.ix-kpi\[data-accent="neutral"\][^}]*181 203 201/);
+    expect(css).toMatch(/\.ix-kpi\s*\{\s*--kpi:\s*var\(--ix-accent-text-rgb\)/);
+    expect(css).toMatch(/\.ix-kpi\[data-accent="neutral"\][^}]*var\(--ix-muted-rgb\)/);
     const view = read("src/components/dashboard/view.tsx");
     expect(view).toMatch(/icon="products" accent="neutral"/);
     expect(view).toMatch(/icon="orders" accent="neutral"/);
@@ -287,8 +292,10 @@ describe("the dashboard's accents", () => {
     nav.path = "/";
     render(<PortalShell admin={admin} current="dashboard" organization={org([])}>x</PortalShell>);
     const current = screen.getByRole("link", { name: "Dashboard" });
-    expect(current.className).toContain("bg-ix-butter/10");
-    expect(current.querySelector("span.bg-ix-butter")).toBeTruthy();
+    expect(current.className).toContain("bg-ix-accent-text/10"); // the accent as a line/tint colour: on the light background a darker shade of the same hue
+    expect(current.querySelector("span.bg-ix-accent-text")).toBeTruthy(); // the small bar on the rail's left edge
+    // the icon box is exactly the collapsed pill's width (50px), so the icon is centred in the selected pill
+    expect(current.querySelector("span.grid")!.className).toContain("w-[50px]");
   });
   it("alphaOrg-shaped data still produces the shell without errors", () => {
     expect(() => shell("dashboard", alphaOrg.modules)).not.toThrow();
@@ -309,7 +316,9 @@ describe("one accent, everywhere", () => {
     expect(read("src/components/dashboard/sidebar.tsx")).not.toMatch(/\btitle=/);
     expect(read("src/components/dashboard/frame.tsx")).not.toMatch(/\btitle=\{/);
     expect(read("src/components/dashboard/sidebar.tsx")).toContain("<Tooltip");
-    expect(read("src/components/dashboard/frame.tsx")).toContain("<Tooltip");
+    expect(read("src/components/profile-menu.tsx")).not.toMatch(/\btitle=/);
+    expect(read("src/components/logout-button.tsx")).not.toMatch(/\btitle=\{/);
+    expect(read("src/components/logout-button.tsx")).toContain("<Tooltip"); // the header's sign-out icon is named by the themed tooltip
   });
   it("the confirm dialog backdrop is the themed dim blur", () => {
     expect(read("src/components/ui/confirm.tsx")).toContain("backdrop:backdrop-blur");

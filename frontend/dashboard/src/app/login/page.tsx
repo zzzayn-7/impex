@@ -17,7 +17,7 @@ export default async function LoginPage() {
       <main className="flex min-h-screen items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-8">
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-ix-butter text-xl font-bold text-ix-deep shadow-lg shadow-black/20">IX</div>
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-ix-butter text-xl font-bold text-ix-on-accent shadow-lg shadow-black/20">IX</div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-ix-text">IMPEX Organization Portal</h1>
               <p className="mt-1 text-sm text-ix-muted">Sign in to your organization</p>

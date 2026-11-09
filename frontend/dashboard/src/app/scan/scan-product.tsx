@@ -225,7 +225,7 @@ export default function ScanProduct({ initialListId = null }: { initialListId?: 
 
           {archived ? (
             <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              This product is archived. Restore it in Products before changing its stock.
+              This product is archived. Restore it from the Stock page before changing its stock.
             </p>
           ) : (
             <>

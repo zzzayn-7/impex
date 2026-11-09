@@ -23,6 +23,7 @@ from app.organization_admins import (
 )
 from app.profile import complete_profile, update_profile
 from app.security import hash_password, verify_password
+from app.theme import set_theme, theme_of
 
 # ---------------------------------------------------------------------------
 # Config (from environment, see .env.example)
@@ -79,6 +80,9 @@ class UserProfile(BaseModel):
     created_at: str
     # NULL until the person has confirmed their own profile (first-time onboarding of organization administrators).
     profile_setup_completed_at: Optional[str] = None
+    # The person's own colour theme (ids of the approved palettes), or None when they never chose one.
+    theme_background: Optional[str] = None
+    theme_accent: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +94,7 @@ def create_access_token(user_id: str) -> str:
 
 
 def to_profile(user: User) -> UserProfile:
+    theme_background, theme_accent = theme_of(user)
     return UserProfile(
         id=str(user.id),
         email=user.email,
@@ -99,6 +104,8 @@ def to_profile(user: User) -> UserProfile:
         is_active=user.is_active,
         created_at=user.created_at.isoformat(),
         profile_setup_completed_at=user.profile_setup_completed_at.isoformat() if user.profile_setup_completed_at else None,
+        theme_background=theme_background,
+        theme_accent=theme_accent,
     )
 
 
@@ -199,6 +206,21 @@ def update_my_profile(payload: ProfileUpdate, current_user: User = Depends(get_c
 def complete_my_profile(payload: ProfileComplete, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Confirm your profile (optionally with a corrected name) in one step. Safe to repeat."""
     return to_profile(complete_profile(db, current_user, payload.full_name))
+
+
+class ThemeUpdate(BaseModel):
+    """Both choices, by identifier. Nothing else is accepted (unknown fields are refused with 422): no colour values, no CSS, no user id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    background: str
+    accent: str
+
+
+@app.put("/api/v1/auth/me/theme", response_model=UserProfile, tags=["Auth"])
+def update_my_theme(payload: ThemeUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Save YOUR colour theme (any signed-in person: an organization administrator or a Super Admin, each their own). Safe to repeat."""
+    return to_profile(set_theme(db, current_user, payload.background, payload.accent))
 
 
 # ---------------------------------------------------------------------------

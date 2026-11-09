@@ -115,7 +115,7 @@ def main() -> int:
 
     def product(key, sku, name, unit):
         status, text, _, _ = portal(key, "POST", "/api/products", {
-            "sku": sku, "name": name, "category": "Stock check", "unit": unit, "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
+            "sku": sku, "name": name, "unit": unit, "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
         body = jbody(text)
         created.add("products", body.get("product", {}).get("id"))
         return body.get("product", {})

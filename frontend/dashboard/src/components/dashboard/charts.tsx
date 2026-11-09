@@ -6,9 +6,14 @@ import { Tooltip } from "@/components/ui/tooltip";
 // Geometry uses numbers; every value that is READ on the screen is the exact string it came from.
 
 // One accent: pale butter marks the series that matters most; everything else is slate-teal and mist, told apart by lightness, never by hue.
-export const SERIES_COLORS = { butter: "#E8D8A4", teal: "#568E8F", slate: "#7D98A3", mist: "#D8E8E3" } as const;
+// Colours are theme variables, so the series follow the chosen background and accent: the accent (as a readable line colour) marks the series that matters,
+// the others are neutrals of the foundation. Used through `style`, never as a literal.
+export const SERIES_COLORS = { butter: "rgb(var(--ix-accent-text-rgb))", teal: "rgb(var(--ix-teal-rgb))", slate: "rgb(var(--ix-slate-500))", mist: "rgb(var(--ix-mist-rgb))" } as const;
+const GRID = "rgb(var(--ix-mist-rgb))";
+const AXIS_TEXT = "rgb(var(--ix-muted-rgb))";
+const POINT_FILL = "rgb(var(--ix-deep-rgb))";
 
-const BAR_GRADIENT = { teal: "from-ix-teal/70 to-ix-mist/80", butter: "from-ix-butter/55 to-ix-butter" } as const;
+const BAR_GRADIENT = { teal: "from-ix-teal/70 to-ix-mist/80", butter: "from-ix-accent-text/55 to-ix-accent-text" } as const;
 
 export type Point = { label: string; value: string; text: string }; // value: exact string (geometry only); text: how to write it
 export type Series = { name: string; color: string; points: Point[] };
@@ -69,13 +74,13 @@ export function AreaChart({ series, label, id }: { series: Series[]; label: stri
         <defs>
           {series.map((s, si) => (
             <linearGradient key={s.name} id={`${id}-fill-${si}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={s.color} stopOpacity="0.32" />
-              <stop offset="100%" stopColor={s.color} stopOpacity="0.02" />
+              <stop offset="0%" style={{ stopColor: s.color }} stopOpacity="0.32" />
+              <stop offset="100%" style={{ stopColor: s.color }} stopOpacity="0.02" />
             </linearGradient>
           ))}
         </defs>
         {[0, 0.5, 1].map((t) => (
-          <line key={t} x1={PAD.left} x2={W - PAD.right} y1={y(max * t)} y2={y(max * t)} stroke="#D8E8E3" strokeOpacity={t === 0 ? 0.22 : 0.09} strokeWidth="1" />
+          <line key={t} x1={PAD.left} x2={W - PAD.right} y1={y(max * t)} y2={y(max * t)} style={{ stroke: GRID }} strokeOpacity={t === 0 ? 0.22 : 0.09} strokeWidth="1" />
         ))}
         {series.map((s, si) => {
           const pts = s.points.map((p, i) => [x(i), y(toPlot(p.value))] as [number, number]);
@@ -83,9 +88,9 @@ export function AreaChart({ series, label, id }: { series: Series[]; label: stri
           return (
             <g key={s.name}>
               <path d={`${line} L${x(pts.length - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={`url(#${id}-fill-${si})`} />
-              <path d={line} fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d={line} fill="none" style={{ stroke: s.color }} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               {pts.map(([px, py], i) => (
-                <circle key={i} cx={px} cy={py} r="3.2" fill="#172A32" stroke={s.color} strokeWidth="1.6">
+                <circle key={i} cx={px} cy={py} r="3.2" style={{ fill: POINT_FILL, stroke: s.color }} strokeWidth="1.6">
                   <title>{`${s.name} · ${s.points[i].label}: ${s.points[i].text}`}</title>
                 </circle>
               ))}
@@ -93,7 +98,7 @@ export function AreaChart({ series, label, id }: { series: Series[]; label: stri
           );
         })}
         {(series[0]?.points ?? []).map((p, i) => (
-          <text key={p.label} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === count ? "end" : "middle"} fontSize="11" fill="#B5CBC9">{p.label}</text>
+          <text key={p.label} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === count ? "end" : "middle"} fontSize="11" style={{ fill: AXIS_TEXT }}>{p.label}</text>
         ))}
       </svg>
       <VisuallyHiddenTable caption={label} series={series} />
@@ -113,7 +118,7 @@ export function ColumnChart({ series, label }: { series: Series[]; label: string
     <figure className="m-0">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} className="h-auto w-full overflow-visible">
         {[0, 0.5, 1].map((t) => (
-          <line key={t} x1={PAD.left} x2={W - PAD.right} y1={base - (base - top) * t} y2={base - (base - top) * t} stroke="#D8E8E3" strokeOpacity={t === 0 ? 0.22 : 0.09} strokeWidth="1" />
+          <line key={t} x1={PAD.left} x2={W - PAD.right} y1={base - (base - top) * t} y2={base - (base - top) * t} style={{ stroke: GRID }} strokeOpacity={t === 0 ? 0.22 : 0.09} strokeWidth="1" />
         ))}
         {Array.from({ length: n }).map((_, i) => {
           const cx = PAD.left + slot * i + slot / 2;
@@ -124,12 +129,12 @@ export function ColumnChart({ series, label }: { series: Series[]; label: string
                 const h = v > 0 ? Math.max(3, ((base - top) * v) / max) : 0;
                 const bx = cx - (barW * series.length) / 2 + si * barW + 1;
                 return h > 0 ? (
-                  <rect key={s.name} x={bx} y={base - h} width={Math.max(2, barW - 2)} height={h} rx={Math.min(4, (barW - 2) / 2)} fill={s.color} fillOpacity="0.9">
+                  <rect key={s.name} x={bx} y={base - h} width={Math.max(2, barW - 2)} height={h} rx={Math.min(4, (barW - 2) / 2)} style={{ fill: s.color }} fillOpacity="0.9">
                     <title>{`${s.name} · ${s.points[i].label}: ${s.points[i].text}`}</title>
                   </rect>
                 ) : null;
               })}
-              {(i === 0 || i === n - 1 || i % 3 === 0) && <text x={cx} y={H - 8} textAnchor="middle" fontSize="11" fill="#B5CBC9">{series[0].points[i].label}</text>}
+              {(i === 0 || i === n - 1 || i % 3 === 0) && <text x={cx} y={H - 8} textAnchor="middle" fontSize="11" style={{ fill: AXIS_TEXT }}>{series[0].points[i].label}</text>}
             </g>
           );
         })}

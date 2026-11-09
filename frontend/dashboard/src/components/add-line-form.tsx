@@ -15,6 +15,8 @@ type Props = {
   orderNumber: string;
   currency: string;
   product: OrderProduct;
+  /** A suggested unit purchase price (a new product's cost price); the administrator can change it. */
+  initialPrice?: string;
   /** Called after the line was added; `existingLineId` is set when the product was already on the order. */
   onAdded: (message: string) => void;
   onDuplicate: (lineId: string) => void;
@@ -26,9 +28,9 @@ const border = (error?: string) => (error ? "border-red-500/60 focus:border-red-
 // Add ONE existing product to a draft purchase order with the ordered quantity and the unit purchase price. The preview of the
 // line total is only a convenience while typing: the Purchasing Service calculates the real one. Nothing here changes stock,
 // and the purchase price never touches the product's own prices.
-export default function AddLineForm({ orderId, orderNumber, currency, product, onAdded, onDuplicate }: Props) {
+export default function AddLineForm({ orderId, orderNumber, currency, product, initialPrice, onAdded, onDuplicate }: Props) {
   const [quantity, setQuantity] = useState("");
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(initialPrice ?? "");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

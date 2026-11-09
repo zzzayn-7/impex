@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { formatDateTime, normalizePreferences } from "@/lib/format";
 import type { HistoryData, SettingsData } from "@/lib/settings";
+import AppearanceSection from "./appearance-section";
 import BrandingSection from "./branding-section";
 import CompanySection from "./company-section";
 import ModulesSection from "./modules-section";
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "branding", label: "Branding" },
   { id: "profile", label: "Administrator" },
   { id: "preferences", label: "Preferences" },
+  { id: "appearance", label: "Appearance & Theme" },
   { id: "modules", label: "Modules" },
 ];
 
@@ -84,7 +86,7 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
       </div>
 
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-butter transition hover:bg-ix-butter/15 motion-reduce:transition-none">{s.label}</a>)}
+        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-accent-text transition hover:bg-ix-butter/15 motion-reduce:transition-none">{s.label}</a>)}
       </nav>
 
       {notice && (
@@ -96,6 +98,7 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
       <BrandingSection {...common} name={settings.company.name} />
       <ProfileSection admin={admin} organizationName={settings.company.name} setDirty={setDirty} onSaved={(m) => setNotice({ kind: "success", text: m })} />
       <PreferencesSection {...common} now={now} />
+      <AppearanceSection />
       <ModulesSection modules={modules} />
 
       <section aria-labelledby="history-title" className="rounded-2xl border border-ix-mist/15 bg-ix-deep/55 p-5 sm:p-7">

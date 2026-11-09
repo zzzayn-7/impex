@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { TENANT_SESSION_COOKIE, isSecureRequest } from "@/lib/session";
+import { TENANT_SESSION_COOKIE, THEME_COOKIE, isSecureRequest } from "@/lib/session";
+import { encodeThemeCookie, themeFrom } from "@/lib/theme";
 import { signInTenantAdmin } from "@/lib/tenant-auth";
 
 export const dynamic = "force-dynamic";
@@ -41,5 +42,7 @@ export async function POST(req: NextRequest) {
     path: "/",
     maxAge: result.expiresIn,
   });
+  // The administrator's saved colours (from the Auth Service's record) are painted from the first page after sign-in, on any browser or device.
+  res.cookies.set({ name: THEME_COOKIE, value: encodeThemeCookie(themeFrom(result.user.theme_background, result.user.theme_accent)), httpOnly: false, secure: isSecureRequest(req), sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
   return res;
 }

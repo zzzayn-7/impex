@@ -117,7 +117,7 @@ export default function BrandingSection({ settings, onSaved, onConflict, setDirt
               <img src={preview ?? currentSrc ?? ""} alt={preview ? "Selected logo preview" : "Current company logo"} className="max-h-full max-w-full rounded-lg object-contain" />
             ) : (
               <div className="text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-ix-butter text-2xl font-bold text-ix-deep">{monogram(name)}</div>
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-ix-butter text-2xl font-bold text-ix-on-accent">{monogram(name)}</div>
                 <p className="mt-2 text-xs text-ix-muted">No logo: the monogram is shown</p>
               </div>
             )}

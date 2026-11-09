@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { POST as createProduct } from "@/app/api/products/route";
-import { PATCH as editProduct } from "@/app/api/products/[id]/route";
+import { GET as searchProducts, POST as createProduct } from "@/app/api/products/route";
+import { GET as viewProduct, PATCH as editProduct } from "@/app/api/products/[id]/route";
 import { POST as archiveProduct } from "@/app/api/products/[id]/archive/route";
 import { POST as restoreProduct } from "@/app/api/products/[id]/restore/route";
 
@@ -11,11 +11,11 @@ const TOKEN = "tenant-session-token";
 const INVENTORY = "http://inventory-service:8002";
 
 const product = {
-  id: ID, sku: "WID-001", name: "Widget", description: null, category: "Hardware", unit: "pcs", hs_code: null,
+  id: ID, sku: "WID-001", name: "Widget", description: null, unit: "pcs", hs_code: null,
   cost_price: "0.1000", selling_price: "0.2000", currency_code: "USD", is_active: true,
   created_at: "2026-11-04T10:00:00+00:00", updated_at: "2026-11-04T10:00:00+00:00",
 };
-const valid = { sku: "WID-001", name: "Widget", category: "Hardware", unit: "pcs", costPrice: "0.1", sellingPrice: "0.2", currencyCode: "USD" };
+const valid = { sku: "WID-001", name: "Widget", unit: "pcs", costPrice: "0.1", sellingPrice: "0.2", currencyCode: "USD" };
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -72,7 +72,7 @@ describe("POST /api/products (create)", () => {
   });
 
   it.each([
-    ["missing everything", {}, ["sku", "name", "category", "unit", "costPrice", "sellingPrice", "currencyCode"]],
+    ["missing everything", {}, ["sku", "name", "unit", "costPrice", "sellingPrice", "currencyCode"]],
     ["a bad SKU", { sku: "has space" }, ["sku"]],
     ["a negative price", { costPrice: "-1" }, ["costPrice"]],
     ["five decimals", { sellingPrice: "1.23456" }, ["sellingPrice"]],
@@ -102,7 +102,7 @@ describe("POST /api/products (create)", () => {
   it("normalizes and forwards only the product fields", async () => {
     await createProduct(request("POST", { ...valid, sku: " wid-001 ", name: "  Steel   bolt", currencyCode: "usd", description: "Strong", hsCode: "7318.15" }));
     expect(JSON.parse(upstream().init.body)).toEqual({
-      sku: "WID-001", name: "Steel bolt", description: "Strong", category: "Hardware", unit: "pcs", hs_code: "7318.15",
+      sku: "WID-001", name: "Steel bolt", description: "Strong", unit: "pcs", hs_code: "7318.15",
       cost_price: "0.1", selling_price: "0.2", currency_code: "USD",
     });
   });
@@ -113,7 +113,7 @@ describe("POST /api/products (create)", () => {
       id: ID, is_active: false, stock: 50, created_at: "2020-01-01",
     }));
     const sent = JSON.parse(upstream().init.body);
-    expect(Object.keys(sent).sort()).toEqual(["category", "cost_price", "currency_code", "name", "selling_price", "sku", "unit"]);
+    expect(Object.keys(sent).sort()).toEqual(["cost_price", "currency_code", "name", "selling_price", "sku", "unit"]);
     expect(upstream().url).not.toContain("?");
   });
 
@@ -228,5 +228,70 @@ describe("archive and restore", () => {
     expect((await handler(request("POST"), ctx())).status).toBe(404);
     stub(() => json(403, { detail: "Your organization is not active." }));
     expect((await handler(request("POST"), ctx())).status).toBe(403);
+  });
+});
+
+// ---- reading: the product selector's search and the product dialog's "view one" -------------------------------------------------------------------
+describe("GET /api/products (search the active catalog)", () => {
+  const search = (query: string, cookie: string | null = `impex_tenant_session=${TOKEN}`) =>
+    searchProducts(new NextRequest(`http://localhost:3001/api/products${query}`, { method: "GET", headers: cookie ? { cookie } : {} }));
+
+  it("needs the tenant session (and not the Super Admin's)", async () => {
+    expect((await search("?q=bolt", null)).status).toBe(401);
+    expect((await search("?q=bolt", "impex_session=super-admin-token")).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("asks the Inventory Service for ACTIVE products matching the text, with a small page and the session's Bearer token, and returns just the items", async () => {
+    stub(() => json(200, { items: [product], total: 1, limit: 8, offset: 0 }));
+    const res = await search("?q=%20wid%20&limit=50&organization_id=someone-else");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [product], total: 1 });
+    const { url, init } = upstream();
+    expect(new URL(url).pathname).toBe("/api/v1/inventory/products");
+    expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ status: "active", limit: "20", q: "wid" }); // limit capped; no organization parameter forwarded
+    expect(init.method).toBe("GET");
+    expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("works without text (the first products), and maps a service failure", async () => {
+    stub(() => json(200, { items: [], total: 0, limit: 8, offset: 0 }));
+    expect((await search("")).status).toBe(200);
+    expect(Object.fromEntries(new URL(upstream().url).searchParams)).toEqual({ status: "active", limit: "8" });
+    stub(() => json(403, { detail: "inactive" }));
+    expect((await search("?q=x")).status).toBe(403);
+    stub(() => { throw new Error("down"); });
+    expect((await search("?q=x")).status).toBe(503);
+  });
+});
+
+describe("GET /api/products/[id] (one product with its barcodes)", () => {
+  const view = (id = ID, cookie: string | null = `impex_tenant_session=${TOKEN}`) =>
+    viewProduct(new NextRequest(`http://localhost:3001/api/products/${id}`, { method: "GET", headers: cookie ? { cookie } : {} }), ctx(id));
+  const identifier = { id: "i1", kind: "manufacturer", value: "5901234123457", label: null, is_active: true, created_at: "2026-11-04T10:00:00+00:00" };
+
+  it("needs the tenant session and a well-formed id before asking the service", async () => {
+    expect((await view(ID, null)).status).toBe(401);
+    expect((await view("not-a-uuid")).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the product, its registered barcodes and its label (none until one is generated)", async () => {
+    stub((url) => (url.endsWith("/identifiers") ? json(200, { items: [identifier] }) : json(200, product)));
+    const res = await view();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ product, identifiers: [identifier], label: null });
+    expect(fetchMock.mock.calls.map((c) => new URL(String(c[0])).pathname).sort()).toEqual([`/api/v1/inventory/products/${ID}`, `/api/v1/inventory/products/${ID}/identifiers`]);
+  });
+
+  it("another organization's product looks exactly like a missing one (404), and failures are mapped", async () => {
+    stub(() => json(404, { detail: "Product not found." }));
+    expect((await view()).status).toBe(404);
+    stub(() => json(401, {}));
+    expect((await view()).status).toBe(401);
+    stub(() => json(403, {}));
+    expect((await view()).status).toBe(403);
+    stub(() => { throw new Error("down"); });
+    expect((await view()).status).toBe(503);
   });
 });

@@ -66,6 +66,12 @@ export const PAGE_META = {
 
 export type PageKey = keyof typeof PAGE_META;
 
+/** The icon of every page: the same drawing its sidebar entry uses. The header shows it, in yellow, in front of the page's name. */
+export const PAGE_ICON: Record<PageKey, IconName> = {
+  dashboard: "dashboard", products: "products", stock: "stock", movements: "movements", suppliers: "suppliers", purchasing: "orders", receipts: "receipts",
+  clients: "clients", newOrder: "orderPlus", deliveries: "lists", invoices: "invoices", finance: "overview", support: "support", settings: "settings",
+};
+
 /** The navigation item that is "current" for a path: the item whose route is the longest prefix of it ("/finance/journal/abc" -> Journal Entries,
  *  "/invoices/123/edit" -> Invoices, "/" only on the dashboard itself). */
 export function activeHref(pathname: string | null | undefined, groups: NavGroup[], fallback: string): string {

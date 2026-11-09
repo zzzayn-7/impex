@@ -234,7 +234,7 @@ class FakeInventory:
         total = max(self.stock.get(product["id"], Decimal(0)), Decimal(0))
         reserved = self.reserved(product["id"])
         return {
-            "product_id": product["id"], "sku": product["sku"], "name": product["name"], "category": "General", "unit": product["unit"],
+            "product_id": product["id"], "sku": product["sku"], "name": product["name"], "unit": product["unit"],
             "unit_allows_fractions": product["unit"] in ("kg", "g", "l", "m"), "is_active": product["is_active"],
             "total_quantity": format(total, "f") if total > 0 else "0",
             "reserved_quantity": format(reserved, "f") if reserved > 0 else "0",

@@ -103,7 +103,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
   }
 
   const tab = (href: string, label: string, current: boolean) => (
-    <Link href={href} aria-current={current ? "page" : undefined} className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${current ? "bg-ix-accent/15 text-ix-butter shadow-[inset_0_0_0_1px_rgb(var(--ix-accent-rgb)/0.3)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}>{label}</Link>
+    <Link href={href} aria-current={current ? "page" : undefined} className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${current ? "bg-ix-accent/15 text-ix-accent-text shadow-[inset_0_0_0_1px_rgb(var(--ix-accent-text-rgb)/0.3)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}>{label}</Link>
   );
 
   return (
@@ -114,7 +114,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
         actions={<Link href="/sales-orders/new" className={buttonClass.primary}>Create Order</Link>}
       />
 
-      {message && <div role={message.ok ? "status" : "alert"} className={`rounded-2xl border px-4 py-3 text-sm ${message.ok ? "border-ix-butter/30 bg-ix-butter/10 text-ix-butter" : "border-red-300/30 bg-red-400/10 text-red-200"}`}>{message.text}</div>}
+      {message && <div role={message.ok ? "status" : "alert"} className={`rounded-2xl border px-4 py-3 text-sm ${message.ok ? "border-ix-accent-text/30 bg-ix-butter/10 text-ix-accent-text" : "border-red-300/30 bg-red-400/10 text-red-200"}`}>{message.text}</div>}
 
       <nav aria-label="Delivery list views" className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-2xl border border-ix-mist/10 bg-ix-deep/30 p-1">
@@ -140,7 +140,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
           {view === "history"
             ? "Nothing was fully delivered in the last 24 hours."
             : filter ? "No delivery lists match this filter." : (
-              <>No active orders yet. <Link href="/sales-orders/new" className="font-medium text-ix-butter underline-offset-2 hover:underline">Create the first order</Link> and its delivery list appears here.</>
+              <>No active orders yet. <Link href="/sales-orders/new" className="font-medium text-ix-accent-text underline-offset-2 hover:underline">Create the first order</Link> and its delivery list appears here.</>
             )}
         </GlassPanel>
       ) : (
@@ -153,7 +153,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="truncate text-base font-semibold text-ix-text">{order.client.name}</h3>
-                    <p className="mt-0.5 font-mono text-xs text-ix-butter">{order.number} <span className="text-ix-muted">· {order.delivery_list.number}</span></p>
+                    <p className="mt-0.5 font-mono text-xs text-ix-accent-text">{order.number} <span className="text-ix-muted">· {order.delivery_list.number}</span></p>
                   </div>
                   {finishedOn ? (
                     <StatusBadge tone={orderTone("delivered")}>Dispatched on {finishedOn}</StatusBadge>
@@ -257,7 +257,7 @@ function OtherLists({ others, clients, onChanged }: { others: Paged<DeliveryList
   if (!others.ok || (open.length === 0 && !creating)) {
     return (
       <div className="flex justify-end">
-        <button type="button" onClick={() => setCreating(true)} className="text-xs text-ix-muted underline-offset-2 hover:text-ix-butter hover:underline">New draft delivery list</button>
+        <button type="button" onClick={() => setCreating(true)} className="text-xs text-ix-muted underline-offset-2 hover:text-ix-accent-text hover:underline">New draft delivery list</button>
       </div>
     );
   }
@@ -295,7 +295,7 @@ function OtherLists({ others, clients, onChanged }: { others: Paged<DeliveryList
                       </button>
                     </Tooltip>
                   </td>
-                  <td className="px-3 py-2.5"><Link href={`/delivery-lists/${l.id}`} className="font-mono text-sm font-semibold text-ix-butter hover:text-ix-text">{l.number}</Link></td>
+                  <td className="px-3 py-2.5"><Link href={`/delivery-lists/${l.id}`} className="font-mono text-sm font-semibold text-ix-accent-text hover:text-ix-text">{l.number}</Link></td>
                   <td className="px-3 py-2.5">{l.client.name}</td>
                   <td className="px-3 py-2.5 text-xs">
                     <StatusBadge tone={l.booking_state === "unbooked_partial" ? "warning" : "neutral"}>{l.booking_state && BOOKING_LABELS[l.booking_state] ? BOOKING_LABELS[l.booking_state] : STATUS_LABELS[l.status]}</StatusBadge>
@@ -340,7 +340,7 @@ function NewListForm({ clients, onCancel }: { clients: Client[]; onCancel: () =>
   }
 
   return (
-    <form onSubmit={submit} noValidate aria-label="New delivery list" className="space-y-3 rounded-2xl border border-ix-butter/20 bg-ix-deep/30 p-4">
+    <form onSubmit={submit} noValidate aria-label="New delivery list" className="space-y-3 rounded-2xl border border-ix-accent-text/20 bg-ix-deep/30 p-4">
       <h4 className="text-sm font-semibold text-ix-text">New draft delivery list</h4>
       <p className="text-xs text-ix-muted">A draft reserves nothing. Add products (or scan them) and mark it Ready to book the stock. To book stock straight away, use Create Order instead.</p>
       {error && <div role="alert" className="rounded-xl border border-red-300/30 bg-red-400/10 px-3 py-2 text-sm text-red-200">{error}</div>}

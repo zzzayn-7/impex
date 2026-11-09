@@ -77,8 +77,8 @@ def test_the_database_refuses_a_conflicting_sku(api, two_orgs, session_factory):
     register(api, bolt, "DB-EAN")
     with session_factory() as db:
         with pytest.raises(DBAPIError) as caught:
-            db.execute(text("INSERT INTO products (organization_id, sku, name, category, unit, cost_price, selling_price, currency_code) "
-                            "VALUES (:o, 'DB-EAN', 'x', 'c', 'pcs', 1, 1, 'USD')"), {"o": two_orgs["alpha_id"]})
+            db.execute(text("INSERT INTO products (organization_id, sku, name, unit, cost_price, selling_price, currency_code) "
+                            "VALUES (:o, 'DB-EAN', 'x', 'pcs', 1, 1, 'USD')"), {"o": two_orgs["alpha_id"]})
             db.commit()
         assert "already a barcode of another product" in str(caught.value)
 

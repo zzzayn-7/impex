@@ -23,13 +23,13 @@ const FLOUR_ID = "7a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
 const now = "2026-11-05T10:00:00+00:00";
 
 const product = (id: string, sku: string, name: string, unit: string, extra: Record<string, unknown> = {}) => ({
-  id, sku, name, description: null, category: "General", unit, unit_allows_fractions: unit === "kg", unit_locked: true, hs_code: null,
+  id, sku, name, description: null, unit, unit_allows_fractions: unit === "kg", unit_locked: true, hs_code: null,
   cost_price: "1.0000", selling_price: "2.0000", currency_code: "USD", is_active: true, created_at: now, updated_at: now, ...extra,
 });
 const scanResult = (p: ReturnType<typeof product>, quantity: string, extra: Record<string, unknown> = {}) => ({
   matched_by: "identifier", identifier_kind: "generated", product: p,
   stock: {
-    product_id: p.id, sku: p.sku, name: p.name, category: "General", unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active,
+    product_id: p.id, sku: p.sku, name: p.name, unit: p.unit, unit_allows_fractions: p.unit === "kg", is_active: p.is_active,
     total_quantity: quantity,
   },
   ...extra,
@@ -230,7 +230,7 @@ describe("Scan Product: what is shown after a scan", () => {
     await user.type(scanBox(), "OLD-1{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
     expect(card.textContent).toContain("Archived");
-    expect(card.textContent).toContain("Restore it in Products before changing its stock");
+    expect(card.textContent).toContain("Restore it from the Stock page before changing its stock");
     expect(within(card).queryByRole("button", { name: "Stock In" })).toBeNull();
     expect(card.textContent).toContain("3 pcs"); // but what is there is still reported
   });

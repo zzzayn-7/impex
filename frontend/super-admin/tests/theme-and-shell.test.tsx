@@ -42,13 +42,14 @@ describe("the Super Admin shell", () => {
     for (const tenant of ["Inventory", "Invoices", "Purchase", "Finance", "Products"]) expect(nav.textContent).not.toContain(tenant);
   });
 
-  it("marks the current destination with aria-current and a pale-yellow indicator", () => {
+  it("marks the current destination with aria-current and a pale-yellow pill and the small bar on the rail's left edge, with the icon centred in the pill", () => {
     shell("organizations");
     const nav = screen.getByRole("navigation", { name: "Main" });
     const current = within(nav).getByRole("link", { name: "Organizations" });
     expect(current.getAttribute("aria-current")).toBe("page");
-    expect(current.className).toContain("bg-ix-butter/10");
-    expect(current.querySelector("span.bg-ix-butter")).toBeTruthy();
+    expect(current.className).toContain("bg-ix-accent-text/10");
+    expect(current.querySelector("span.bg-ix-accent-text")).toBeTruthy();
+    expect(current.querySelector("span.grid")!.className).toContain("w-[50px]"); // exactly the collapsed pill's width, so the icon is dead centre
     expect(within(nav).getByRole("link", { name: "Dashboard" }).getAttribute("aria-current")).toBeNull();
   });
 
@@ -97,10 +98,48 @@ describe("the Super Admin shell", () => {
     expect(none.innerHTML).not.toContain("unread");
   });
 
-  it("the header names the signed-in Super Admin (visible on larger screens, read by screen readers on small ones)", () => {
+  it("the header names the page in big bold type; on the right only the avatar (its card names the Super Admin) and the red Sign out icon", () => {
+    shell("organizations");
+    const header = screen.getByRole("banner");
+    const title = within(header).getByRole("heading", { level: 1, name: "Organizations" });
+    expect(title.className).toContain("font-bold");
+    expect(within(header).queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+    const card = within(header).getByRole("group", { name: "Account details", hidden: true });
+    expect(card.className).toContain("invisible");
+    for (const text of ["Root Admin", "root@impex.example", "Super Admin"]) expect(within(card).getAllByText(text).length, text).toBeGreaterThan(0);
+    expect(within(card).getByText("User ID")).toBeTruthy();
+    const signOut = within(header).getByRole("button", { name: "Sign out" });
+    expect(signOut.textContent).toBe("");
+    expect(signOut.className).toContain("text-red-400");
+    expect(within(header).getByRole("button", { name: /^Account: / }).textContent).toBe("RA");
+  });
+
+  it("each page's name is preceded by its own yellow icon (the one its sidebar entry uses)", () => {
+    for (const key of ["dashboard", "organizations", "support"] as const) {
+      const { unmount } = shell(key);
+      const heading = within(screen.getByRole("banner")).getByRole("heading", { level: 1 });
+      const icon = heading.parentElement!.querySelector("svg")!;
+      expect(icon.getAttribute("class"), key).toContain("text-ix-accent-text");
+      expect(!!(icon.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING), key).toBe(true);
+      const link = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link").find((l) => l.getAttribute("href") === NAV_ITEMS.find((i) => i.key === key)!.href)!;
+      const paths = (el: Element) => [...el.querySelectorAll("path")].map((p) => p.getAttribute("d")).join("|");
+      expect(paths(icon), key).toBe(paths(link.querySelector("svg")!)); // the same drawing as the sidebar
+      unmount();
+    }
+  });
+
+  it("hovering the avatar opens the card, leaving closes it, and Escape closes it for the keyboard", () => {
     shell();
-    expect(screen.getByText("Root Admin")).toBeTruthy();
-    expect(screen.getByText("root@impex.example")).toBeTruthy();
+    const avatar = screen.getByRole("button", { name: /^Account: / });
+    const card = screen.getByRole("group", { name: "Account details", hidden: true });
+    fireEvent.pointerEnter(avatar.parentElement!);
+    expect(card.className).not.toContain("invisible");
+    fireEvent.pointerLeave(avatar.parentElement!);
+    expect(card.className).toContain("invisible");
+    fireEvent.focus(avatar);
+    expect(card.className).not.toContain("invisible");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(card.className).toContain("invisible");
   });
 });
 
@@ -109,16 +148,19 @@ describe("the Super Admin Portal uses the shared theme: ONE pale butter yellow a
   const tailwind = read("tailwind.config.ts");
 
   it("defines the same tokens as the Organization Portal", () => {
-    for (const token of [/--ix-accent:\s*#e8d8a4/i, /--ix-accent-hover:\s*#f0e4b8/i, /--ix-accent-rgb:\s*232 216 164/, /--ix-on-accent:\s*#172a32/i, /--ix-deep:\s*#172a32/i, /--ix-slate:\s*#324d58/i,
-      /--ix-teal:\s*#568e8f/i, /--ix-text:\s*#edf4f1/i, /--ix-muted:\s*#b5cbc9/i, /--ix-radius-lg:\s*22px/, /--ix-radius-xl:\s*24px/, /--ix-dur-fast/]) expect(css).toMatch(token);
-    for (const hex of ["#E8D8A4", "#172A32", "#324D58", "#568E8F", "#EDF4F1", "#B5CBC9"]) expect(tailwind.toUpperCase()).toContain(hex);
+    // the DEFAULT theme (original slate-teal + Pale Butter Yellow), as tokens on :root: the same values the Organization Portal has
+    for (const token of [/--ix-accent-rgb:\s*232 216 164/, /--ix-accent-hover-rgb:\s*240 228 184/, /--ix-on-accent-rgb:\s*23 42 50/, /--ix-deep-rgb:\s*23 42 50/, /--ix-slate-rgb:\s*50 77 88/,
+      /--ix-teal-rgb:\s*86 142 143/, /--ix-text-rgb:\s*237 244 241/, /--ix-muted-rgb:\s*181 203 201/, /--ix-radius-lg:\s*22px/, /--ix-radius-xl:\s*24px/, /--ix-dur-fast/]) expect(css).toMatch(token);
+    // Tailwind holds no colour of its own: every colour is a variable, and the palettes live in lib/theme.ts
+    expect(tailwind).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    for (const hex of ["#E8D8A4", "#172A32", "#35232E", "#E7F0F4", "#252B30", "#292938", "#202F3C"]) expect(read("src/lib/theme.ts").toUpperCase()).toContain(hex);
   });
 
   it("has no powder blue, mint, or other decorative accent colour left", () => {
     for (const gone of ["#96c5b8", "#a7c7d8", "#86b6aa", "accent-mint", "accent-blue", "data-section"]) expect(css.toLowerCase()).not.toContain(gone);
-    expect(tailwind).toMatch(/indigo: butter/);
-    expect(tailwind).toMatch(/emerald: butter/);
-    for (const family of ["sky", "violet", "teal"]) expect(tailwind).toMatch(new RegExp(`${family}: mist`));
+    expect(tailwind).toMatch(/indigo: ramp\("accent"\)/);
+    expect(tailwind).toMatch(/emerald: ramp\("accent"\)/);
+    for (const family of ["sky", "violet", "teal"]) expect(tailwind).toMatch(new RegExp(`${family}: ramp\\("mist"\\)`));
   });
 
   it("applies the glass skin to every Super Admin page (all authenticated pages are inside the shell; login and activation are .ix-dash too)", () => {
@@ -164,6 +206,11 @@ describe("the Super Admin Portal uses the shared theme: ONE pale butter yellow a
   it.skipIf(!both)("tailwind.config.ts and the tooltip are identical in both portals", () => {
     expect(tailwind).toBe(other("tailwind.config.ts"));
     expect(read("src/components/ui/tooltip.tsx")).toBe(other("src/components/ui/tooltip.tsx"));
+    expect(read("src/components/profile-menu.tsx")).toBe(other("src/components/profile-menu.tsx")); // the header's avatar card
+    // the runtime theme: palettes, customizer, provider and header button are identical copies too (each portal keeps only its own cookie name and routes)
+    for (const file of ["src/lib/theme.ts", "src/components/theme/theme-provider.tsx", "src/components/theme/theme-customizer.tsx", "src/components/theme/theme-button.tsx"]) expect(read(file), file).toBe(other(file));
+    expect(read("src/lib/session.ts")).toContain('THEME_COOKIE = "impex_theme"');
+    expect(other("src/lib/session.ts")).toContain('THEME_COOKIE = "impex_tenant_theme"'); // never shared: cookies ignore ports
   });
 
   it.skipIf(!both)("application-specific styling stays out of the shared stylesheet, and in its own file it only uses the shared tokens", () => {

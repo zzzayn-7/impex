@@ -120,7 +120,7 @@ def main() -> int:
 
     def product(key, sku, name, unit="pcs"):
         status, text, _, _ = portal(key, "POST", "/api/products", {
-            "sku": sku, "name": name, "category": "Scan check", "unit": unit, "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
+            "sku": sku, "name": name, "unit": unit, "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
         body = jbody(text).get("product", {})
         created.add("products", body.get("id"))
         return body
@@ -263,14 +263,14 @@ def main() -> int:
         check("the Impex label code cannot be retired (409)", s == 409, (s, text[:80]))
         ambiguous = product("a", "AMBIG-1", "ScanA created later")
         s0, _ = register("a", a_flour["id"], "AMBIG-2")
-        status, text, _, _ = portal("a", "POST", "/api/products", {"sku": "AMBIG-2", "name": "ScanA ambiguous partner", "category": "Scan check", "unit": "pcs", "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
+        status, text, _, _ = portal("a", "POST", "/api/products", {"sku": "AMBIG-2", "name": "ScanA ambiguous partner", "unit": "pcs", "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
         created.add("products", jbody(text).get("product", {}).get("id"))
         check("a new product cannot take another product's barcode as its SKU (409, names the owner)", status == 409 and "barcode" in jbody(text).get("error", ""), (status, text[:120]))
         s, text, _, _ = portal("a", "PATCH", f"/api/products/{ambiguous['id']}", {"sku": "flour-ean-1"})
         check("...nor can an existing product be renamed to one (409), and its SKU is unchanged", s == 409 and psql("impex_inventory", f"SELECT sku FROM products WHERE id = '{ambiguous['id']}'") == "AMBIG-1", (s, text[:100]))
         s, body = resolve("a", "AMBIG-2")
         check("so the code stays unambiguous: it still finds the flour (200)", s == 200 and body["product"]["id"] == a_flour["id"], (s, body))
-        err = psql_with_errors("impex_inventory", f"INSERT INTO products (organization_id, sku, name, category, unit, cost_price, selling_price, currency_code) VALUES ('{org_ids['a']}', 'AMBIG-2', 'x', 'c', 'pcs', 1, 1, 'USD')")
+        err = psql_with_errors("impex_inventory", f"INSERT INTO products (organization_id, sku, name, unit, cost_price, selling_price, currency_code) VALUES ('{org_ids['a']}', 'AMBIG-2', 'x', 'pcs', 1, 1, 'USD')")
         check("the database refuses the collision too if the API is bypassed", "already a barcode of another product" in err, err[:120])
         check("the unambiguous routes still work", resolve("a", "FLOUR-EAN-1")[0] == 200 and resolve("a", ambiguous["sku"])[0] == 200)
 

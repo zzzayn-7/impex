@@ -95,7 +95,9 @@ describe("the shared tooltip", () => {
     expect(rule).toContain("border: 1px solid");
     expect(rule).toContain("border-radius: 11px");
     expect(rule).toContain("backdrop-filter");
-    expect(css).toMatch(/\.ix-tip::before\s*\{[^}]*#e8d8a4/);
+    expect(css).toMatch(/\.ix-tip::before\s*\{[^}]*var\(--ix-accent-text\)/); // the accent (a readable shade of it on the light background)
+    expect(rule).toContain("var(--ix-tip-bg)");
+    expect(rule).toContain("color: var(--ix-text)");
     expect(css).toMatch(/\.ix-tip\s*\{[^}]*z-index:\s*70/);
   });
 });
@@ -105,7 +107,8 @@ describe("selects (every one, in both portals)", () => {
 
   it("draw their own chevron instead of the browser's, centred vertically inside the box", () => {
     expect(selectRule).toContain("appearance: none");
-    expect(selectRule).toContain("background-image: url(");
+    expect(selectRule).toContain("background-image: var(--ix-chevron)");
+    expect(css).toMatch(/--ix-chevron:\s*url\("data:image\/svg\+xml/); // the default chevron; every theme draws its own colour
     expect(selectRule).toContain("background-repeat: no-repeat");
     expect(selectRule).toMatch(/background-position:\s*right [\d.]+rem center/);
   });
@@ -118,9 +121,12 @@ describe("selects (every one, in both portals)", () => {
   });
 
   it("turn the arrow pale yellow on hover and focus, and keep the option list dark", () => {
-    expect(css).toMatch(/select:not\(\[multiple\]\):not\(\[size\]\):hover:not\(:disabled\),[\s\S]*?:focus\s*\{[^}]*%23E8D8A4/);
-    expect(css).toMatch(/\.ix-dash select option[^{]*\{[^}]*background-color:\s*#1a3039/);
-    expect(css).toContain("color-scheme: dark");
+    expect(css).toMatch(/select:not\(\[multiple\]\):not\(\[size\]\):hover:not\(:disabled\),[\s\S]*?:focus\s*\{[^}]*var\(--ix-accent-chevron\)/);
+    expect(css).toMatch(/--ix-accent-chevron:\s*url\([^)]*%23E8D8A4/); // pale yellow by default
+    expect(css).toMatch(/\.ix-dash select option[^{]*\{[^}]*background-color:\s*var\(--ix-option-bg\)/);
+    expect(css).toMatch(/--ix-option-bg:\s*#1a3039/); // the option list stays dark on the dark backgrounds
+    expect(css).toMatch(/--ix-color-scheme:\s*dark/);
+    expect(css).toContain("color-scheme: var(--ix-color-scheme)");
   });
 });
 
@@ -130,12 +136,13 @@ describe("buttons, fields and focus use the accent", () => {
   });
   it("focus rings and focused fields follow the accent", () => {
     expect(css).toMatch(/\.ix-dash :focus-visible\s*\{\s*outline:\s*2px solid var\(--ix-focus\)/);
-    expect(css).toMatch(/--ix-focus:\s*rgb\(var\(--ix-accent-rgb\)/);
+    expect(css).toMatch(/--ix-focus:\s*rgb\(var\(--ix-accent-text-rgb\)/); // the readable shade of the accent
     expect(css).toMatch(/:focus\s*\{[^}]*box-shadow:\s*var\(--ix-ring\)/);
   });
   it("app-rendered menus are dark glass with a pale-yellow hover", () => {
     expect(css).toMatch(/\.ix-menu\s*\{[^}]*border-radius:\s*16px/);
-    expect(css).toMatch(/\.ix-menu-item:hover[^{]*\{[^}]*rgba\(232, 216, 164/);
+    expect(css).toMatch(/\.ix-menu-item:hover[^{]*\{[^}]*rgb\(var\(--ix-accent-text-rgb\) \/ 0\.12\)/);
+    expect(css).toMatch(/\.ix-menu\s*\{[^}]*background:\s*var\(--ix-surface-menu\)/);
   });
   it("reduced motion switches the tooltip's motion off", () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.ix-tip\s*\{\s*transition:\s*none/);

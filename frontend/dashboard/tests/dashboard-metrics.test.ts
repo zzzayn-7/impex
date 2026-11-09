@@ -109,7 +109,7 @@ describe("the sidebar lists exactly what the organization can use", () => {
   it("groups each enabled module with its pages, in a fixed order", () => {
     expect(labels(["finance", "sales", "inventory", "purchasing"])).toEqual([
       ["main", ["Dashboard"]],
-      ["inventory", ["Products", "Stock", "Movements"]],
+      ["inventory", ["Stock", "Movements"]],
       ["purchasing", ["Suppliers", "Purchase Orders", "Goods Receipts"]],
       ["sales", ["Clients", "Create Order", "Delivery Lists", "Invoices"]],
       ["finance", ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]],

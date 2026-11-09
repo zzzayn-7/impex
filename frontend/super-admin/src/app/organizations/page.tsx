@@ -45,7 +45,7 @@ export default async function OrganizationsPage() {
     <PortalShell user={user} current="organizations" supportUnread={supportUnread ?? 0}>
       <nav aria-label="On this page" className="-mb-2 flex flex-wrap gap-2 text-xs font-medium">
         {[["#register", "Register organization"], ["#organizations", "Organizations"], ["#administrators", "Administrators & invitations"]].map(([href, label]) => (
-          <a key={href} href={href} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-ix-mist transition hover:border-ix-butter/30 hover:bg-ix-butter/10 hover:text-ix-butter">{label}</a>
+          <a key={href} href={href} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-ix-mist transition hover:border-ix-accent-text/30 hover:bg-ix-butter/10 hover:text-ix-accent-text">{label}</a>
         ))}
       </nav>
         <section id="register" className="scroll-mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-5">

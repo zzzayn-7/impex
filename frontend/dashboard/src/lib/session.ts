@@ -5,6 +5,10 @@
 export const TENANT_SESSION_COOKIE = "impex_tenant_session";
 export const ORGANIZATION_ADMIN_ROLE = "organization-admin";
 
+// The colour theme the server paints on the first byte: a CACHE of the administrator's saved choice (the Auth Service is the record). It is not a
+// credential, and it is not the Super Admin portal's (that one is "impex_theme"): the two portals share a host, so they must never share this cookie.
+export const THEME_COOKIE = "impex_tenant_theme";
+
 // Mark the cookie Secure whenever the original request came in over HTTPS (proxies forward the scheme
 // in X-Forwarded-Proto). Plain http://localhost keeps working in development.
 export function isSecureRequest(req: Request): boolean {

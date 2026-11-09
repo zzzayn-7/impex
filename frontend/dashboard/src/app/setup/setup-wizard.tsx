@@ -21,9 +21,9 @@ const label = "block text-sm font-medium text-ix-text";
 const input =
   "mt-2 block w-full rounded-xl border border-ix-mist/15 bg-ix-mist/10 px-4 py-3 text-[15px] text-ix-text placeholder-ix-muted/60 outline-none transition duration-200 focus:border-ix-accent focus:bg-ix-deep/70 focus:ring-2 focus:ring-ix-accent/25 motion-reduce:transition-none";
 const primary =
-  "inline-flex min-h-11 items-center justify-center rounded-xl bg-ix-butter px-6 py-2.5 text-sm font-medium text-ix-deep transition duration-200 hover:bg-ix-butter-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex min-h-11 items-center justify-center rounded-xl bg-ix-butter px-6 py-2.5 text-sm font-medium text-ix-on-accent transition duration-200 hover:bg-ix-butter-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 const secondary =
-  "inline-flex min-h-11 items-center justify-center rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-5 py-2.5 text-sm font-medium text-ix-butter transition duration-200 hover:bg-ix-butter/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:opacity-50 motion-reduce:transition-none";
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-5 py-2.5 text-sm font-medium text-ix-accent-text transition duration-200 hover:bg-ix-butter/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:opacity-50 motion-reduce:transition-none";
 const errorText = "mt-2 text-sm text-red-300";
 
 const STEPS = ["Company", "You", "Review"];
@@ -188,7 +188,7 @@ export default function SetupWizard(props: Props) {
           <li key={name} aria-current={state === "current" ? "step" : undefined} className="flex flex-1 items-center gap-2">
             <span
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition duration-300 motion-reduce:transition-none ${
-                state === "todo" ? "border border-ix-mist/15 bg-ix-deep/55 text-ix-muted" : state === "current" ? "bg-ix-butter text-ix-deep" : "bg-ix-butter/15 text-ix-butter"
+                state === "todo" ? "border border-ix-mist/15 bg-ix-deep/55 text-ix-muted" : state === "current" ? "bg-ix-butter text-ix-on-accent" : "bg-ix-butter/15 text-ix-accent-text"
               }`}
             >
               {state === "done" ? "✓" : n}
@@ -206,7 +206,7 @@ export default function SetupWizard(props: Props) {
       // eslint-disable-next-line @next/next/no-img-element
       <img src={logoUrl} alt="Company logo" className={`${size} rounded-2xl border border-ix-mist/15 bg-ix-deep/55 object-contain p-1`} />
     ) : (
-      <span className={`${size} flex items-center justify-center rounded-2xl bg-ix-butter/15 text-lg font-semibold text-ix-butter`}>{monogram(companyName)}</span>
+      <span className={`${size} flex items-center justify-center rounded-2xl bg-ix-butter/15 text-lg font-semibold text-ix-accent-text`}>{monogram(companyName)}</span>
     );
 
   // ---- a newly invited administrator of an already configured company: just their own profile -------------------------------------
@@ -276,10 +276,10 @@ export default function SetupWizard(props: Props) {
                   onDragLeave={() => setDragging(false)}
                   onDrop={onDrop}
                   className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 motion-reduce:transition-none ${
-                    dragging ? "border-ix-butter bg-ix-butter/15" : "border-ix-muted/60 bg-ix-mist/10 hover:bg-ix-mist/10"
+                    dragging ? "border-ix-accent-text bg-ix-butter/15" : "border-ix-muted/60 bg-ix-mist/10 hover:bg-ix-mist/10"
                   }`}
                 >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ix-butter/15 text-xl text-ix-butter" aria-hidden="true">↑</span>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ix-butter/15 text-xl text-ix-accent-text" aria-hidden="true">↑</span>
                   <span className="mt-3 text-[15px] font-medium">{uploading ? "Uploading…" : "Drag and drop your logo here, or click to browse"}</span>
                   <span id="logo-help" className="mt-1 text-sm text-ix-muted">PNG, JPEG or WebP · up to 2 MB · at least 64 × 64 pixels</span>
                 </div>
@@ -332,14 +332,14 @@ export default function SetupWizard(props: Props) {
                     <dd className="text-[15px] font-medium">{companyName}</dd>
                   </div>
                 </div>
-                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-butter hover:underline">Edit</button>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Administrator</dt>
                   <dd className="text-[15px] font-medium">{fullName}</dd>
                 </div>
-                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-ix-butter hover:underline">Edit</button>
+                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
               </div>
               <div className="p-4">
                 <dt className="text-xs uppercase tracking-wide text-ix-muted">Account email</dt>

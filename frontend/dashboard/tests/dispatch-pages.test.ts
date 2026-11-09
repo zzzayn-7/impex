@@ -352,6 +352,6 @@ describe("navigation", () => {
     // there is no Dispatches tab any more: the dispatch pages belong to Delivery Lists, which stays highlighted
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Delivery Lists");
     expect(html).not.toContain('href="/dispatches"');
-    for (const href of ["/", "/products", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
   });
 });

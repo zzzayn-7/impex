@@ -11,7 +11,7 @@ export const MODULE_KEYS: ModuleKey[] = ["inventory", "purchasing", "sales", "fi
 export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory", purchasing: "Purchasing", sales: "Sales", finance: "Finance" };
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
-  inventory: "Products and stock, with scanning and a full movement history.",
+  inventory: "Stock and product details, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock.",
   sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
   finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
@@ -23,7 +23,6 @@ export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], 
 // What each module contains, as pages in this portal.
 export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> = {
   inventory: [
-    { label: "Products", href: "/products" },
     { label: "Stock", href: "/stock" },
     { label: "Movements", href: "/movements" },
   ],

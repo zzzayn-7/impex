@@ -48,7 +48,6 @@ def idempotency_key(key: Optional[str] = Header(default=None, alias="Idempotency
 @router.get("/stock", response_model=StockOverview, tags=["Stock"])
 def stock_overview(
     q: Optional[str] = Query(default=None, max_length=100),
-    category: Optional[str] = Query(default=None, max_length=100),
     status_filter: Literal["active", "archived", "all"] = Query(default="active", alias="status", description="Product status"),
     in_stock_only: bool = False,
     limit: int = Query(default=25, ge=1, le=200),
@@ -57,7 +56,7 @@ def stock_overview(
     db: Session = Depends(get_db),
 ):
     return stock.stock_overview(
-        db, tenant, q=q, category=category, product_status=status_filter,
+        db, tenant, q=q, product_status=status_filter,
         in_stock_only=in_stock_only, limit=limit, offset=offset,
     )
 

@@ -144,11 +144,11 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Products", "Stock", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
+      ["Dashboard", "Stock", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {
-    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Stock", "Movements", "Help & Support", "Settings"]);
+    same(labels(nav(["inventory"])), ["Dashboard", "Stock", "Movements", "Help & Support", "Settings"]);
   });
   it("Inventory and Sales", () => {
     const shown = labels(nav(["inventory", "sales"]));
@@ -178,7 +178,8 @@ describe("the dashboard", () => {
     expect(html).toContain('data-module="inventory"');
     expect(html).toContain('data-module="sales"');
     expect(html).not.toContain('data-module="purchasing"');
-    for (const href of ["/products", "/movements", "/clients", "/invoices"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/stock", "/movements", "/clients", "/invoices"]) expect(html).toContain(`href="${href}"`);
+    expect(html).not.toContain('href="/products"'); // Products is no longer a menu entry
     for (const href of ["/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).not.toContain(`href="${href}"`);
     expect(html).toContain('href="/support/new?module=other"');
   });

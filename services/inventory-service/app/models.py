@@ -39,7 +39,6 @@ class Product(TenantOwnedMixin, Base):
         UniqueConstraint("organization_id", "id", name="uq_products_organization_id_id"),
         CheckConstraint("cost_price >= 0", name="cost_price_non_negative"),
         CheckConstraint("selling_price >= 0", name="selling_price_non_negative"),
-        Index("ix_products_organization_id_category", "organization_id", "category"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -48,7 +47,6 @@ class Product(TenantOwnedMixin, Base):
     sku: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category: Mapped[str] = mapped_column(String(100), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)  # unit of measurement: pcs, kg, m, ...
     hs_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # customs Harmonized System code
     cost_price: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)

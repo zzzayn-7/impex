@@ -282,7 +282,7 @@ def main() -> int:
 
         print("\n== 5. business preferences are defaults and presentation, never conversions")
         client_a = make("a1", "/api/sales/clients", {"name": "Acme Settings Ltd"}, "client", "clients", idem=False)
-        bolt_a = make("a1", "/api/products", {"sku": "SET-BOLT", "name": "Settings bolt", "category": "Settings check", "unit": "pcs", "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"}, "product", "products", idem=False)
+        bolt_a = make("a1", "/api/products", {"sku": "SET-BOLT", "name": "Settings bolt", "unit": "pcs", "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"}, "product", "products", idem=False)
         tenant("a1", "POST", "/api/stock/in", {"product_id": bolt_a["id"], "quantity": "100"}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
         made = jbody(tenant("a1", "POST", "/api/sales/delivery-lists", {"clientId": client_a["id"]})[1]).get("list", {})
         tenant("a1", "POST", f"/api/sales/delivery-lists/{made['id']}/items", {"productId": bolt_a["id"], "quantity": "20"})
@@ -403,7 +403,7 @@ def main() -> int:
         check("Request access opens a Change Request, pre-filled with fixed wording", s == 200 and "Request to activate the Sales module" in html and "change_request" in html)
         s, html, _ = page("a1", "/support/new?change=tax_id")
         check("Request change opens one for the registered fact", s == 200 and "Request to change our tax registration number" in html)
-        s, body = api("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "category": "change_request", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
+        s, body = api("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
         ticket = (body or {}).get("ticket", {})
         created.add("tickets", ticket.get("id"))
         check("submitting the request opens a ticket (201)", s == 201 and ticket.get("ticket_number"), (s, body))

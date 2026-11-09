@@ -51,7 +51,7 @@ export function ScanProductModal({ onFound, onClose, check, activeOnly = true }:
       }
       if (lookup.kind !== "found") return setError(lookup.message);
       const { product } = lookup.result;
-      if (activeOnly && !product.is_active) return setError(`${product.name} is archived, so it cannot be used here. Restore it in Products first.`);
+      if (activeOnly && !product.is_active) return setError(`${product.name} is archived, so it cannot be used here. Restore it from the Stock page first.`);
       const refused = check?.(lookup.result);
       if (refused) return setError(refused);
       onFound(lookup.result);

@@ -11,13 +11,12 @@ import ProductForm from "./product-form";
 
 type Props = {
   list: ProductListResult;
-  categories: string[];
   filters: ProductFilters;
 };
 
 type Panel = { mode: "add" } | { mode: "edit"; product: Product } | null;
 
-export default function ProductCatalog({ list, categories, filters }: Props) {
+export default function ProductCatalog({ list, filters }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<Panel>(null);
@@ -26,12 +25,11 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Filters live in the URL (shareable, back-button friendly). Only q, category, status and page exist.
+  // Filters live in the URL (shareable, back-button friendly). Only q, status and page exist.
   function navigate(next: Partial<ProductFilters>) {
     const merged = { ...filters, page: 1, ...next };
     const params = new URLSearchParams();
     if (merged.q) params.set("q", merged.q);
-    if (merged.category) params.set("category", merged.category);
     if (merged.status !== "active") params.set("status", merged.status);
     if (merged.page > 1) params.set("page", String(merged.page));
     const query = params.toString();
@@ -73,7 +71,7 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
     }
   }
 
-  const filtered = Boolean(filters.q || filters.category || filters.status !== "active");
+  const filtered = Boolean(filters.q || filters.status !== "active");
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.products.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.products.length : 0;
@@ -97,6 +95,11 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
         </button>
       </div>
 
+      <p role="note" className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2.5 text-sm text-sky-200">
+        Products are now managed from <Link href="/stock" className="font-semibold underline underline-offset-2">Stock</Link> (open a product with Details) and registered while you create a purchase order.
+        This page is kept for compatibility and is no longer in the menu.
+      </p>
+
       {message && (
         <div
           role={message.ok ? "status" : "alert"}
@@ -113,7 +116,6 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
         <ProductForm
           key={panel.mode === "edit" ? panel.product.id : "add"}
           product={panel.mode === "edit" ? panel.product : undefined}
-          categories={categories}
           onDone={done}
           onCancel={() => setPanel(null)}
         />
@@ -128,7 +130,7 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="SKU, name, description, category, HS code"
+                placeholder="SKU, name, description, HS code"
                 maxLength={100}
                 className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
@@ -142,18 +144,6 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
             />
           </form>
           <label className="text-xs font-medium text-slate-400">
-            Category
-            <select
-              value={filters.category}
-              onChange={(e) => navigate({ category: e.target.value })}
-              className="mt-1.5 block rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            >
-              <option value="">All categories</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              {filters.category && !categories.includes(filters.category) && <option value={filters.category}>{filters.category}</option>}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-slate-400">
             Status
             <select
               value={filters.status}
@@ -166,7 +156,7 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
             </select>
           </label>
           {filtered && (
-            <button type="button" onClick={() => { setSearch(""); navigate({ q: "", category: "", status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
+            <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
               Clear filters
             </button>
           )}
@@ -191,7 +181,6 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
                 <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 font-semibold">Category</th>
                     <th className="px-4 py-3 font-semibold">Unit</th>
                     <th className="px-4 py-3 font-semibold">HS code</th>
                     <th className="px-4 py-3 font-semibold text-right">Cost</th>
@@ -207,7 +196,6 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
                         <div className="font-medium text-white">{product.name}</div>
                         <div className="font-mono text-xs text-indigo-300">{product.sku}</div>
                       </td>
-                      <td className="px-4 py-3 text-xs">{product.category}</td>
                       <td className="px-4 py-3 text-xs">{product.unit}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-400">{product.hs_code ?? <span className="text-slate-600">—</span>}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{formatMoney(product.cost_price, product.currency_code)}</td>

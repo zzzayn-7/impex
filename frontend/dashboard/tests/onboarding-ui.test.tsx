@@ -406,10 +406,10 @@ describe("a new administrator of an already configured company", () => {
 // =====================================================================================================
 describe("the portal shell shows the company identity", () => {
   const admin = { full_name: "Ada Lovelace", email: "ada@acme.example" } as any;
-  it("logo, company name, platform name and the administrator's name", () => {
+  it("logo, company name and the administrator's name (in the avatar's card)", () => {
     render(<PortalShell admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: true, logo_version: "9" }}>{null}</PortalShell>);
     expect((screen.getByAltText("Alpha Trading GmbH logo") as HTMLImageElement).getAttribute("src")).toBe("/api/organization/logo?v=9");
-    expect(screen.getByText("Admin Portal")).toBeTruthy();
+    expect(screen.queryByText("Admin Portal")).toBeNull();
     expect(screen.getByText("Alpha Trading GmbH")).toBeTruthy();
     expect(screen.getAllByText("Ada Lovelace").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
@@ -420,8 +420,8 @@ describe("the portal shell shows the company identity", () => {
     expect(screen.queryByRole("img")).toBeNull();
     unmount();
     render(<PortalShell admin={admin} current="dashboard">{null}</PortalShell>);
-    expect(screen.getAllByText("IX").length).toBeGreaterThan(0); // the platform mark (in the sidebar and the header)
-    expect(screen.getByText("Organization workspace")).toBeTruthy();
+    expect(screen.getAllByText("IX").length).toBeGreaterThan(0); // the platform mark in the sidebar
+    expect(screen.queryByText("Alpha Trading GmbH")).toBeNull(); // no organization: no company in the card either
   });
   it("lists every enabled page with its route", () => {
     render(<PortalShell admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false, modules: ["inventory", "purchasing", "sales"] }}>{null}</PortalShell>);

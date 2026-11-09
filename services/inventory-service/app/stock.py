@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Sequence
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -524,12 +524,12 @@ def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product])
             reserved[product_id] = held
     return [
         StockProduct(
-            product_id=p.id, sku=p.sku, name=p.name, category=p.category, unit=p.unit,
+            product_id=p.id, sku=p.sku, name=p.name, unit=p.unit,
             unit_allows_fractions=allows_fractions(p.unit), is_active=p.is_active,
             total_quantity=quantities.get(p.id) or ZERO,  # nothing in stock reads "0", whether or not a balance row exists
             reserved_quantity=reserved.get(p.id) or ZERO,
             available_quantity=(quantities.get(p.id) or ZERO) - (reserved.get(p.id) or ZERO),
-            selling_price=p.selling_price, currency_code=p.currency_code,
+            selling_price=p.selling_price, cost_price=p.cost_price, currency_code=p.currency_code,
         )
         for p in products
     ]
@@ -540,7 +540,6 @@ def stock_overview(
     tenant: TenantContext,
     *,
     q: Optional[str],
-    category: Optional[str],
     product_status: str,
     in_stock_only: bool,
     limit: int,
@@ -549,9 +548,7 @@ def stock_overview(
     filters = []
     if q and q.strip():
         pattern = like_pattern(q.strip())
-        filters.append(or_(Product.sku.ilike(pattern, escape="\\"), Product.name.ilike(pattern, escape="\\"), Product.category.ilike(pattern, escape="\\")))
-    if category and category.strip():
-        filters.append(func.lower(Product.category) == category.strip().lower())
+        filters.append(or_(Product.sku.ilike(pattern, escape="\\"), Product.name.ilike(pattern, escape="\\")))
     if product_status == "active":
         filters.append(Product.is_active.is_(True))
     elif product_status == "archived":

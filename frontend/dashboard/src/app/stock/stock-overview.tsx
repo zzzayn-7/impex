@@ -3,10 +3,16 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import ProductModal, { NewProductModal } from "@/components/product/product-modal";
 import type { PagedResult, StockFilters } from "@/lib/inventory";
-import type { Product } from "@/lib/product-validation";
+import { formatMoney, type Product } from "@/lib/product-validation";
 import { ACTION_LABELS, StockAction, StockProduct, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "./stock-form";
+
+// The Stock page is the organization's product inventory: every product it buys and holds, with what is on hand, what sales orders have reserved, what is
+// still available, its unit and prices and its status. Product INFORMATION (view, edit, barcodes, archive) opens in a dialog from "Details"; stock QUANTITIES
+// are changed only by Add stock / Remove stock / Opening balance (their own forms). A new product is registered with "New product" here or while buying
+// (a purchase order's "Add New Product"); registering a product never adds stock.
 
 type Props = {
   list: PagedResult<StockProduct>;
@@ -16,12 +22,17 @@ type Props = {
 
 type Panel = { action: StockAction; productId?: string } | null;
 
+/** A price with its currency, or a dash when the service did not send one. */
+const money = (amount?: string | null, currency?: string | null) => (amount && currency ? formatMoney(amount, currency) : "—");
+
 export default function StockOverview({ list, filters, products }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<Panel>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.q);
+  const [detailsId, setDetailsId] = useState<string | null>(null); // the product whose dialog is open
+  const [registering, setRegistering] = useState(false); // the "New product" dialog
 
   function navigate(next: Partial<StockFilters>) {
     const merged = { ...filters, page: 1, ...next };
@@ -55,6 +66,14 @@ export default function StockOverview({ list, filters, products }: Props) {
           <p className="text-xs text-slate-400">What you hold. Quantities come from the stock ledger and cannot go below zero.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => { setMessage(null); setRegistering(true); }}
+            aria-haspopup="dialog"
+            className="rounded-lg border border-slate-700 px-3.5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+          >
+            New product
+          </button>
           {(["in", "out", "opening"] as StockAction[]).map((action) => (
             <button
               key={action}
@@ -73,7 +92,7 @@ export default function StockOverview({ list, filters, products }: Props) {
 
       {noSetup && (
         <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
-          Create a product first, then you can record stock here.
+          No products yet. Use New product, or register one while creating a purchase order, then you can record stock here.
         </p>
       )}
 
@@ -82,6 +101,21 @@ export default function StockOverview({ list, filters, products }: Props) {
           <span>{message}</span>
           <button type="button" onClick={() => setMessage(null)} aria-label="Dismiss" className="opacity-70 hover:opacity-100">✕</button>
         </div>
+      )}
+
+      {registering && (
+        <NewProductModal
+          onClose={() => setRegistering(false)}
+          onSaved={(_product, text) => { setRegistering(false); done(text); }}
+        />
+      )}
+
+      {detailsId && (
+        <ProductModal
+          productId={detailsId}
+          onClose={() => setDetailsId(null)}
+          onChanged={(text) => { setMessage(text); startTransition(() => router.refresh()); }}
+        />
       )}
 
       {panel && (
@@ -104,7 +138,7 @@ export default function StockOverview({ list, filters, products }: Props) {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="SKU, name or category"
+                placeholder="SKU or name"
                 maxLength={100}
                 className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
@@ -145,7 +179,7 @@ export default function StockOverview({ list, filters, products }: Props) {
             </div>
           ) : list.items.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">
-              {filtered ? "No products match these filters." : "No products yet. Create products first, then record their stock here."}
+              {filtered ? "No products match these filters." : "No products yet. Use New product, or register one while creating a purchase order."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -153,10 +187,13 @@ export default function StockOverview({ list, filters, products }: Props) {
                 <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 font-semibold">Category</th>
+                    <th className="px-4 py-3 font-semibold">Unit</th>
                     <th className="px-4 py-3 font-semibold text-right">On hand</th>
                     <th className="px-4 py-3 font-semibold text-right">Reserved</th>
                     <th className="px-4 py-3 font-semibold text-right">Available</th>
+                    <th className="px-4 py-3 font-semibold text-right">Cost</th>
+                    <th className="px-4 py-3 font-semibold text-right">Price</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -164,29 +201,35 @@ export default function StockOverview({ list, filters, products }: Props) {
                   {list.items.map((item) => (
                     <tr key={item.product_id} className="transition-colors hover:bg-slate-800/30">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-white">{item.name}{!item.is_active && <span className="ml-2 rounded-full border border-slate-600/40 bg-slate-700/30 px-2 py-0.5 text-xs font-normal text-slate-400">Archived</span>}</div>
+                        <div className="font-medium text-white">{item.name}</div>
                         <div className="font-mono text-xs text-indigo-300">{item.sku}</div>
                       </td>
-                      <td className="px-4 py-3 text-xs">{item.category}</td>
+                      <td className="px-4 py-3 text-xs">{item.unit}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
-                        <span className="text-sm font-semibold text-white">{formatQuantity(item.total_quantity)}</span> <span className="text-slate-400">{item.unit}</span>
+                        <span className="text-sm font-semibold text-white" data-testid={`onhand-${item.sku}`}>{formatQuantity(item.total_quantity)}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300" data-testid={`reserved-${item.sku}`}>{formatQuantity(item.reserved_quantity ?? "0")}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
-                        <span className="text-sm font-semibold text-white" data-testid={`available-${item.sku}`}>{formatQuantity(item.available_quantity ?? item.total_quantity)}</span> <span className="text-slate-400">{item.unit}</span>
+                        <span className="text-sm font-semibold text-white" data-testid={`available-${item.sku}`}>{formatQuantity(item.available_quantity ?? item.total_quantity)}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300">{money(item.cost_price, item.currency_code)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{money(item.selling_price, item.currency_code)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${item.is_active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-600/40 bg-slate-700/30 text-slate-400"}`}>
+                          {item.is_active ? "Active" : "Archived"}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
-                        {item.is_active && !noSetup ? (
-                          <div className="flex gap-1.5">
-                            {(["in", "out"] as StockAction[]).map((action) => (
-                              <button key={action} type="button" onClick={() => open(action, item.product_id)} aria-label={`${ACTION_LABELS[action].title}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
-                                {action === "in" ? "Add" : "Remove"}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-600">—</span>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.is_active && !noSetup && (["in", "out"] as StockAction[]).map((action) => (
+                            <button key={action} type="button" onClick={() => open(action, item.product_id)} aria-label={`${ACTION_LABELS[action].title}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
+                              {action === "in" ? "Add" : "Remove"}
+                            </button>
+                          ))}
+                          <button type="button" onClick={() => { setMessage(null); setDetailsId(item.product_id); }} aria-haspopup="dialog" aria-label={`Details: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
+                            Details
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

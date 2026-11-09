@@ -116,7 +116,7 @@ export default function ClientSelect({ clients, value, onSelect, onRegister, dis
           {canRegister && (
             <li id={`${id}-opt-${options.length}`} role="option" aria-selected={false}>
               <button type="button" onClick={register} aria-current={active === options.length ? "true" : undefined} className="ix-menu-item">
-                <span aria-hidden="true" className="text-ix-butter">+</span> Register “{text.trim().replace(/\s+/g, " ")}” as a new client
+                <span aria-hidden="true" className="text-ix-accent-text">+</span> Register “{text.trim().replace(/\s+/g, " ")}” as a new client
               </button>
             </li>
           )}

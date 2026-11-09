@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useState, useTransition } from "react";
+import { FormEvent, useEffect, useState, useTransition } from "react";
 import { Tooltip } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AddLineForm from "@/components/add-line-form";
+import { NewProductModal } from "@/components/product/product-modal";
 import { NO_STOCK_NOTICE, ORDER_STATUS_LABELS, ORDER_STATUS_STYLE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE, lineTotal, validatePrice } from "@/lib/purchasing-browser";
 import { api, jsonBody, qty } from "@/lib/sales-browser";
-import { formatMoney } from "@/lib/product-validation";
+import { formatMoney, plainDecimal, type Product } from "@/lib/product-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
 import { validateQuantity } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, Supplier } from "@/lib/purchasing";
@@ -270,18 +271,48 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
   );
 }
 
-// Find an existing product by SKU or barcode (typed, or scanned into the box) and add it with a quantity and a purchase price.
+// Choose the product to order: find it by SKU or barcode (typed, or scanned into the box), search the catalog by name, or register a NEW product right here
+// when it does not exist yet. Whichever way it is chosen, the same form then takes the quantity and the unit purchase price. Registering a product puts
+// nothing in stock (stock increases only when a goods receipt is confirmed), and the purchase price on a line never changes the product's own prices.
 function ProductLookup({ order, onAdded }: { order: PurchaseOrderDetail; onAdded: (message: string) => void }) {
   const [code, setCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [found, setFound] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState<Product[] | null>(null); // null = nothing searched yet
+  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState<Product | null>(null); // chosen from the search, or just registered
+  const [registering, setRegistering] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Search the catalog by name / SKU while typing (after a short pause); a slower, older answer never replaces a newer one.
+  useEffect(() => {
+    const text = term.trim();
+    if (text.length < 2) { setResults(null); setSearching(false); return; }
+    let current = true;
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/products?q=${encodeURIComponent(text)}&limit=8`, { cache: "no-store" });
+        const body = await res.json().catch(() => null);
+        if (current) setResults(res.ok && Array.isArray(body?.items) ? body.items : []);
+      } catch {
+        if (current) setResults([]);
+      } finally {
+        if (current) setSearching(false);
+      }
+    }, 250);
+    return () => { current = false; clearTimeout(timer); };
+  }, [term]);
 
   async function find(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (looking || !code.trim()) return;
     setError(null);
     setFound(null);
+    setPicked(null);
+    setNotice(null);
     const normalized = normalizeScanned(code);
     if (!normalized.ok) return setError(normalized.message);
     setLooking(true);
@@ -290,6 +321,10 @@ function ProductLookup({ order, onAdded }: { order: PurchaseOrderDetail; onAdded
     if (result.kind === "found") setFound(result.result);
     else setError(result.message);
   }
+
+  const chosen: Product | null = picked ?? (found && found.product.is_active ? found.product : null);
+  const finish = (message: string) => { setFound(null); setPicked(null); setCode(""); setTerm(""); setResults(null); setNotice(null); onAdded(message); };
+  const typed = term.trim();
 
   return (
     <div className="space-y-4">
@@ -300,16 +335,55 @@ function ProductLookup({ order, onAdded }: { order: PurchaseOrderDetail; onAdded
         </label>
         <button type="submit" disabled={looking || !code.trim()} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">{looking ? "Looking…" : "Find product"}</button>
       </form>
+
+      <div className="space-y-2 border-t border-slate-800 pt-4">
+        <label className="block text-xs font-medium text-slate-400">
+          Or search your products by name
+          <input type="search" value={term} onChange={(e) => { setTerm(e.target.value); setPicked(null); setNotice(null); }} autoComplete="off" maxLength={100} placeholder="e.g. steel bolt" aria-label="Search products by name" className={fieldClass} />
+        </label>
+        {searching && <p role="status" className="text-xs text-slate-500">Searching…</p>}
+        {results && results.length > 0 && (
+          <ul aria-label="Matching products" className="divide-y divide-slate-800/60 rounded-lg border border-slate-800">
+            {results.map((p) => (
+              <li key={p.id}>
+                <button type="button" onClick={() => { setPicked(p); setFound(null); setError(null); setNotice(null); }} aria-label={`Choose ${p.name} (${p.sku})`} aria-pressed={picked?.id === p.id}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-slate-800/50 ${picked?.id === p.id ? "bg-slate-800/60" : ""}`}>
+                  <span><span className="font-medium text-white">{p.name}</span> <span className="font-mono text-xs text-indigo-300">{p.sku}</span></span>
+                  <span className="shrink-0 text-xs text-slate-400">{p.unit} · cost {formatMoney(p.cost_price, p.currency_code)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {results && results.length === 0 && !searching && <p className="text-sm text-slate-400">No active product matches “{typed}”.</p>}
+        <div>
+          <button type="button" onClick={() => { setError(null); setNotice(null); setRegistering(true); }} aria-haspopup="dialog" className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">
+            Add New Product
+          </button>
+          <span className="ml-3 text-xs text-slate-500">Not in your catalog yet? Register it here and order it straight away.</span>
+        </div>
+      </div>
+
+      {registering && (
+        <NewProductModal
+          defaults={{ currencyCode: order.currency_code, ...(results && results.length === 0 && typed ? { name: typed } : {}) }}
+          onClose={() => setRegistering(false)}
+          onSaved={(product, message) => { setRegistering(false); setFound(null); setError(null); setPicked(product); setNotice(`${message} Enter the quantity and the purchase price to add it to ${order.number}.`); }}
+        />
+      )}
+
+      {notice && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-      {found && !found.product.is_active && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{found.product.name} is archived and cannot be ordered. Restore it in Products first.</p>}
-      {found && found.product.is_active && (
+      {found && !found.product.is_active && !picked && <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{found.product.name} is archived and cannot be ordered. Restore it from the Stock page first.</p>}
+      {chosen && (
         <AddLineForm
-          key={found.product.id}
+          key={chosen.id}
           orderId={order.id}
           orderNumber={order.number}
           currency={order.currency_code}
-          product={found.product}
-          onAdded={(message) => { setFound(null); setCode(""); onAdded(message); }}
+          product={chosen}
+          initialPrice={picked && picked.currency_code === order.currency_code ? plainDecimal(picked.cost_price) : undefined}
+          onAdded={finish}
           onDuplicate={() => undefined}
         />
       )}

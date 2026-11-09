@@ -193,7 +193,7 @@ STOCK_URL = "/api/v1/inventory/stock"
 
 
 def product_payload(**overrides) -> dict:
-    return {"sku": "SKU-1", "name": "Thing", "category": "General", "unit": "pcs", "cost_price": "1.00",
+    return {"sku": "SKU-1", "name": "Thing", "unit": "pcs", "cost_price": "1.00",
             "selling_price": "2.00", "currency_code": "USD", **overrides}
 
 

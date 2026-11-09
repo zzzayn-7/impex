@@ -32,7 +32,7 @@ const I_FLOUR = "e0000000-0000-4000-8000-000000000002";
 const DISPATCH = "f0000000-0000-4000-8000-000000000001";
 
 const stockOf = (id: string, sku: string, name: string, unit: string, quantity: string) => ({
-  product_id: id, sku, name, category: "G", unit, unit_allows_fractions: unit === "kg", is_active: true, total_quantity: quantity,
+  product_id: id, sku, name, unit, unit_allows_fractions: unit === "kg", is_active: true, total_quantity: quantity,
 });
 const STOCK = {
   [BOLT]: stockOf(BOLT, "BOLT-1", "Steel bolt", "pcs", "40.0000"),

@@ -7,6 +7,7 @@ const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
 vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import SettingsView from "@/app/settings/settings-view";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import InvoiceForm from "@/app/invoices/invoice-form";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -22,7 +23,8 @@ const settings = (over: Record<string, any> = {}) => ({
 });
 const admin = { id: "11111111-1111-4111-8111-111111111111", full_name: "Olivia Owner", email: "owner@acme.example", role: "organization-admin", organization_id: ORG_ID };
 const view = (over: { initial?: any; history?: any; modules?: unknown } = {}) =>
-  render(<SettingsView initial={over.initial ?? settings()} history={over.history ?? { items: [], total: 0 }} admin={admin} modules={over.modules ?? ["inventory"]} now="2026-11-07T10:00:00.000Z" />);
+  // the portal always renders Settings inside the shell's ThemeProvider (the Appearance & Theme section shares its state with the header)
+  render(<ThemeProvider saved={{ background: "original", accent: "pale-butter" }} cookieName="impex_tenant_theme"><SettingsView initial={over.initial ?? settings()} history={over.history ?? { items: [], total: 0 }} admin={admin} modules={over.modules ?? ["inventory"]} now="2026-11-07T10:00:00.000Z" /></ThemeProvider>);
 
 type Call = { url: string; method: string; body: any };
 let calls: Call[] = [];
@@ -418,13 +420,13 @@ describe("history", () => {
 describe("layout and accessibility", () => {
   it("has labelled sections, a section navigation, and a responsive layout", () => {
     view();
-    for (const id of ["company", "branding", "profile", "preferences", "modules"]) {
+    for (const id of ["company", "branding", "profile", "preferences", "appearance", "modules"]) {
       const section = document.getElementById(id)!;
       expect(section.getAttribute("aria-labelledby")).toBe(`${id}-title`);
       expect(document.getElementById(`${id}-title`)!.textContent!.length).toBeGreaterThan(3);
     }
     const nav = within(screen.getByRole("navigation", { name: "Settings sections" }));
-    expect(nav.getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["#company", "#branding", "#profile", "#preferences", "#modules"]);
+    expect(nav.getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["#company", "#branding", "#profile", "#preferences", "#appearance", "#modules"]);
     const company = document.getElementById("company")!;
     expect(company.innerHTML).toContain("sm:grid-cols-2"); // two columns from the small breakpoint, one on a phone
     expect(company.className).toContain("p-5"); // phone padding, larger from sm:

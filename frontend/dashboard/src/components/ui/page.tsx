@@ -80,7 +80,7 @@ export function TabNavigation({ label, tabs, current }: { label: string; tabs: {
           key={tab.href}
           href={tab.href}
           aria-current={tab.href === current ? "page" : undefined}
-          className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${tab.href === current ? "bg-ix-accent/15 text-ix-butter shadow-[inset_0_0_0_1px_rgb(var(--ix-accent-rgb)/0.3)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
+          className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${tab.href === current ? "bg-ix-accent/15 text-ix-accent-text shadow-[inset_0_0_0_1px_rgb(var(--ix-accent-text-rgb)/0.3)]" : "text-ix-muted hover:bg-ix-mist/10 hover:text-ix-text"}`}
         >
           {tab.label}
         </Link>

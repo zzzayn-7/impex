@@ -129,7 +129,7 @@ def main() -> int:
         return status, html.replace("<!-- -->", ""), location
 
     def product(key, sku, name, unit="pcs"):
-        _, text, _, _ = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "category": "PO check", "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
+        _, text, _, _ = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": unit, "costPrice": "5", "sellingPrice": "9.99", "currencyCode": "USD"})
         body = jbody(text).get("product", {})
         created.add("products", body.get("id"))
         return body

@@ -352,9 +352,14 @@ def test_history_can_be_filtered_by_product_and_type(api, setup):
     assert api.client.get(f"{STOCK_URL}/movements", params={"type": "bogus"}, headers=api.headers).status_code == 422
 
 
+def test_the_overview_shows_the_cost_and_the_selling_price_of_each_product(api, setup):
+    item = next(i for i in api.client.get(STOCK_URL, headers=api.headers).json()["items"] if i["sku"] == "BOLT")
+    assert (item["cost_price"], item["selling_price"], item["currency_code"]) == ("1.0000", "2.0000", "USD")
+
+
 def test_the_overview_filters_and_sums(api, setup):
     bolt = setup["product"]
-    nut = api.product(sku="NUT", name="Nut", category="Fasteners")
+    nut = api.product(sku="NUT", name="Nut")
     api.product(sku="EMPTY", name="Nothing here")
     api.add(bolt, 10)
     api.add(bolt, 4)
@@ -366,7 +371,6 @@ def test_the_overview_filters_and_sums(api, setup):
 
     assert skus() == (["BOLT", "EMPTY", "NUT"], 3)
     assert skus(in_stock_only="true") == (["BOLT", "NUT"], 2)
-    assert skus(category="fasteners") == (["NUT"], 1)
     assert skus(q="nu") == (["NUT"], 1)
     item = next(i for i in api.client.get(STOCK_URL, headers=api.headers).json()["items"] if i["sku"] == "BOLT")
     assert item["total_quantity"] == "14.0000"

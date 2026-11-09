@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default async function ProductCodesPage({ params }: { params: { id: string } }) {
   await requireTenantAdmin(); // the products layout already redirects invalid sessions; this keeps the page safe on its own too
   const back = (
-    <Link href="/products" className="text-xs text-indigo-300 hover:text-indigo-200 print:hidden">← Back to products</Link>
+    <Link href="/stock" className="text-xs text-indigo-300 hover:text-indigo-200 print:hidden">← Back to stock</Link>
   );
   if (!UUID_RE.test(params.id)) return <Missing back={back} />;
 

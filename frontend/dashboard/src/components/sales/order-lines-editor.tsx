@@ -53,7 +53,7 @@ export default function OrderLinesEditor({ rows, onChange, errors, disabled = fa
                   <tr key={row.productId} data-product={row.productId}>
                     <td className={cell}>
                       <div className="font-medium text-ix-text">{row.name}</div>
-                      <div className="font-mono text-xs text-ix-butter">{row.sku}</div>
+                      <div className="font-mono text-xs text-ix-accent-text">{row.sku}</div>
                     </td>
                     {showStock && <td className={`${cell} text-right font-mono text-xs tabular-nums text-ix-text`}>{qty(row.onHand)} <span className="text-ix-muted">{row.unit}</span></td>}
                     {showStock && <td className={`${cell} text-right font-mono text-xs tabular-nums text-ix-muted`}>{qty(row.reserved)}</td>}
@@ -144,7 +144,7 @@ export function ProductPicker({ onPick, taken, disabled = false }: { onPick: (pr
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
         onChange={(e) => { setTerm(e.target.value); setOpen(true); }}
-        placeholder="Search by product name, SKU or category"
+        placeholder="Search by product name or SKU"
         className="mt-1.5 block w-full text-sm"
       />
       {open && (
@@ -168,7 +168,7 @@ export function ProductPicker({ onPick, taken, disabled = false }: { onPick: (pr
                     <span className="block truncate font-mono text-[11px] text-ix-muted">{p.sku} · {p.unit}</span>
                   </span>
                   <span className="shrink-0 text-right text-xs">
-                    {added ? <span className="text-ix-butter">Added</span> : <><span className="block tabular-nums text-ix-text">{qty(available)} available</span><span className="block tabular-nums text-ix-muted">{qty(p.total_quantity)} on hand</span></>}
+                    {added ? <span className="text-ix-accent-text">Added</span> : <><span className="block tabular-nums text-ix-text">{qty(available)} available</span><span className="block tabular-nums text-ix-muted">{qty(p.total_quantity)} on hand</span></>}
                   </span>
                 </button>
               </li>
