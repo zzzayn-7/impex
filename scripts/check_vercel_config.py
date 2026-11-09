@@ -73,6 +73,10 @@ for target in public:
         problems.append(f"a rewrite targets unknown service {target!r}")
     if services.get(target, {}).get("framework") == "fastapi":
         problems.append(f"backend service {target!r} is public (it should stay internal)")
+# a service that installs with `npm ci` needs its lockfile (otherwise the deployment would fail, or float to whatever is newest)
+for name, spec in services.items():
+    if "npm@" in spec.get("installCommand", "") and " ci" in spec["installCommand"] and not (ROOT / spec["root"] / "package-lock.json").is_file():
+        problems.append(f"{name}: installs with `npm ci` but {spec['root']}/package-lock.json is missing")
 print("public services:", ", ".join(sorted(public)))
 # every schedule must call a route that exists in the service the default host serves, and that route's service must be bound by that service
 default_service = config["rewrites"][-1]["destination"]["service"]

@@ -4,6 +4,8 @@
     "dashboard": {
       "root": "frontend/dashboard",
       "framework": "nextjs",
+      "installCommand": "npx --yes npm@12.2.2 ci",
+      "buildCommand": "npx --yes npm@12.2.2 run build",
       "bindings": [
         { "type": "service", "service": "auth-service", "format": "url", "env": "AUTH_SERVICE_URL" },
         { "type": "service", "service": "organization-service", "format": "url", "env": "ORG_SERVICE_URL" },
@@ -17,6 +19,8 @@
     "super-admin": {
       "root": "frontend/super-admin",
       "framework": "nextjs",
+      "installCommand": "npx --yes npm@12.2.2 ci",
+      "buildCommand": "npx --yes npm@12.2.2 run build",
       "bindings": [
         { "type": "service", "service": "auth-service", "format": "url", "env": "AUTH_SERVICE_URL" },
         { "type": "service", "service": "organization-service", "format": "url", "env": "ORG_SERVICE_URL" },

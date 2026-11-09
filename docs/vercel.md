@@ -70,6 +70,19 @@ Vercel environment variables are **project-wide** (there is no per-service scope
 
 Never set the `*_SERVICE_URL` variables yourself: Vercel injects them (a value set by hand would be overridden or, worse, point at a stale address).
 
+## Node and npm for the two portals
+
+Vercel gives each Node major a fixed npm (Node 22 -> npm 10, Node 24 and 26 -> npm 11) and offers no setting to choose npm itself, so the two Next.js services pin both:
+
+* `engines.node` is `24.x` in both `package.json` files (Vercel's default moves on to newer majors; `@zxing/library` in the dashboard already requires Node 24).
+* each service in `vercel.json` has `installCommand` / `buildCommand` that run **npm 12.2.2** through `npx` (`npx --yes npm@12.2.2 ci`, `... run build`). `npx` needs no global-install permissions. Change the number to upgrade npm.
+* `package-lock.json` is committed for both portals (generated with Node 24 and npm 12.2.2, every package from the public registry) and installed with `npm ci`, so a deployment gets exactly the versions that were tested (Next.js 14.2.35, React 18.3.1, ...) and the build fails loudly if `package.json` and the lock ever disagree. After changing a dependency run `npx --yes npm@12.2.2 install` in that folder and commit the new lock. The Docker images read the same lock (their `npm install` honours it).
+* `package.json` has `"allowScripts": { "esbuild@0.21.5": true }`: npm 12 blocks dependency install scripts unless approved, and this approves esbuild's postinstall (older npm versions ignore the field).
+
+Verified in containers for both portals on Node 24 (and the dashboard on Node 22): `npm ci`, `next build`, the full test suites and starting the production server pass with npm 12.2.2. Not verified: that Vercel's build image lets `npx` fetch npm 12 (it should, the install itself downloads from the same registry). If a build ever fails at that step, delete the two `installCommand`/`buildCommand` lines to fall back to the bundled npm 11.
+
+Warnings that remain and are not caused by this repo's settings: `Unknown env config "cache-dir"` (an environment variable Vercel sets for the build; npm 12 still only warns) and `deprecated whatwg-encoding` (a dependency of jsdom, used only by the tests; fixed by upgrading jsdom, a separate change). The Docker images still use Node 20 / npm 10.8 and are unchanged.
+
 ## Databases and migrations
 
 * Seven databases on one hosted Postgres: `impex_auth`, `impex_organizations`, `impex_inventory`, `impex_sales`, `impex_purchasing`, `impex_support`, `impex_finance` (the code's defaults). The scripts in `database/init` show how they are created.
