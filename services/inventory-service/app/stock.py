@@ -248,7 +248,7 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
                     f"{product.name} already has stock history. An opening balance can only be recorded "
-                    "before any other movement; use Add stock or Remove stock instead.",
+                    "before any other movement; use Stock In or Stock Out on the product instead.",
                 )
         new_balance = balance.quantity + payload.quantity if kind in ("opening", "in") else balance.quantity - payload.quantity
         if new_balance < balance.reserved_quantity:  # also covers < 0: stock booked for orders cannot be taken

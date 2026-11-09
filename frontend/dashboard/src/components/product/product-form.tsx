@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { buttonClass, fieldClass } from "@/components/ui/controls";
+import QuantityInput from "@/components/ui/quantity-input";
 import {
   EMPTY_PRODUCT,
   Product,
@@ -13,7 +14,10 @@ import {
   productToForm,
   validateProduct,
 } from "@/lib/product-validation";
+import { isZero } from "@/lib/quantity";
 import { normalizeScanned } from "@/lib/scan";
+import { postStockChange } from "@/lib/stock-browser";
+import { QUANTITY_RE, newIdempotencyKey } from "@/lib/stock-validation";
 
 // ONE product form, used wherever a product is registered or corrected: the Stock page's product dialog and the purchase order's "Add New Product".
 // It talks to the portal's own /api/products routes (the Inventory Service stays the only place products are stored); it can never name an organization.
@@ -21,19 +25,28 @@ import { normalizeScanned } from "@/lib/scan";
 //   * Adding sends the whole product; editing sends only what changed.
 //   * Registering a product does NOT put anything in stock: stock changes only through stock movements and confirmed goods receipts.
 //   * The unit of a product that already has stock movements is locked (the Inventory Service refuses to change it too).
+//   * `withOpeningQuantity` adds an optional "Existing Stock / Opening Quantity" section when adding (the Stock page's "Add Stock"). A quantity above zero is
+//     recorded AFTER the product exists, through the existing Opening Balance endpoint with its own Idempotency-Key; zero or empty records nothing (no
+//     artificial movement). Registering the product and recording the quantity are two separate operations: if the second fails the product still exists,
+//     and the caller gets the outcome (with the key) so it can offer a safe retry instead of creating the product again.
 //   * `withBarcode` adds an optional "Barcode (if the goods carry one)" box when adding: it is registered as the product's manufacturer barcode right after the
 //     product is created (a barcode that already identifies another product is reported and the product is kept).
+
+/** What happened to the optional opening quantity (only present when one above zero was entered). */
+export type OpeningOutcome = { quantity: string; key: string; recorded: boolean; replayed: boolean; status?: number; error?: string };
 
 type Props = {
   product?: Product; // present = editing, absent = adding
   onDone: (message: string) => void;
   onCancel: () => void;
   /** Called with the saved product (before `onDone`), so a caller can carry on with it, for example by adding it to a purchase order. */
-  onSaved?: (product: Product, notes: { barcodeProblem?: string }) => void;
+  onSaved?: (product: Product, notes: { barcodeProblem?: string; opening?: OpeningOutcome }) => void;
   /** Starting values for a NEW product (the order's currency, a SKU that was searched for, ...). */
   defaults?: Partial<ProductFormValues>;
   /** Offer the optional barcode box (adding only). */
   withBarcode?: boolean;
+  /** Offer the optional "Existing Stock / Opening Quantity" section (adding only). */
+  withOpeningQuantity?: boolean;
   /** Inside a dialog: no card of its own and no heading (the dialog has them). */
   embedded?: boolean;
   /** Text of the submit button when adding. */
@@ -43,13 +56,15 @@ type Props = {
 const COMMON_UNITS = ["pcs", "kg", "g", "l", "m", "box", "pallet"];
 const bad = "!border-red-400/60 focus:!border-red-400 focus:!ring-red-400/20";
 
-export default function ProductForm({ product, onDone, onCancel, onSaved, defaults, withBarcode = false, embedded = false, addLabel = "Add product" }: Props) {
+export default function ProductForm({ product, onDone, onCancel, onSaved, defaults, withBarcode = false, withOpeningQuantity = false, embedded = false, addLabel = "Add product" }: Props) {
   const router = useRouter();
   const editing = Boolean(product);
   const initial = product ? productToForm(product) : { ...EMPTY_PRODUCT, ...(defaults ?? {}) };
   const [values, setValues] = useState<ProductFormValues>(initial);
   const [barcode, setBarcode] = useState("");
   const [barcodeError, setBarcodeError] = useState<string | undefined>();
+  const [opening, setOpening] = useState("");
+  const [openingError, setOpeningError] = useState<string | undefined>();
   const [errors, setErrors] = useState<ProductFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,6 +89,18 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
       code = checked.code;
     }
     setBarcodeError(undefined);
+    // The opening quantity: empty or zero means "none" (no movement is recorded); anything else must be a valid positive quantity. Whether it may have a
+    // fraction depends on the unit, which only the Inventory Service judges, so that rule comes back from the service when the quantity is recorded.
+    let openingQuantity: string | null = null;
+    if (!editing && withOpeningQuantity) {
+      const typed = opening.trim();
+      if (typed) {
+        // the FORMAT first (isZero would read "abc" as zero and silently drop what was typed); then zero means "none"
+        if (!QUANTITY_RE.test(typed)) { setOpeningError("Use a positive number with at most 4 decimals, e.g. 35 or 2.5."); return; }
+        if (!isZero(typed)) openingQuantity = typed;
+      }
+    }
+    setOpeningError(undefined);
     if (Object.keys(found).length > 0) return;
 
     // Editing sends only what changed. Adding sends the whole product. Neither can name an organization.
@@ -124,9 +151,20 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
           barcodeProblem = "The barcode could not be registered. Open the product to add it.";
         }
       }
-      onSaved?.(saved, { barcodeProblem });
+      // The opening quantity, through the existing Opening Balance endpoint. The product exists now: whatever happens here never undoes or repeats it.
+      let outcome: OpeningOutcome | undefined;
+      if (openingQuantity) {
+        const key = newIdempotencyKey();
+        const posted = await postStockChange("opening", { product_id: saved.id, quantity: openingQuantity }, key);
+        if (!posted.ok && posted.unauthorized) { router.replace("/login"); router.refresh(); return; }
+        outcome = posted.ok
+          ? { quantity: openingQuantity, key, recorded: true, replayed: posted.replayed }
+          : { quantity: openingQuantity, key, recorded: false, replayed: false, status: posted.status, error: posted.message };
+      }
+      onSaved?.(saved, { barcodeProblem, opening: outcome });
       const base = editing ? `Saved changes to ${saved.name}.` : `Added ${saved.name} (${saved.sku}).`;
-      onDone(barcodeProblem ? `${base} The barcode was not registered: ${barcodeProblem}` : base);
+      const stock = outcome ? (outcome.recorded ? ` ${outcome.quantity} ${saved.unit} recorded as the opening balance.` : ` The opening quantity was not recorded: ${outcome.error}`) : "";
+      onDone(`${base}${barcodeProblem ? ` The barcode was not registered: ${barcodeProblem}` : ""}${stock}`);
     } catch {
       setFormError("Unable to reach the server. Check your connection and try again.");
     } finally {
@@ -235,8 +273,41 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
         {field("sellingPrice", "Selling price", { type: "text", inputMode: "decimal", placeholder: "19.99", autoComplete: "off", hint: "What you sell it for. Up to 4 decimals." })}
         {field("currencyCode", "Currency", { type: "text", placeholder: "USD", maxLength: 3, autoComplete: "off", hint: "3-letter code, e.g. USD, EUR.", style: { textTransform: "uppercase" } })}
       </div>
+      {withOpeningQuantity && !editing && (
+        <section aria-labelledby="opening-quantity-heading" className="space-y-2 rounded-2xl border border-ix-mist/15 bg-ix-mist/5 p-4">
+          <h3 id="opening-quantity-heading" className="text-sm font-semibold text-ix-text">Existing Stock / Opening Quantity</h3>
+          <p id="opening-quantity-help" className="text-xs text-ix-muted">
+            Enter a quantity only if your organization already owns these goods. For new purchases, quantities are added when Goods Receipts are confirmed.
+          </p>
+          <label htmlFor="product-opening-quantity" className="block text-xs font-medium text-ix-muted">
+            Opening quantity <span className="ml-1 text-ix-muted/70">(optional{values.unit.trim() ? `, counted in ${values.unit.trim()}` : ""})</span>
+          </label>
+          <QuantityInput
+            id="product-opening-quantity"
+            aria-label="Opening quantity"
+            aria-describedby="opening-quantity-help"
+            aria-invalid={openingError ? true : undefined}
+            value={opening}
+            onChange={(v) => { setOpening(v); setOpeningError(undefined); }}
+            inputMode="decimal"
+            disabled={loading}
+            className="w-full max-w-xs"
+          />
+          {openingError ? (
+            <p role="alert" className="text-xs text-red-300">{openingError}</p>
+          ) : (
+            <p className="text-xs text-ix-muted/80">Leave it at 0 and no stock movement is recorded: the product is simply ready for purchasing and sales.</p>
+          )}
+        </section>
+      )}
       <datalist id="unit-options">{COMMON_UNITS.map((u) => <option key={u} value={u} />)}</datalist>
-      {!editing && <p className="text-xs text-ix-muted">Registering a product does not add any stock: stock only increases when you confirm a goods receipt (or record stock in Stock).</p>}
+      {!editing && (
+        <p className="text-xs text-ix-muted">
+          {withOpeningQuantity
+            ? "Registering a product adds no stock by itself: stock comes from the opening quantity above (goods you already own) or from confirmed goods receipts."
+            : "Registering a product does not add any stock: stock only increases when you confirm a goods receipt (or record stock in Stock)."}
+        </p>
+      )}
 
       <div className="flex items-center justify-end gap-3">
         <button type="button" onClick={onCancel} disabled={loading} className={buttonClass.secondary}>Cancel</button>

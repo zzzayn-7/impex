@@ -125,9 +125,9 @@ export function toStockBody(_action: StockAction, v: StockFormValues) {
 }
 
 export const ACTION_LABELS: Record<StockAction, { title: string; submit: string; done: string }> = {
-  opening: { title: "Opening balance", submit: "Record opening balance", done: "Opening balance recorded." },
-  in: { title: "Add stock", submit: "Add stock", done: "Stock added." },
-  out: { title: "Remove stock", submit: "Remove stock", done: "Stock removed." },
+  opening: { title: "Opening Balance", submit: "Record opening balance", done: "Opening balance recorded." },
+  in: { title: "Stock In", submit: "Record stock in", done: "Stock added." },
+  out: { title: "Remove Stock", submit: "Remove stock", done: "Stock removed." },
 };
 
 export const API_FIELD_NAMES: Record<string, keyof StockFormValues> = {

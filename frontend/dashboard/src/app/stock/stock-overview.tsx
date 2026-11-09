@@ -3,16 +3,23 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import ProductModal, { NewProductModal } from "@/components/product/product-modal";
+import AddStockModal from "@/components/product/add-stock-modal";
+import ProductModal from "@/components/product/product-modal";
 import type { PagedResult, StockFilters } from "@/lib/inventory";
 import { formatMoney, type Product } from "@/lib/product-validation";
-import { ACTION_LABELS, StockAction, StockProduct, formatQuantity } from "@/lib/stock-validation";
+import { StockAction, StockProduct, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "./stock-form";
 
 // The Stock page is the organization's product inventory: every product it buys and holds, with what is on hand, what sales orders have reserved, what is
-// still available, its unit and prices and its status. Product INFORMATION (view, edit, barcodes, archive) opens in a dialog from "Details"; stock QUANTITIES
-// are changed only by Add stock / Remove stock / Opening balance (their own forms). A new product is registered with "New product" here or while buying
-// (a purchase order's "Add New Product"); registering a product never adds stock.
+// still available, its unit and prices and its status. Product INFORMATION (view, edit, barcodes, archive) opens in a dialog from "Details".
+//
+// The three buttons at the top are about the WHOLE inventory:
+//   Add Stock         REGISTER A NEW PRODUCT (the dialog "Add Product to Stock"), optionally with the quantity the organization already owns;
+//   Remove Stock      take available stock out of an existing product;
+//   Opening Balance   the starting quantity of an already registered product that has no stock history yet.
+// Changing the quantity of ONE existing product happens in its row (Stock In / Stock Out), so the two can never be confused. Goods bought from now on are not
+// added here at all: they arrive through Purchase Order -> confirmed Goods Receipt. A product can also be registered while buying (a purchase order's
+// "Add New Product"). Registering a product never adds stock by itself.
 
 type Props = {
   list: PagedResult<StockProduct>;
@@ -20,7 +27,11 @@ type Props = {
   products: Product[]; // active products, for the form
 };
 
-type Panel = { action: StockAction; productId?: string } | null;
+/** `top`: opened from a button above the table (Remove Stock / Opening Balance, pick the product); `row`: Stock In / Stock Out of one existing product. */
+type Panel = { action: StockAction; productId?: string; scope: "top" | "row" } | null;
+
+const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "out", label: "Remove Stock" }, { action: "opening", label: "Opening Balance" }];
+const ROW_LABELS: Record<"in" | "out", string> = { in: "Stock In", out: "Stock Out" };
 
 /** A price with its currency, or a dash when the service did not send one. */
 const money = (amount?: string | null, currency?: string | null) => (amount && currency ? formatMoney(amount, currency) : "—");
@@ -32,7 +43,7 @@ export default function StockOverview({ list, filters, products }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.q);
   const [detailsId, setDetailsId] = useState<string | null>(null); // the product whose dialog is open
-  const [registering, setRegistering] = useState(false); // the "New product" dialog
+  const [adding, setAdding] = useState(false); // the "Add Product to Stock" dialog
 
   function navigate(next: Partial<StockFilters>) {
     const merged = { ...filters, page: 1, ...next };
@@ -55,7 +66,7 @@ export default function StockOverview({ list, filters, products }: Props) {
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.items.length : 0;
-  const open = (action: StockAction, productId?: string) => { setMessage(null); setPanel({ action, productId }); };
+  const open = (action: StockAction, scope: "top" | "row", productId?: string) => { setMessage(null); setPanel({ action, productId, scope }); };
   const noSetup = products.length === 0;
 
   return (
@@ -68,23 +79,21 @@ export default function StockOverview({ list, filters, products }: Props) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => { setMessage(null); setRegistering(true); }}
+            onClick={() => { setMessage(null); setAdding(true); }}
             aria-haspopup="dialog"
-            className="rounded-lg border border-slate-700 px-3.5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+            className="rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950"
           >
-            New product
+            Add Stock
           </button>
-          {(["in", "out", "opening"] as StockAction[]).map((action) => (
+          {TOP_ACTIONS.map(({ action, label }) => (
             <button
               key={action}
               type="button"
               disabled={noSetup}
-              onClick={() => open(action)}
-              className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40 ${
-                action === "in" ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500" : "border border-slate-700 text-slate-200 hover:bg-slate-800"
-              }`}
+              onClick={() => open(action, "top")}
+              className="rounded-lg border border-slate-700 px-3.5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
             >
-              {ACTION_LABELS[action].title}
+              {label}
             </button>
           ))}
         </div>
@@ -92,7 +101,7 @@ export default function StockOverview({ list, filters, products }: Props) {
 
       {noSetup && (
         <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
-          No products yet. Use New product, or register one while creating a purchase order, then you can record stock here.
+          No products yet. Use Add Stock to register your first product (with the quantity you already own, if any), or register one while creating a purchase order.
         </p>
       )}
 
@@ -103,10 +112,11 @@ export default function StockOverview({ list, filters, products }: Props) {
         </div>
       )}
 
-      {registering && (
-        <NewProductModal
-          onClose={() => setRegistering(false)}
-          onSaved={(_product, text) => { setRegistering(false); done(text); }}
+      {adding && (
+        <AddStockModal
+          onClose={() => setAdding(false)}
+          onDone={(text) => { setAdding(false); done(text); }}
+          onProductAdded={() => startTransition(() => router.refresh())}
         />
       )}
 
@@ -120,9 +130,10 @@ export default function StockOverview({ list, filters, products }: Props) {
 
       {panel && (
         <StockForm
-          key={`${panel.action}-${panel.productId ?? ""}`}
+          key={`${panel.scope}-${panel.action}-${panel.productId ?? ""}`}
           initialAction={panel.action}
           initialProductId={panel.productId}
+          actions={panel.scope === "row" ? ["in", "out"] : ["out", "opening"]}
           products={products}
           onDone={done}
           onCancel={() => setPanel(null)}
@@ -179,7 +190,7 @@ export default function StockOverview({ list, filters, products }: Props) {
             </div>
           ) : list.items.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">
-              {filtered ? "No products match these filters." : "No products yet. Use New product, or register one while creating a purchase order."}
+              {filtered ? "No products match these filters." : "No products yet. Use Add Stock to register your first product, or register one while creating a purchase order."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -221,9 +232,9 @@ export default function StockOverview({ list, filters, products }: Props) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {item.is_active && !noSetup && (["in", "out"] as StockAction[]).map((action) => (
-                            <button key={action} type="button" onClick={() => open(action, item.product_id)} aria-label={`${ACTION_LABELS[action].title}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
-                              {action === "in" ? "Add" : "Remove"}
+                          {item.is_active && !noSetup && (["in", "out"] as const).map((action) => (
+                            <button key={action} type="button" onClick={() => open(action, "row", item.product_id)} aria-label={`${ROW_LABELS[action]}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
+                              {ROW_LABELS[action]}
                             </button>
                           ))}
                           <button type="button" onClick={() => { setMessage(null); setDetailsId(item.product_id); }} aria-haspopup="dialog" aria-label={`Details: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">

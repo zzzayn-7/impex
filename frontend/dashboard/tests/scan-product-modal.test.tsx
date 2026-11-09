@@ -230,7 +230,7 @@ describe("Stock In and Stock Out: Scan Product selects the product, and only sub
     expect(status.textContent).toContain("Available 60 pcs");
     expect(writes()).toEqual([]); // identified only: no stock movement yet
     await user.type(screen.getByLabelText(/^Quantity/), "5");
-    await user.click(screen.getByRole("button", { name: "Add stock" }));
+    await user.click(screen.getByRole("button", { name: "Record stock in" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
     expect(writes()).toHaveLength(1); // exactly one transaction, after the administrator submitted it
     expect(writes()[0]).toMatchObject({ url: "/api/stock/in", method: "POST", body: { product_id: BOLT, quantity: "5", reason: "delivery note 7" } });
@@ -273,7 +273,7 @@ describe("Stock In and Stock Out: Scan Product selects the product, and only sub
     const onDone = mountForm("in");
     await user.selectOptions(select(), FLOUR);
     await user.type(screen.getByLabelText(/^Quantity/), "2.5");
-    await user.click(screen.getByRole("button", { name: "Add stock" }));
+    await user.click(screen.getByRole("button", { name: "Record stock in" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(writes()).toHaveLength(1);
     expect(calls.some((c) => c.url.startsWith("/api/scan"))).toBe(false);

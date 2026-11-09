@@ -66,9 +66,10 @@ describe("the Stock page shows the product inventory", () => {
     expect(within(nut).getAllByRole("cell")[5].textContent).toBe("0.10 USD");
   });
 
-  it("keeps the stock actions (Add stock, Remove stock, Opening balance) and adds New product; no standalone Products link or category", () => {
+  it("has exactly three actions at the top (Add Stock, Remove Stock, Opening Balance); no standalone Products link or category", () => {
     mount();
-    for (const name of ["Add stock", "Remove stock", "Opening balance", "New product"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Add Stock", "Remove Stock", "Opening Balance"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New product" })).toBeNull(); // the old, redundant button is gone
     expect(screen.queryByRole("link", { name: /products/i })).toBeNull();
     expect(screen.queryByText(/categor/i)).toBeNull();
   });
@@ -152,44 +153,5 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
     mount();
     await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Product not found.");
-  });
-});
-
-describe("New product (registering a product does not add stock)", () => {
-  it("registers a product from the Stock page and sends no quantity", async () => {
-    const user = userEvent.setup();
-    mount();
-    await user.click(screen.getByRole("button", { name: "New product" }));
-    const dialog = await screen.findByRole("dialog", { name: "Add New Product" });
-    expect(dialog.textContent).toContain("does not add");
-    await user.type(within(dialog).getByLabelText("SKU or product code"), "washer-1");
-    await user.type(within(dialog).getByLabelText("Product name"), "Washer M10");
-    await user.type(within(dialog).getByLabelText("Unit of measurement"), "pcs");
-    await user.type(within(dialog).getByLabelText("Cost price"), "0.05");
-    await user.type(within(dialog).getByLabelText("Selling price"), "0.1");
-    await user.type(within(dialog).getByLabelText("Currency"), "usd");
-    await user.click(within(dialog).getByRole("button", { name: "Add product" }));
-    await screen.findByText("Added Washer M10 (WASHER-1).");
-    expect(writes()).toEqual([{ url: "/api/products", method: "POST", body: { sku: "WASHER-1", name: "Washer M10", description: "", unit: "pcs", hsCode: "", costPrice: "0.05", sellingPrice: "0.1", currencyCode: "USD" } }]);
-    expect(Object.keys(writes()[0].body)).not.toEqual(expect.arrayContaining(["quantity"]));
-    expect(router.refresh).toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  });
-
-  it("reports a duplicate SKU on the form and keeps what was typed", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => json(409, { error: "A product with SKU 'BOLT-1' already exists in your catalog.", fieldErrors: { sku: "A product with SKU 'BOLT-1' already exists in your catalog." } })));
-    const user = userEvent.setup();
-    mount();
-    await user.click(screen.getByRole("button", { name: "New product" }));
-    const dialog = await screen.findByRole("dialog", { name: "Add New Product" });
-    await user.type(within(dialog).getByLabelText("SKU or product code"), "bolt-1");
-    await user.type(within(dialog).getByLabelText("Product name"), "Another bolt");
-    await user.type(within(dialog).getByLabelText("Unit of measurement"), "pcs");
-    await user.type(within(dialog).getByLabelText("Cost price"), "1");
-    await user.type(within(dialog).getByLabelText("Selling price"), "2");
-    await user.type(within(dialog).getByLabelText("Currency"), "USD");
-    await user.click(within(dialog).getByRole("button", { name: "Add product" }));
-    expect((await within(dialog).findAllByText(/already exists in your catalog/)).length).toBeGreaterThan(0);
-    expect((within(dialog).getByLabelText("Product name") as HTMLInputElement).value).toBe("Another bolt");
   });
 });

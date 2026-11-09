@@ -136,6 +136,46 @@ def test_an_opening_balance_is_only_allowed_before_other_movements(api, setup):
     assert api.quantity(product) == "10.0000" and api.quantity(other) == "3.0000"
 
 
+def test_the_refusal_of_a_late_opening_balance_points_to_stock_in_and_stock_out(api, setup):
+    product = setup["product"]
+    api.add(product, 10, action="in")
+    detail = api.change("opening", product_id=product["id"], quantity="5").json()["detail"]
+    assert "already has stock history" in detail and "Stock In or Stock Out" in detail
+
+
+# --- "Add Stock" on the Stock page: register a product, then (optionally) record what the organization already owns ---------------------------------
+def test_a_product_registered_without_an_opening_quantity_has_no_stock_and_no_ledger_entry(api):
+    product = api.product(sku="CISCO-001", name="Cisco Router")
+    assert api.quantity(product) == "0"  # physical stock 0 (reserved 0, available 0)
+    assert api.movements(product_id=product["id"])["total"] == 0  # no artificial movement
+    assert api.add(product, 0 + 7, action="opening")["movements"][0]["movement_type"] == "opening"  # ...and it can still be given an opening balance later
+
+
+def test_a_new_product_with_an_opening_quantity_gets_exactly_one_opening_movement(api):
+    product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
+    result = api.add(product, 35, action="opening")
+    assert result["replayed"] is False and [m["movement_type"] for m in result["movements"]] == ["opening"]
+    assert api.quantity(product) == "35.0000"
+    listing = api.movements(product_id=product["id"])
+    assert listing["total"] == 1 and listing["items"][0]["movement_type"] == "opening" and listing["items"][0]["quantity"] == "35.0000"
+
+
+def test_retrying_the_opening_balance_with_the_same_key_counts_it_once(api):
+    product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
+    first = api.change("opening", key="add-stock-retry-1", product_id=product["id"], quantity="35")
+    again = api.change("opening", key="add-stock-retry-1", product_id=product["id"], quantity="35")  # the retry after a lost answer
+    assert first.status_code == 201 and again.status_code == 200 and again.json()["replayed"] is True
+    assert api.quantity(product) == "35.0000" and api.movements(product_id=product["id"])["total"] == 1
+
+
+def test_a_second_opening_balance_with_a_DIFFERENT_key_cannot_double_count_either(api):
+    product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
+    assert api.change("opening", key="first-attempt", product_id=product["id"], quantity="35").status_code == 201
+    again = api.change("opening", key="second-attempt", product_id=product["id"], quantity="35")  # e.g. the answer was lost and the page asked again with a new key
+    assert again.status_code == 409 and "stock history" in again.json()["detail"]
+    assert api.quantity(product) == "35.0000" and api.movements(product_id=product["id"])["total"] == 1
+
+
 def test_archived_products_cannot_be_changed(api, setup):
     product = setup["product"]
     api.add(product, 10)

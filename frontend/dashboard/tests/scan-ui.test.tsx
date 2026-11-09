@@ -252,7 +252,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     await user.type(scanBox(), `${code}{Enter}`);
     await screen.findByRole("region", { name: "Scanned product" });
     await user.click(screen.getByRole("button", { name: action }));
-    return screen.getByRole("form", { name: action === "Stock In" ? "Add stock" : "Remove stock" });
+    return screen.getByRole("form", { name: action === "Stock In" ? "Stock In" : "Remove Stock" });
   }
   const fill = async (user: ReturnType<typeof setup>, form: HTMLElement, quantity: string) => {
     await user.type(within(form).getByLabelText(/^Quantity/), quantity);
@@ -261,7 +261,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
   it("offers only in / out, with the scanned product fixed", async () => {
     const user = setup();
     const form = await openForm(user, "Stock In");
-    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Add stock", "Remove stock"]);
+    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Stock In", "Remove Stock"]);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).disabled).toBe(true);
     expect((within(form).getByLabelText(/^Product/) as HTMLSelectElement).value).toBe(BOLT_ID);
     expect(within(form).queryByLabelText("Warehouse")).toBeNull();
@@ -429,7 +429,7 @@ describe("Scan Product: changing stock reuses the Step 14 flow, with confirmatio
     await fill(user, form, "5");
     await user.type(scanBox(), "FLOUR{Enter}");
     await screen.findByText("Flour");
-    expect(screen.queryByRole("form", { name: "Add stock" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Stock In" })).toBeNull();
     expect(stockCalls()).toHaveLength(0);
   });
 });
@@ -661,14 +661,14 @@ describe("StockForm: no transfers, no warehouses", () => {
 
   it("offers the three operations by default", () => {
     renderForm();
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening balance", "Add stock", "Remove stock"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening Balance", "Stock In", "Remove Stock"]);
     expect(screen.queryByLabelText("Warehouse")).toBeNull();
   });
 
   it("records an opening balance for the product alone", async () => {
     const user = setup();
     render(<StockForm initialAction="opening" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
-    const form = screen.getByRole("form", { name: "Opening balance" });
+    const form = screen.getByRole("form", { name: "Opening Balance" });
     await user.type(within(form).getByLabelText(/^Quantity/), "5");
     await user.click(within(form).getByRole("button", { name: "Review" }));
     expect((await screen.findByRole("alertdialog")).textContent).toContain("Record an opening balance of 5 pcs of Steel bolt?");

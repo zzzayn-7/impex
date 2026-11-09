@@ -119,7 +119,7 @@ describe("Stock page", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(StockPage as Page);
-    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add stock", "Remove stock", "Opening balance"]) {
+    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add Stock", "Remove Stock", "Opening Balance"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html.toLowerCase()).not.toContain("warehouse");
@@ -132,7 +132,9 @@ describe("Stock page", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(StockPage as Page);
     expect(html).toContain("No products yet");
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Add stock/);
+    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Add Stock/); // registering the first product is always possible
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Remove Stock/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Opening Balance/);
   });
 
   it("passes only whitelisted filters; a warehouse in the URL is ignored", async () => {
