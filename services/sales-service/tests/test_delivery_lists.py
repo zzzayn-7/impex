@@ -124,17 +124,17 @@ def test_a_list_must_have_items_to_become_ready(api, shop):
     assert api.detail(created["id"])["status"] == "draft"
 
 
-def test_draft_ready_reopen_cancel(api, shop):
+def test_draft_ready_reopen_cancel(api, shop, inventory):
     created = api.new_list(api.new_client("Acme Ltd")["id"])
     api.add(created["id"], shop["bolt"], 5)
-    ready = api.status(created["id"], "ready")
-    assert ready.status_code == 200 and ready.json()["status"] == "ready"
-    assert api.status(created["id"], "ready").status_code == 200  # repeating is harmless
-    reopened = api.status(created["id"], "reopen")
-    assert reopened.json()["status"] == "draft"
-    api.status(created["id"], "ready")
-    cancelled = api.status(created["id"], "cancel")
-    assert cancelled.json()["status"] == "cancelled"
+    ready = api.status(created["id"], "ready")  # Ready BOOKS the quantities: the list becomes a sales order
+    assert ready.status_code == 200 and ready.json()["status"] == "ready" and ready.json()["booking_state"] == "booked"
+    assert api.status(created["id"], "ready").status_code == 200  # repeating is harmless (and books nothing twice)
+    assert inventory.reserved(shop["bolt"]) == 5 and len(inventory.reservation_posts()) == 1
+    reopened = api.status(created["id"], "reopen")  # a booked list is changed through its order, never reopened
+    assert reopened.status_code == 409 and "Edit the order" in reopened.json()["detail"]
+    cancelled = api.status(created["id"], "cancel")  # cancelled through the order: the reservation is released
+    assert cancelled.json()["status"] == "cancelled" and inventory.reserved(shop["bolt"]) == 0
     for action in ("ready", "reopen"):
         again = api.status(created["id"], action)
         assert again.status_code == 409 and "cancelled" in again.json()["detail"]  # cancelled is final

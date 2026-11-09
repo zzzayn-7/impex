@@ -13,7 +13,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory"
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Products and stock, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock.",
-  sales: "Selling to clients: delivery lists, dispatches from stock, invoices and payments.",
+  sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
   finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
 };
 
@@ -35,6 +35,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
   ],
   sales: [
     { label: "Clients", href: "/clients" },
+    { label: "Create Order", href: "/sales-orders/new" },
     { label: "Delivery Lists", href: "/delivery-lists" },
     { label: "Dispatches", href: "/dispatches" },
     { label: "Invoices", href: "/invoices" },
@@ -51,7 +52,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
 export const NAV_MODULE: Record<string, ModuleKey> = {
   products: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
-  deliveries: "sales", dispatches: "sales", invoices: "sales", clients: "sales",
+  deliveries: "sales", newOrder: "sales", dispatches: "sales", invoices: "sales", clients: "sales",
   finance: "finance",
 };
 

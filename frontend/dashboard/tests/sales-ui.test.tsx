@@ -11,7 +11,7 @@ vi.mock("@/lib/camera", async (importOriginal) => ({
 }));
 
 import DeliveryListDetail from "@/app/delivery-lists/[id]/delivery-list-detail";
-import DeliveryListIndex from "@/app/delivery-lists/delivery-list-index";
+import DeliveryBoard from "@/app/delivery-lists/delivery-board";
 import ClientManager from "@/app/clients/client-manager";
 import ScanProduct from "@/app/scan/scan-product";
 
@@ -148,9 +148,9 @@ describe("Scan Product: Add to Deliverables", () => {
     expect(form.textContent).toContain("BOLT-1");
     expect(form.textContent).toContain("Unit: pcs");
     expect(form.textContent).toContain("whole numbers only");
-    expect(within(form).getByTestId("availability").textContent).toContain("In stock now: 50 pcs");
-    expect(form.textContent).toContain("Stock is not reserved");
-    expect(form.textContent).toContain("never changes inventory");
+    expect(within(form).getByTestId("availability").textContent).toContain("On hand: 50 pcs");
+    expect(form.textContent).toContain("reserves nothing");
+    expect(form.textContent).toContain("books its quantities");
   });
 
   it("adds the product with the typed quantity: one request, exactly the id and the quantity, nothing for stock", async () => {
@@ -422,12 +422,12 @@ describe("Delivery list detail", () => {
     created_at: now, updated_at: now,
     stock: { total_quantity: "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: false, shortfall: "0" }, ...extra,
   });
-  const list = (extra: Record<string, unknown> = {}) => ({ ...summary(L1, "DL-000001", "Acme Ltd", 1), items: [item()], stock_status: "ok", items_exceeding_stock: 0, stock_notice: "Stock is not reserved by a delivery list.", ...extra });
+  const list = (extra: Record<string, unknown> = {}) => ({ ...summary(L1, "DL-000001", "Acme Ltd", 1), items: [item()], stock_status: "ok", items_exceeding_stock: 0, stock_notice: "A draft list reserves nothing. Marking it Ready books its quantities as a sales order (they can then no longer be taken by anything else); physical stock is deducted only when a dispatch is confirmed.", ...extra });
 
   it("shows the list, its products and quantities, available stock, and the notice", () => {
     render(<DeliveryListDetail list={list() as any} />);
     expect(screen.getByText("DL-000001")).toBeTruthy();
-    expect(screen.getByRole("note").textContent).toContain("Stock is not reserved");
+    expect(screen.getByRole("note").textContent).toContain("reserves nothing");
     const products = screen.getByRole("region", { name: "Products on this list" });
     expect(products.textContent).toContain("Steel bolt");
     expect(products.textContent).toContain("12 pcs");
@@ -479,7 +479,7 @@ describe("Delivery list detail", () => {
     const user = userEvent.setup();
     render(<DeliveryListDetail list={list() as any} />);
     await user.click(screen.getByRole("button", { name: "Mark Ready" }));
-    expect((await screen.findByRole("status")).textContent).toContain("No stock was deducted or reserved");
+    expect((await screen.findByRole("status")).textContent).toContain("its stock is booked");
     expect(calls.filter((c) => c.method !== "GET").map((c) => [c.method, c.url])).toEqual([["POST", `/api/sales/delivery-lists/${L1}/ready`]]);
     expect(stockCalls()).toHaveLength(0);
   });
@@ -521,7 +521,7 @@ describe("Delivery list detail", () => {
     await user.click(screen.getByRole("button", { name: "Type a SKU or barcode" }));
     await user.type(screen.getByLabelText("SKU or barcode"), "flour{Enter}");
     const form = await screen.findByRole("form", { name: "Add Flour to DL-000001" });
-    expect(form.textContent).toContain("In stock now: 2.5 kg");
+    expect(form.textContent).toContain("On hand: 2.5 kg");
     await user.type(within(form).getByLabelText(/^Quantity to deliver/), "1.5");
     await user.click(within(form).getByRole("button", { name: "Add to delivery list" }));
     await screen.findByText("Added 1.5 kg of Flour to DL-000001.");
@@ -576,31 +576,31 @@ describe("Delivery list detail", () => {
 });
 
 // =============================================================================================================
-describe("Delivery lists index", () => {
+describe("Delivery lists board: draft lists", () => {
   const clients = [{ id: C1, name: "Acme Ltd", contact_person: null, email: null, phone: null, address: null, is_active: true, created_at: now, updated_at: now }];
-  const base = { q: "", clientId: "", status: "" as const, page: 1 };
+  const noOrders = { ok: true as const, items: [], total: 0, limit: 100, offset: 0 };
+  const noOthers = { ok: true as const, items: [], total: 0, limit: 100, offset: 0 };
 
-  it("creates a list for an existing client and opens it", async () => {
+  it("creates a DRAFT list for an existing client and opens it (a draft reserves nothing)", async () => {
     const user = userEvent.setup();
-    render(<DeliveryListIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={base} clients={clients as any} />);
-    await user.click(screen.getByRole("button", { name: "New Delivery List" }));
+    render(<DeliveryBoard view="active" orders={noOrders} others={noOthers} clients={clients as any} created={null} />);
+    await user.click(screen.getByRole("button", { name: "New draft delivery list" }));
     const form = screen.getByRole("form", { name: "New delivery list" });
+    expect(form.textContent).toContain("reserves nothing");
     await user.selectOptions(within(form).getByLabelText("Client"), C1);
-    await user.type(within(form).getByLabelText(/order reference/), "PO-1");
-    await user.click(within(form).getByRole("button", { name: "Create list" }));
+    await user.click(within(form).getByRole("button", { name: "Create draft" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/delivery-lists/a0000000-0000-4000-8000-0000000000ff"));
-    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ clientId: C1, externalReference: "PO-1", notes: "" });
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ clientId: C1 });
   });
 
-  it("asks for a client, and only offers active clients for new lists but all clients as a filter", async () => {
+  it("asks for a client, and only offers active clients", async () => {
     const user = userEvent.setup();
     const both = [...clients, { ...clients[0], id: "c2", name: "Dormant Co", is_active: false }];
-    render(<DeliveryListIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={base} clients={both as any} />);
-    expect(within(screen.getByLabelText("Client")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All clients", "Acme Ltd", "Dormant Co (inactive)"]);
-    await user.click(screen.getByRole("button", { name: "New Delivery List" }));
+    render(<DeliveryBoard view="active" orders={noOrders} others={noOthers} clients={both as any} created={null} />);
+    await user.click(screen.getByRole("button", { name: "New draft delivery list" }));
     const form = screen.getByRole("form", { name: "New delivery list" });
     expect(within(within(form).getByLabelText("Client")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a client…", "Acme Ltd"]);
-    await user.click(within(form).getByRole("button", { name: "Create list" }));
+    await user.click(within(form).getByRole("button", { name: "Create draft" }));
     expect((await within(form).findByRole("alert")).textContent).toContain("Choose a client");
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
   });

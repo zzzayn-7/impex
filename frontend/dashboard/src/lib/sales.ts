@@ -46,6 +46,10 @@ export type Client = {
 
 export type ListStatus = "draft" | "ready" | "partially_dispatched" | "dispatched" | "cancelled";
 
+// How a delivery list relates to stock booking: booked (its order holds the reservation), pending (not confirmed yet - never treated as booked),
+// unbooked / unbooked_partial (an OLDER list made before reservations existed), draft (nothing is booked until it is marked Ready), none.
+export type BookingState = "booked" | "pending" | "unbooked" | "unbooked_partial" | "draft" | "none";
+
 export type DeliveryListSummary = {
   id: string;
   number: string;
@@ -57,10 +61,17 @@ export type DeliveryListSummary = {
   created_by_email: string;
   created_at: string;
   updated_at: string;
+  order_id?: string | null;
+  order_number?: string | null;
+  order_status?: string | null;
+  reservation_status?: string | null;
+  booking_state?: BookingState;
 };
 
 export type ItemStock = {
-  total_quantity: string;
+  total_quantity: string; // PHYSICAL stock on hand
+  reserved_quantity?: string; // committed to sales orders
+  available_quantity?: string; // on hand minus reserved
   product_active: boolean;
   unit_allows_fractions: boolean;
   exceeds_available: boolean;
@@ -130,6 +141,58 @@ export type DispatchDetail = DispatchSummary & {
   stock_status: "ok" | "unavailable" | "not-needed";
   lines_exceeding_stock: number;
   stock_notice: string;
+};
+
+// ---- sales orders (Step 23) ---------------------------------------------------------------------------------------------------
+export type OrderStatus = "pending_reservation" | "active" | "delivered" | "closed" | "cancelled" | "failed";
+export type ReservationStatus = "pending" | "reserved" | "updating" | "consumed" | "released" | "none";
+
+export type OrderSummary = {
+  id: string;
+  number: string;
+  client: { id: string; name: string; is_active: boolean };
+  delivery_list: { id: string; number: string; status: ListStatus };
+  status: OrderStatus;
+  reservation_status: ReservationStatus;
+  origin: "order" | "list";
+  version: number;
+  product_count: number;
+  created_by_email: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  history_expires_at: string | null;
+  pending_action: string | null;
+  last_error: string | null;
+  notes: string | null;
+};
+
+export type OrderLine = {
+  id: string;
+  product_id: string;
+  product_sku: string;
+  product_name: string;
+  unit: string;
+  unit_allows_fractions: boolean | null;
+  ordered_quantity: string;
+  dispatched_quantity: string;
+  pending_quantity: string;
+  remaining_quantity: string;
+  stock: { total_quantity: string; reserved_quantity: string; available_quantity: string; reserved_for_order: string; product_active: boolean } | null;
+};
+
+export type OrderDetail = OrderSummary & {
+  lines: OrderLine[];
+  stock_status: "ok" | "unavailable";
+  dispatches: DispatchSummary[];
+  can_edit: boolean;
+  edit_blocked_reason: string | null;
+  can_cancel: boolean;
+  can_cancel_remaining: boolean;
+  cancel_blocked_reason: string | null;
+  can_dispatch: boolean;
+  message: string | null;
 };
 
 export type DeliveryListDetail = DeliveryListSummary & {
@@ -286,6 +349,27 @@ export function listDeliveryLists(token: string, filters: ListFilters) {
   return getPaged<DeliveryListSummary>("/api/v1/sales/delivery-lists", params, token);
 }
 
+export type OrderView = "active" | "delivered";
+
+/** Orders still to be delivered (active), or completed within the last 24 hours (delivered). The 24-hour cutoff is applied by the Sales Service. */
+export function listOrders(token: string, view: OrderView, q = "") {
+  const params = new URLSearchParams({ view, limit: "100", offset: "0" });
+  if (q) params.set("q", q);
+  return getPaged<OrderSummary>("/api/v1/sales/orders", params, token);
+}
+
+/** Delivery lists that do NOT belong to a sales order: drafts, and older Ready lists made before stock reservations existed. */
+export function listUnlinkedLists(token: string) {
+  const params = new URLSearchParams({ has_order: "false", limit: "100", offset: "0" });
+  return getPaged<DeliveryListSummary>("/api/v1/sales/delivery-lists", params, token);
+}
+
+export async function getOrder(token: string, id: string): Promise<{ ok: true; order: OrderDetail } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/orders/${id}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, order: result.data };
+}
+
 export async function getDeliveryList(token: string, id: string): Promise<{ ok: true; list: DeliveryListDetail } | Failure> {
   const result = await salesRequest("GET", `/api/v1/sales/delivery-lists/${id}`, token);
   if (!result || result.status !== 200) return failure(result);
@@ -385,6 +469,8 @@ export function describeSalesFailure(result: SalesResult, notFound = "Not found.
         message: text ?? "That change conflicts with existing data.",
         ...(detail && typeof detail === "object" && !Array.isArray(detail) ? { code: detail.code, item: detail.item } : {}),
       };
+    case 202:
+      return { status: 202, message: text ?? "The stock booking is not confirmed yet." };
     case 422: {
       const fieldErrors: Record<string, string> = {};
       if (Array.isArray(detail)) {

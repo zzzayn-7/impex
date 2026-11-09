@@ -48,7 +48,7 @@ def test_a_full_dispatch_deducts_the_goods_and_completes_the_list(api, depot, in
     assert draft["number"] == "DS-000001" and draft["status"] == "draft" and draft["editable"] is True
     assert (draft["tracking_reference"], draft["delivery_address"], draft["transport_details"]) == ("TRK-77", "1 Dock Rd", "Truck 4")
     assert draft["delivery_list"]["number"] == "DL-000001" and draft["client"]["name"] == "Acme Ltd"
-    assert stock(inventory, depot, "bolt") == 40 and inventory.postings() == [] and inventory.writes() == []  # a draft deducts nothing
+    assert stock(inventory, depot, "bolt") == 40 and inventory.postings() == [] and inventory.deduction_writes() == []  # a draft deducts nothing
 
     response = api.confirm(draft["id"])
     assert response.status_code == 200, response.text
@@ -86,7 +86,7 @@ def test_the_posting_carries_only_ids_quantities_and_units_never_a_price(api, de
     api.confirm(api.draft(ready["id"], [bolt_line(4)])["id"])
     (body,) = seen
     assert set(body) == {"dispatch_number", "delivery_list_number", "lines"} and body["delivery_list_number"] == "DL-000001"
-    assert all(set(l) == {"line_id", "product_id", "quantity", "unit"} for l in body["lines"])  # no warehouse, no price
+    assert all(set(l) == {"line_id", "product_id", "quantity", "unit", "order_line_id"} for l in body["lines"])  # no warehouse, no price; the order line whose reservation it consumes
 
 
 # =====================================================================================================
@@ -215,15 +215,15 @@ def test_confirming_the_same_dispatch_many_times_at_once_deducts_once(api, depot
 # Stock: never negative, nothing deducted before confirmation
 # =====================================================================================================
 def test_not_enough_stock_keeps_the_draft_and_deducts_nothing(api, depot, inventory, ready, bolt_line, flour_line):
-    big = api.ready_list(depot, items=(("bolt", 50),), client_name="Big")
-    draft = api.draft(big["id"], [sent(big, depot["bolt"], 45)])  # saving is fine: stock may arrive before dispatch
-    assert draft["lines_exceeding_stock"] == 1 and d(draft["lines"][0]["available_quantity"]) == 40
+    big = api.ready_list(depot, items=(("bolt", 20),), client_name="Big")  # 40 on hand, 15 booked by the fixture: 25 were available, 20 are booked now
+    draft = api.draft(big["id"], [sent(big, depot["bolt"], 20)])
+    inventory.stock[depot["bolt"]] = Decimal(12)  # stock vanished outside the system (a stock-take, a loss): even booked goods are not there
     refused = api.confirm(draft["id"])
-    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "insufficient_stock" and "40 pcs of Steel bolt in stock" in refused.json()["detail"]["message"]
-    assert api.get_dispatch(draft["id"])["status"] == "draft" and inventory.postings() == [] and stock(inventory, depot, "bolt") == 40
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "insufficient_stock" and "12 pcs of Steel bolt in stock" in refused.json()["detail"]["message"]
+    assert api.get_dispatch(draft["id"])["status"] == "draft" and inventory.postings() == [] and stock(inventory, depot, "bolt") == 12
     assert api.detail(big["id"])["status"] == "ready" and item_of(api.detail(big["id"]), depot["bolt"])["pending_quantity"] == "0.0000"
-    api.put_lines(draft["id"], [sent(big, depot["bolt"], 40)])  # edited down to what is there: now it goes
-    assert api.confirm(draft["id"]).status_code == 200 and stock(inventory, depot, "bolt") == 0
+    inventory.stock[depot["bolt"]] = Decimal(40)  # the stock is back: now it goes
+    assert api.confirm(draft["id"]).status_code == 200 and stock(inventory, depot, "bolt") == 20 and inventory.reserved(depot["bolt"]) == 15
 
 
 def test_the_inventory_service_refusing_for_lack_of_stock_returns_the_dispatch_to_draft(api, depot, inventory, ready, bolt_line):
@@ -262,12 +262,12 @@ def test_drafting_editing_cancelling_and_scanning_never_post_to_inventory(api, d
     api.cancel_dispatch(draft["id"])
     api.client.get(DISPATCHES, headers=api.headers)
     api.detail(ready["id"])
-    assert inventory.writes() == [] and inventory.snapshot() == snapshot and inventory.ledger == []
+    assert inventory.deduction_writes() == [] and inventory.snapshot() == snapshot and inventory.ledger == []
 
 
 def test_the_only_write_ever_made_is_the_posting_of_a_confirmed_dispatch(api, ready, inventory, bolt_line):
     api.confirm(api.draft(ready["id"], [bolt_line(3)])["id"])
-    assert [(m, p) for m, p, _ in inventory.writes()] == [("POST", "/api/v1/inventory/dispatches")]
+    assert [(m, p) for m, p, _ in inventory.deduction_writes()] == [("POST", "/api/v1/inventory/dispatches")]  # stock is deducted ONLY by a confirmed dispatch
 
 
 # =====================================================================================================
@@ -526,7 +526,7 @@ def test_goods_are_dispatched_only_against_ready_or_partially_dispatched_lists(a
 def test_a_list_with_dispatches_cannot_be_reopened_or_edited(api, depot, ready, bolt_line):
     api.confirm(api.draft(ready["id"], [bolt_line(4)])["id"])
     reopen = api.status(ready["id"], "reopen")
-    assert reopen.status_code == 409 and "can no longer be reopened" in reopen.json()["detail"]
+    assert reopen.status_code == 409 and "Edit the order" in reopen.json()["detail"]
     item = item_of(api.detail(ready["id"]), depot["bolt"])
     assert api.client.patch(f"{LISTS}/{ready['id']}/items/{item['id']}", json={"quantity": "99"}, headers=api.headers).status_code == 409
     assert api.client.delete(f"{LISTS}/{ready['id']}/items/{item['id']}", headers=api.headers).status_code == 409
@@ -539,18 +539,18 @@ def test_a_list_with_goods_dispatched_or_being_dispatched_cannot_be_cancelled(ap
     inventory.post_modes = ["timeout_before"]
     api.confirm(posting["id"])
     blocked = api.status(ready["id"], "cancel")
-    assert blocked.status_code == 409 and "cannot be cancelled" in blocked.json()["detail"]
+    assert blocked.status_code == 409 and "cancelled" in str(blocked.json()["detail"]) and "being posted" in str(blocked.json()["detail"])
     assert api.status(ready["id"], "reopen").status_code == 409
     api.confirm(posting["id"])
     assert api.detail(ready["id"])["status"] == "partially_dispatched"
     blocked = api.status(ready["id"], "cancel")
-    assert blocked.status_code == 409 and "already has goods dispatched" in blocked.json()["detail"]
+    assert blocked.status_code == 409 and "already has goods dispatched" in str(blocked.json()["detail"])
 
 
-def test_cancelling_or_reopening_a_list_cancels_its_unfinished_drafts(api, depot, ready, bolt_line):
+def test_cancelling_a_list_cancels_its_unfinished_drafts(api, depot, ready, bolt_line):
     draft = api.draft(ready["id"], [bolt_line(2)])
-    assert api.status(ready["id"], "reopen").status_code == 200
-    assert api.get_dispatch(draft["id"])["status"] == "cancelled" and api.detail(ready["id"])["status"] == "draft"
+    assert api.status(ready["id"], "cancel").status_code == 200
+    assert api.get_dispatch(draft["id"])["status"] == "cancelled" and api.detail(ready["id"])["status"] == "cancelled"
 
     other = api.ready_list(depot, items=(("bolt", 5),), client_name="Other")
     pending = api.draft(other["id"], [sent(other, depot["bolt"], 2)])
@@ -561,9 +561,7 @@ def test_cancelling_or_reopening_a_list_cancels_its_unfinished_drafts(api, depot
 def test_a_list_without_dispatches_still_behaves_as_before(api, depot):
     created = api.new_list(api.new_client("Plain")["id"])
     api.add(created["id"], depot["bolt"], 3)
-    assert api.status(created["id"], "ready").json()["status"] == "ready"
-    assert api.status(created["id"], "reopen").json()["status"] == "draft"
-    assert api.status(created["id"], "ready").json()["status"] == "ready"
+    assert api.status(created["id"], "ready").json()["status"] == "ready"  # booked now
     assert api.status(created["id"], "cancel").json()["status"] == "cancelled"
     detail = api.detail(created["id"])
     assert detail["dispatches"] == [] and detail["can_dispatch"] is False

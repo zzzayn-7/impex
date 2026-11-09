@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { api, formatMoney, INVOICE_NOTICE, jsonBody, lineAmounts, moneyExceeds, qty, sumMoney } from "@/lib/sales-browser";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { BillableLine, Client, InvoiceDetail } from "@/lib/sales";
+import QuantityInput from "@/components/ui/quantity-input";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500";
@@ -226,10 +227,10 @@ export default function InvoiceForm({
                   ) : (
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_8rem_auto] sm:items-end">
-                        <label className="text-xs font-medium text-slate-400">
-                          Quantity to bill
-                          <input aria-label={`Quantity to bill of ${l.product_name} (${l.dispatch_number})`} value={r.quantity} inputMode="decimal" placeholder="0" onChange={(e) => setRow(id, { quantity: e.target.value })} className={cellInput} />
-                        </label>
+                        <div className="text-xs font-medium text-slate-400">
+                          <label htmlFor={`bill-qty-${id}`} className="block">Quantity to bill</label>
+                          <QuantityInput id={`bill-qty-${id}`} aria-label={`Quantity to bill of ${l.product_name} (${l.dispatch_number})`} value={r.quantity} onChange={(v) => setRow(id, { quantity: v })} className="mt-1.5" />
+                        </div>
                         <label className="text-xs font-medium text-slate-400">
                           Selling price
                           <input aria-label={`Selling price of ${l.product_name} (${l.dispatch_number})`} value={r.unitPrice} inputMode="decimal" placeholder="0.00" onChange={(e) => setRow(id, { unitPrice: e.target.value })} className={cellInput} />

@@ -201,7 +201,8 @@ def test_the_usage_endpoint_counts_what_is_in_progress(client, two_orgs, interna
     assert answer["module"] == "sales"
     counts = {item["code"]: item["count"] for item in answer["blocking"] + answer["warnings"]}
     assert counts["dispatches_posting"] == 1 and counts["delivery_lists_open"] == 1 and counts["dispatches_draft"] == 0
-    assert [item["code"] for item in answer["blocking"]] == ["dispatches_posting"]
+    assert [item["code"] for item in answer["blocking"]] == ["dispatches_posting", "orders_booking"]
+    assert counts["orders_booking"] == 0 and counts["sales_orders_active"] == 1
     other = client.get(USAGE.format(two_orgs["beta_id"]), headers={"X-Internal-Key": KEY}).json()
     assert all(item["count"] == 0 for item in other["blocking"] + other["warnings"])  # scoped to the organization asked about
 

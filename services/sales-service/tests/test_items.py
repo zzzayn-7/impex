@@ -24,8 +24,9 @@ def test_adding_a_product_takes_its_details_from_the_inventory_service(api, shop
     body = response.json()
     item = body["item"]
     assert (item["product_id"], item["product_sku"], item["product_name"], item["unit"], item["quantity"]) == (shop["bolt"], "BOLT-1", "Steel bolt", "pcs", "12.0000")
-    assert body["item_count"] == 1 and "not reserved" in body["stock_notice"]
-    assert (item["stock"]["total_quantity"], item["stock"]["exceeds_available"]) == ("50", False) and "available_quantity" not in item["stock"]
+    assert body["item_count"] == 1 and "reserves nothing" in body["stock_notice"]
+    assert (item["stock"]["total_quantity"], item["stock"]["exceeds_available"]) == ("50", False)
+    assert (item["stock"]["reserved_quantity"], item["stock"]["available_quantity"]) == ("0", "50")  # physical, reserved and available are reported separately
     with session_factory() as db:
         (row,) = db.scalars(select(DeliveryListItem)).all()
     assert str(row.organization_id) == api.org_id and (row.product_sku, row.product_name, row.unit) == ("BOLT-1", "Steel bolt", "pcs")
@@ -204,14 +205,16 @@ def test_an_item_has_no_planned_warehouse(api, shop, draft):
 
 
 # --- stock is information, never a limit -------------------------------------------------------------------------------------------
-def test_more_than_available_is_allowed_but_flagged(api, shop, draft):
-    response = api.add(draft["id"], shop["bolt"], 100)  # only 50 are in stock
+def test_more_than_available_is_flagged_on_a_draft_and_refused_when_it_is_marked_ready(api, shop, draft, inventory):
+    response = api.add(draft["id"], shop["bolt"], 100)  # only 50 are in stock: a DRAFT reserves nothing, so it may exceed (with a warning)
     assert response.status_code == 201
     stock = response.json()["item"]["stock"]
     assert (stock["exceeds_available"], stock["shortfall"], stock["total_quantity"]) == (True, "50.0000", "50")
     detail = api.detail(draft["id"])
-    assert detail["items_exceeding_stock"] == 1 and "not reserved" in detail["stock_notice"] and "may change before dispatch" in detail["stock_notice"]
-    assert api.status(draft["id"], "ready").status_code == 200  # a shortage warns, it does not block
+    assert detail["items_exceeding_stock"] == 1 and "reserves nothing" in detail["stock_notice"]
+    refused = api.status(draft["id"], "ready")  # Ready books the stock: it cannot book what is not there
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "insufficient_available"
+    assert api.detail(draft["id"])["status"] == "draft" and inventory.reserved(shop["bolt"]) == 0
 
 
 def test_a_product_with_no_stock_can_still_be_listed(api, inventory, shop, draft):

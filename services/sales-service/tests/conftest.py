@@ -11,7 +11,9 @@ Run them inside Docker (so the postgres hostname and credentials are available):
 """
 import json
 import os
+import threading
 import uuid
+from collections import defaultdict
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -29,6 +31,7 @@ from app.database import get_database_url, get_db
 from app.inventory import get_inventory_client
 from app.main import app
 
+os.environ.setdefault("RESERVATION_API_KEY", "test-reservation-key")  # the shared secret the fake Inventory Service requires on reservation writes
 TEST_DB_NAME = "impex_sales_test"
 SERVICE_DIR = Path(__file__).resolve().parent.parent
 CLIENTS = "/api/v1/sales/clients"
@@ -96,7 +99,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with empty tables and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE invoice_payments, invoice_allocations, invoice_lines, invoice_requests, invoices, invoice_counters, dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
+        conn.execute(text("TRUNCATE TABLE sales_order_requests, sales_orders, sales_order_counters, invoice_payments, invoice_allocations, invoice_lines, invoice_requests, invoices, invoice_counters, dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
 
     def override_get_db():
         db = session_factory()
@@ -191,6 +194,14 @@ class FakeInventory:
         self.ledger = []  # every movement ever made by a posting
         self.posted_lines = set()
         self.post_calls = 0
+        # --- reservations (stock booked for sales orders), like the real service: totals not deltas, all lines or none, idempotent by key.
+        # Failures can be injected, one per reservation POST, in order: "timeout_before", "timeout_after", "500_before", "500_after".
+        self.res_modes = []
+        self.reservations = {}  # (org, order line id) -> {"org", "product", "source_id", "number", "original", "consumed", "released", "remaining"}
+        self.res_ops = {}  # (org, idempotency key) -> result
+        self.res_calls = 0
+        self.res_lookup_mode = None
+        self._res_lock = threading.RLock()  # the real service books under a row lock: one booking at a time
 
     # -- building the world
     def add_product(self, org: str, sku: str, name: str, unit: str = "pcs", active: bool = True) -> str:
@@ -210,12 +221,24 @@ class FakeInventory:
         user = self.directory.users.get(request.headers.get("authorization", "").removeprefix("Bearer "))
         return None if user is None else str(user.get("organization_id"))
 
+    def reserved(self, product: str) -> Decimal:
+        return sum((r["remaining"] for r in self.reservations.values() if r["product"] == product), Decimal(0))
+
+    def available(self, product: str) -> Decimal:
+        return self.stock.get(product, Decimal(0)) - self.reserved(product)
+
+    def reserved_for(self, line_id: str) -> Decimal:
+        return sum((r["remaining"] for (org, lid), r in self.reservations.items() if lid == line_id), Decimal(0))
+
     def _stock_item(self, org: str, product: dict) -> dict:
         total = max(self.stock.get(product["id"], Decimal(0)), Decimal(0))
+        reserved = self.reserved(product["id"])
         return {
             "product_id": product["id"], "sku": product["sku"], "name": product["name"], "category": "General", "unit": product["unit"],
             "unit_allows_fractions": product["unit"] in ("kg", "g", "l", "m"), "is_active": product["is_active"],
             "total_quantity": format(total, "f") if total > 0 else "0",
+            "reserved_quantity": format(reserved, "f") if reserved > 0 else "0",
+            "available_quantity": format(total - reserved, "f") if total - reserved > 0 else "0",
         }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -239,6 +262,15 @@ class FakeInventory:
             return httpx.Response(200, json={"items": items})
         if request.method == "POST" and path == "/api/v1/inventory/dispatches":
             return self._post_dispatch(org, request)
+        if request.method == "POST" and path in ("/api/v1/inventory/reservations", "/api/v1/inventory/reservations/release"):
+            return self._reserve(org, request, release=path.endswith("/release"))
+        if request.method == "GET" and path.startswith("/api/v1/inventory/reservations/by-key/"):
+            if self.res_lookup_mode == "500":
+                return httpx.Response(500, json={"detail": "boom"})
+            found = self.res_ops.get((org, path.rsplit("/", 1)[1]))
+            if found is None:
+                return httpx.Response(404, json={"detail": "No reservation was made with this key."})
+            return httpx.Response(200, json={**found, "replayed": True})
         if request.method == "GET" and path.startswith("/api/v1/inventory/dispatches/by-key/"):
             if self.lookup_mode == "500":
                 return httpx.Response(500, json={"detail": "boom"})
@@ -268,6 +300,10 @@ class FakeInventory:
             movements = []
             for line in body["lines"]:
                 quantity = Decimal(line["quantity"])
+                if line.get("order_line_id"):
+                    reservation = self.reservations[(org, line["order_line_id"])]
+                    reservation["consumed"] += quantity
+                    reservation["remaining"] -= quantity
                 balance = self.stock.get(line["product_id"], Decimal(0)) - quantity
                 self.stock[line["product_id"]] = balance
                 movement = {"id": str(uuid.uuid4()), "line_id": line["line_id"], "product_id": line["product_id"],
@@ -288,11 +324,18 @@ class FakeInventory:
 
     def _validate_posting(self, org: str, body: dict):
         """(status, message) if the real service would refuse the whole posting, else None. Nothing is applied before this passes."""
-        needed = {}
+        needed, consumed_by_product = {}, defaultdict(Decimal)
         for line in body["lines"]:
             product = self.products.get(org, {}).get(line["product_id"])
             if product is None:
                 return 404, "Product not found."
+            if line.get("order_line_id"):
+                reservation = self.reservations.get((org, line["order_line_id"]))
+                if reservation is None or reservation["product"] != line["product_id"] or reservation["remaining"] <= 0:
+                    return 409, {"code": "no_reservation", "message": "No stock is reserved for this order line."}
+                if Decimal(line["quantity"]) > reservation["remaining"]:
+                    return 409, {"code": "exceeds_reservation", "message": "More than is reserved for this order line."}
+                consumed_by_product[line["product_id"]] += Decimal(line["quantity"])
             if "warehouse_id" in line:
                 return 422, "Extra inputs are not permitted"  # the real service no longer knows warehouses
             if not product["is_active"]:
@@ -305,9 +348,109 @@ class FakeInventory:
                 return 409, "One of these dispatch lines was already deducted from stock by an earlier posting."
             needed[line["product_id"]] = needed.get(line["product_id"], Decimal(0)) + Decimal(line["quantity"])
         for product_id, quantity in needed.items():
-            if self.stock.get(product_id, Decimal(0)) < quantity:
+            free = self.stock.get(product_id, Decimal(0)) - (self.reserved(product_id) - consumed_by_product[product_id])
+            if free < quantity:
                 return 409, "Insufficient stock: not enough of the product."
         return None
+
+    # -- reservations
+    def _reserve(self, org: str, request: httpx.Request, release: bool) -> httpx.Response:
+        with self._res_lock:
+            return self._reserve_locked(org, request, release)
+
+    def _reserve_locked(self, org: str, request: httpx.Request, release: bool) -> httpx.Response:
+        self.res_calls += 1
+        mode = self.res_modes.pop(0) if self.res_modes else None
+        if mode == "timeout_before":
+            raise httpx.ReadTimeout("no answer")
+        if mode == "500_before":
+            return httpx.Response(500, json={"detail": "boom"})
+        key, body = request.headers.get("idempotency-key", ""), json.loads(request.content)
+        if release and set(body) != {"source_id", "source_reference"}:  # the real service forbids extra fields on a release
+            return httpx.Response(422, json={"detail": [{"loc": ["body"], "msg": "Extra inputs are not permitted"}]})
+        if not request.headers.get("x-internal-key"):
+            return httpx.Response(403, json={"detail": "Only the Sales Service can change reservations."})
+        previous = self.res_ops.get((org, key))
+        if previous is not None:
+            result, code = {**previous, "replayed": True}, 200
+        else:
+            outcome = self._apply_reservation(org, body, release)
+            if isinstance(outcome, httpx.Response):
+                return outcome
+            result = {"operation_id": str(uuid.uuid4()), "kind": "release" if release else "reserve", "source_id": body["source_id"], "source_reference": body["source_reference"], "replayed": False, "lines": outcome}
+            self.res_ops[(org, key)] = result
+            code = 201
+        if mode == "timeout_after":
+            raise httpx.ReadTimeout("the answer was lost")
+        if mode == "500_after":
+            return httpx.Response(500, json={"detail": "boom"})
+        return httpx.Response(code, json=result)
+
+    def _apply_reservation(self, org: str, body: dict, release: bool):
+        source = body["source_id"]
+        wanted = {} if release else {l["line_id"]: l for l in body["lines"]}
+        mine = {k: dict(v) for k, v in self.reservations.items() if k[0] == org and v["source_id"] == source}
+        free = {}
+
+        def free_of(product):
+            if product not in free:
+                free[product] = self.stock.get(product, Decimal(0)) - self.reserved(product)
+            return free[product]
+
+        for (_, line_id), r in mine.items():
+            target = wanted.get(line_id)
+            desired = Decimal(0) if target is None else Decimal(target["quantity"]) - r["consumed"]
+            if target is not None and desired < 0:
+                return httpx.Response(409, json={"detail": {"code": "below_dispatched", "message": "Already dispatched."}})
+            if desired < r["remaining"]:
+                give = r["remaining"] - desired
+                r["released"] += give
+                r["remaining"] -= give
+                free[r["product"]] = free_of(r["product"]) + give
+        shortages = []
+        for line_id, line in wanted.items():
+            product = self.products.get(org, {}).get(line["product_id"])
+            if product is None:
+                return httpx.Response(404, json={"detail": "Product not found."})
+            r = mine.get((org, line_id))
+            consumed = r["consumed"] if r else Decimal(0)
+            own = r["remaining"] if r else Decimal(0)
+            more = Decimal(line["quantity"]) - consumed - own
+            if more <= 0:
+                continue
+            if not product["is_active"]:
+                return httpx.Response(409, json={"detail": "archived"})
+            if product["unit"] != line["unit"]:
+                return httpx.Response(409, json={"detail": "A quantity is never converted"})
+            if product["unit"] not in ("kg", "g", "l", "m") and Decimal(line["quantity"]) != Decimal(line["quantity"]).to_integral_value():
+                return httpx.Response(422, json={"detail": "Quantity must be a whole number"})
+            available = free_of(line["product_id"])
+            if available < more:
+                reserved_elsewhere = self.reserved(line["product_id"]) - sum((v["remaining"] for k, v in self.reservations.items() if k[0] == org and v["source_id"] == source and v["product"] == line["product_id"]), Decimal(0))
+                shortages.append({"product_id": line["product_id"], "name": product["name"], "unit": product["unit"], "requested": line["quantity"],
+                                  "available": format(max(available + own, Decimal(0)), "f"), "free": format(max(available, Decimal(0)), "f"),
+                                  "on_hand": format(self.stock.get(line["product_id"], Decimal(0)), "f"), "reserved_elsewhere": format(max(reserved_elsewhere, Decimal(0)), "f")})
+                continue
+            free[line["product_id"]] = available - more
+            if r is None:
+                mine[(org, line_id)] = {"org": org, "product": line["product_id"], "source_id": source, "number": body["source_reference"],
+                                        "original": more, "consumed": Decimal(0), "released": Decimal(0), "remaining": more}
+            else:
+                r["original"] += more
+                r["remaining"] += more
+        if shortages:
+            message = " ".join(f"Only {s['available']} {s['unit']} of {s['name']} available." for s in shortages)
+            return httpx.Response(409, json={"detail": {"code": "insufficient_available", "message": message, "shortages": shortages}})
+        self.reservations.update(mine)
+        return [
+            {"line_id": line_id, "product_id": r["product"], "original_quantity": format(r["original"], "f"), "consumed_quantity": format(r["consumed"], "f"),
+             "released_quantity": format(r["released"], "f"), "remaining_quantity": format(r["remaining"], "f"),
+             "status": "active" if r["remaining"] > 0 else ("fulfilled" if r["consumed"] > 0 else "released")}
+            for (_, line_id), r in mine.items()
+        ]
+
+    def reservation_posts(self):
+        return [r for r in self.requests if r[0] == "POST" and r[1].startswith("/api/v1/inventory/reservations")]
 
     def quantity(self, product: str) -> Decimal:
         return self.stock.get(product, Decimal(0))
@@ -321,6 +464,10 @@ class FakeInventory:
 
     def writes(self):
         return [r for r in self.requests if r[0] != "GET"]
+
+    def deduction_writes(self):
+        """Every write that is NOT a reservation request: the only way stock is ever deducted (a dispatch posting)."""
+        return [r for r in self.requests if r[0] != "GET" and not r[1].startswith("/api/v1/inventory/reservations")]
 
 
 @pytest.fixture

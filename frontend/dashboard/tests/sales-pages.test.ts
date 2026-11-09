@@ -44,7 +44,7 @@ const detail = (s: ReturnType<typeof summary>, productName: string, exceeds = fa
     stock: { total_quantity: exceeds ? "5.0000" : "40.0000", product_active: true, unit_allows_fractions: false, exceeds_available: exceeds, shortfall: exceeds ? "7.0000" : "0" },
   }],
   stock_status: "ok", items_exceeding_stock: exceeds ? 1 : 0,
-  stock_notice: "Stock is not reserved by a delivery list. Saving it, marking it Ready or cancelling it never changes inventory, and the quantities on hand may change before dispatch.",
+  stock_notice: "A draft list reserves nothing. Marking it Ready books its quantities as a sales order (they can then no longer be taken by anything else); physical stock is deducted only when a dispatch is confirmed.",
 });
 
 const alphaClient = client(ALPHA_CLIENT, "Alpha Acme");
@@ -77,6 +77,11 @@ function stubWorld(options: { status?: number } = {}) {
       const page = (items: any[]) => json(200, { items, total: items.length, limit: Number(params.get("limit")), offset: Number(params.get("offset")) });
       if (path === "/clients") return page(org.clients);
       if (path === "/delivery-lists") return page(org.lists.filter((l) => !params.get("client_id") || l.client.id === params.get("client_id")));
+      if (path === "/orders") return page(params.get("view") === "delivered" ? [] : org.lists.map((l: any) => ({
+        id: `o-${l.id}`, number: `SO-${l.number.slice(3)}`, client: l.client, delivery_list: { id: l.id, number: l.number, status: l.status }, status: "active", reservation_status: "reserved",
+        origin: "order", version: 1, product_count: l.item_count, created_by_email: "a@b.c", created_at: now, updated_at: now, completed_at: null, cancelled_at: null,
+        history_expires_at: null, pending_action: null, last_error: null, notes: null,
+      })));
       const match = path.match(/^\/delivery-lists\/([^/]+)$/);
       if (match) return org.details[match[1]] ? json(200, org.details[match[1]]) : json(404, { detail: "Delivery list not found." });
       return json(404, {});
@@ -96,25 +101,30 @@ afterEach(() => vi.unstubAllGlobals());
 const render = async (element: Promise<any>) => renderToStaticMarkup(await element);
 
 describe("Delivery Lists page", () => {
-  it("lists the lists with number, client, reference, item count and status, plus the create and scan buttons", async () => {
+  it("shows every active order as a card with its client, numbers and the three actions, plus the Create Order button (and no Scan products button at the top)", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(DeliveryListsPage({ searchParams: {} }));
-    for (const expected of ["Delivery Lists", "DL-000001", "Alpha Acme", "Alpha Acme-PO", "Draft", "New Delivery List", "Scan products", "All clients", "All statuses", "Showing 1–1 of 1"]) {
+    for (const expected of ["Delivery Lists", "DL-000001", "SO-000001", "Alpha Acme", "Create Order", "Active", "Delivered History", "Edit", "Remove", "View List", "Draft and older lists"]) {
       expect(html, expected).toContain(expected);
     }
+    expect(html).not.toContain("Scan products");
+    expect(html).not.toContain("Showing 1");
   });
 
-  it("passes only whitelisted filters (valid client id, known status, text, page) to the service", async () => {
+  it("asks for the active orders (or the delivered ones) and the lists that are not orders, reading only the view from the address", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    await DeliveryListsPage({ searchParams: { q: "po", client: ALPHA_CLIENT, status: "ready", page: "2", organization_id: BETA_CLIENT, sort: "x" } });
-    const call = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/delivery-lists")!;
-    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ q: "po", client_id: ALPHA_CLIENT, status: "ready", limit: "25", offset: "25" });
+    await DeliveryListsPage({ searchParams: { view: "history", organization_id: BETA_CLIENT, q: "x" } });
+    const orders = salesCalls().filter((c) => new URL(c.url).pathname === "/api/v1/sales/orders");
+    expect(orders).toHaveLength(1);
+    expect(Object.fromEntries(new URL(orders[0].url).searchParams)).toEqual({ view: "delivered", limit: "100", offset: "0" });
+    expect(salesCalls().some((c) => new URL(c.url).pathname === "/api/v1/sales/delivery-lists")).toBe(false); // history shows no drafts
     calls = [];
-    await DeliveryListsPage({ searchParams: { client: "' OR 1=1", status: "dispatched", page: "banana" } });
-    const clean = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/delivery-lists")!;
-    expect([...new URL(clean.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
+    await DeliveryListsPage({ searchParams: { view: "banana" } });
+    expect(Object.fromEntries(new URL(salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/orders")!.url).searchParams)).toEqual({ view: "active", limit: "100", offset: "0" });
+    const unlinked = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/delivery-lists")!;
+    expect(Object.fromEntries(new URL(unlinked.url).searchParams)).toEqual({ has_order: "false", limit: "100", offset: "0" });
   });
 
   it("two organizations: each administrator's page contains only their own lists and clients", async () => {
@@ -125,8 +135,8 @@ describe("Delivery Lists page", () => {
     const beta = await render(DeliveryListsPage({ searchParams: {} }));
     expect(alpha).toContain("Alpha Acme");
     expect(beta).toContain("Beta Globex");
-    for (const leak of ["Beta Globex", "Beta Globex-PO"]) expect(alpha, `alpha saw ${leak}`).not.toContain(leak);
-    for (const leak of ["Alpha Acme", "Alpha Acme-PO"]) expect(beta, `beta saw ${leak}`).not.toContain(leak);
+    for (const leak of ["Beta Globex"]) expect(alpha, `alpha saw ${leak}`).not.toContain(leak);
+    for (const leak of ["Alpha Acme"]) expect(beta, `beta saw ${leak}`).not.toContain(leak);
   });
 
   it("uses the session token, never names an organization, and only reads", async () => {
@@ -157,20 +167,22 @@ describe("Delivery Lists page", () => {
     stubWorld({ status: 403 });
     const inactive = await render(DeliveryListsPage({ searchParams: {} }));
     expect(inactive).toContain("currently inactive or unavailable");
-    expect(inactive).not.toContain("Alpha Acme-PO");
+    expect(inactive).not.toContain("Alpha Acme");
     stubWorld({ status: 503 });
     expect(await render(DeliveryListsPage({ searchParams: {} }))).toContain("temporarily unavailable");
     stubWorld({ status: 401 });
     await expect(DeliveryListsPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
   });
 
-  it("shows an empty-state message, and a different one when filters match nothing", async () => {
+  it("shows an empty-state message with a link to Create Order, and a calm one for an empty history", async () => {
     stubWorld();
     orgs["token-alpha"].lists = [];
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     try {
-      expect(await render(DeliveryListsPage({ searchParams: {} }))).toContain("No delivery lists yet");
-      expect(await render(DeliveryListsPage({ searchParams: { q: "zzz" } }))).toContain("No delivery lists match these filters");
+      const empty = await render(DeliveryListsPage({ searchParams: {} }));
+      expect(empty).toContain("No active orders yet");
+      expect(empty).toContain('href="/sales-orders/new"');
+      expect(await render(DeliveryListsPage({ searchParams: { view: "history" } }))).toContain("Nothing was fully delivered in the last 24 hours.");
     } finally {
       orgs["token-alpha"].lists = [summary(ALPHA_LIST, "DL-000001", alphaClient)];
     }
@@ -184,8 +196,8 @@ describe("Delivery list detail page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(ALPHA_LIST);
-    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "In stock now", "short by 7", "Mark Ready", "Cancel list", "Scan products for this list",
-      "Stock is not reserved", "never changes inventory", "may change before dispatch", "asks for more than is available"]) {
+    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "on hand", "short by 7", "Mark Ready", "Cancel list", "Scan products for this list",
+      "reserves nothing", "books its quantities", "deducted only when a dispatch is confirmed", "asks for more than is available"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/scan?list=${ALPHA_LIST}"`);

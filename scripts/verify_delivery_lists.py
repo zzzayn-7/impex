@@ -161,7 +161,7 @@ def main() -> int:
         """Every balance and every movement of the organization, as the Inventory database holds them."""
         balances = psql("impex_inventory", f"SELECT coalesce(string_agg(product_id || ':' || quantity::text, ',' ORDER BY product_id), '') FROM stock_balances WHERE organization_id = '{org}'")
         movements = psql("impex_inventory", f"SELECT count(*) || '/' || coalesce(max(created_at)::text, '') FROM stock_movements WHERE organization_id = '{org}'")
-        operations = psql("impex_inventory", f"SELECT count(*) FROM stock_operations WHERE organization_id = '{org}'")
+        operations = psql("impex_inventory", f"SELECT count(*) FROM stock_operations WHERE organization_id = '{org}' AND kind NOT IN ('reserve', 'release')")  # booking stock is not a stock change
         return balances, movements, operations
 
     def sales_counts(org):
@@ -257,7 +257,7 @@ def main() -> int:
         s, text, _, _ = portal("a", "GET", "/api/sales/delivery-lists?q=globex")
         check("...and by client name", [l["number"] for l in jbody(text)["items"]] == ["DL-000003"])
         status, html, _ = page("a", "/delivery-lists")
-        check("the Delivery Lists page shows A's lists and none of B's", status == 200 and "DL-000001" in html and "Acme Ltd" in html and "New Delivery List" in html and "Scan products" in html, status)
+        check("the Delivery Lists page shows A's lists and none of B's", status == 200 and "DL-000001" in html and "Acme Ltd" in html and "Draft and older lists" in html and "Create Order" in html and "Scan products" in html, status)
 
         print("\n== 3. scan / look up products and add them with explicit quantities")
         s, scanned = resolve("a", bolt_label)
@@ -268,12 +268,12 @@ def main() -> int:
         item = body.get("item", {})
         check("the scanned bolt is added with the typed quantity (201)", s == 201 and item.get("quantity") == "12.0000" and body.get("item_count") == 1, (s, body))
         check("name, SKU and unit come from the Inventory Service", (item.get("product_name"), item.get("product_sku"), item.get("unit")) == ("DLA steel bolt", "DL-BOLT", "pcs"), item)
-        check("current stock is shown: 50 in stock, and no warehouse anywhere", item["stock"]["total_quantity"] == "50.0000" and "available_quantity" not in item["stock"] and "planned_warehouse_code" not in item, item.get("stock"))
+        check("current stock is shown: 50 in stock, and no warehouse anywhere", item["stock"]["total_quantity"] == "50.0000" and item["stock"]["available_quantity"] in ("50", "50.0000") and "planned_warehouse_code" not in item, item.get("stock"))
         s, body = add("a", l1["id"], a_flour["id"], "1.5")
         flour_item = body.get("item", {})
         check("a second product (kg, decimals) goes onto the same client list (201)", s == 201 and flour_item.get("quantity") == "1.5000" and body.get("item_count") == 2, (s, body))
         s, d = detail("a", l1["id"])
-        check("the list shows both products and the notice that stock is not reserved", [i["product_sku"] for i in d["items"]] == ["DL-BOLT", "DL-FLOUR"] and "not reserved" in d["stock_notice"] and "may change before dispatch" in d["stock_notice"], d)
+        check("the list shows both products and the notice that stock is not reserved", [i["product_sku"] for i in d["items"]] == ["DL-BOLT", "DL-FLOUR"] and "reserves nothing" in d["stock_notice"] and "books its quantities" in d["stock_notice"], d)
         s, body = add("a", l1["id"], a_flour["id"], "99999999999999.9999")
         check("a huge quantity that fits the column is still only a duplicate refusal here, not an error (409)", s == 409, (s, body))
 
@@ -338,7 +338,7 @@ def main() -> int:
         s, text, _, _ = portal("a", "POST", f"/api/sales/delivery-lists/{l2['id']}/items", {"productId": a_flour["id"], "quantity": "1"})
         check("a Ready list is read-only (409, says to reopen)", s == 409 and "reopen" in jbody(text).get("error", ""), (s, text[:100]))
         s, text, _, _ = portal("a", "POST", f"/api/sales/delivery-lists/{l2['id']}/reopen")
-        check("a Ready list can be reopened as a draft (200)", s == 200 and jbody(text)["list"]["status"] == "draft")
+        check("a Ready list is BOOKED (a sales order): it cannot be reopened (409), its order is edited instead", s == 409 and "Edit the order" in jbody(text).get("error", ""), (s, text[:140]))
         portal("a", "POST", f"/api/sales/delivery-lists/{l2['id']}/ready")
         s, text, _, _ = portal("a", "POST", f"/api/sales/delivery-lists/{l2['id']}/cancel")
         check("a list can be cancelled (200), and is kept with its items", s == 200 and jbody(text)["list"]["status"] == "cancelled" and len(jbody(text)["list"]["items"]) == 1)
@@ -347,11 +347,11 @@ def main() -> int:
         for action in ("dispatch", "deduct", "reserve"):
             check(f"there is no '{action}' action", portal("a", "POST", f"/api/sales/delivery-lists/{l1['id']}/{action}")[0] == 404)
         s, text, _, _ = portal("a", "POST", f"/api/sales/delivery-lists/{l1['id']}/ready")
-        check("the list with a shortage can still be marked Ready (a warning, not a block)", s == 200, (s, text[:100]))
+        check("marking a list Ready BOOKS its stock (it becomes a sales order): 200, Ready, booked", s == 200 and jbody(text)["list"]["status"] == "ready" and jbody(text)["list"]["booking_state"] == "booked", (s, text[:160]))
         s, text, _, _ = portal("a", "GET", "/api/sales/delivery-lists?status=cancelled")
         check("lists can be filtered by status", [l["number"] for l in jbody(text)["items"]] == ["DL-000002"])
         status, html, _ = page("a", f"/delivery-lists/{l1['id']}")
-        check("the list page shows items, availability and the 'not reserved' notice", status == 200 and all(x in html for x in ("DL-000001", "DLA steel bolt", "In stock now", "Stock is not reserved", "Reopen as draft")), status)
+        check("the list page shows items, availability and the 'not reserved' notice", status == 200 and all(x in html for x in ("DL-000001", "DLA steel bolt", "on hand", "its stock is reserved")), status)
 
         print("\n== 8. THE rule: inventory is untouched by all of it")
         after = {k: inventory_state(org_ids[k]) for k in ("a", "b")}
@@ -360,7 +360,7 @@ def main() -> int:
         check("no stock movement mentions a delivery list", psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE organization_id = '{org_ids['a']}' AND (reason ILIKE '%deliver%' OR reason ILIKE '%DL-0%')") == "0")
         check("the Sales database has no stock tables at all", psql("impex_sales", "SELECT string_agg(table_name, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'")
               == "alembic_version,clients,delivery_list_counters,delivery_list_items,delivery_lists,dispatch_counters,dispatch_lines,dispatch_requests,dispatches,"
-              "invoice_allocations,invoice_counters,invoice_lines,invoice_payments,invoice_requests,invoices")
+              "invoice_allocations,invoice_counters,invoice_lines,invoice_payments,invoice_requests,invoices,sales_order_counters,sales_order_requests,sales_orders")
 
         print("\n== 9. inactive clients")
         s, text, _, _ = portal("a", "POST", f"/api/sales/clients/{acme['id']}/deactivate")

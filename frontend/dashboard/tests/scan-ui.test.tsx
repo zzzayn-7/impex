@@ -146,10 +146,11 @@ describe("Scan Product: what is shown after a scan", () => {
     await user.type(scanBox(), "IMX-ABC234DEFGHJ{Enter}");
     const card = await screen.findByRole("region", { name: "Scanned product" });
     const text = card.textContent!;
-    for (const expected of ["Steel bolt", "BOLT-1", "Unit: pcs", "whole numbers only", "Impex label", "In stock"]) {
+    for (const expected of ["Steel bolt", "BOLT-1", "Unit: pcs", "whole numbers only", "Impex label", "Physical stock", "Reserved for orders", "Available to order"]) {
       expect(text, expected).toContain(expected);
     }
-    expect(within(card).getByText("In stock").parentElement!.textContent).toContain("50 pcs");
+    expect(within(card).getByText("Physical stock").parentElement!.textContent).toContain("50 pcs");
+    expect(within(card).getByText("Available to order").parentElement!.textContent).toContain("50 pcs");
     expect(text.toLowerCase()).not.toContain("warehouse");
     for (const name of ["Stock In", "Stock Out", "Add to Deliverables", "Prepare Dispatch"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
     expect(within(card).queryByRole("button", { name: "Transfer" })).toBeNull(); // there are no transfers any more

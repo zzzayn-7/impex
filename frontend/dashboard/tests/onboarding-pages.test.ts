@@ -138,7 +138,7 @@ describe("the dashboard waits for setup", () => {
 // =====================================================================================================
 // every other page (manual navigation before completion)
 // =====================================================================================================
-const LAYOUTS = ["(dashboard)", "clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "scan", "settings", "stock", "suppliers"];
+const LAYOUTS = ["(dashboard)", "clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "sales-orders", "scan", "settings", "stock", "suppliers"];
 
 describe("typing a page's address cannot skip the wizard", () => {
   it.each(LAYOUTS)("%s: an incomplete setup is redirected to /setup", async (name) => {

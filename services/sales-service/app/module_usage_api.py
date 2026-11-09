@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import DeliveryList, Dispatch, Invoice
+from app.models import DeliveryList, Dispatch, Invoice, SalesOrder
 
 router = APIRouter(include_in_schema=False)
 
@@ -42,8 +42,10 @@ def module_usage(organization_id: uuid.UUID, db: Session = Depends(get_db)):
         "module": "sales",
         "blocking": [
             {"code": "dispatches_posting", "label": "Dispatches being posted to stock", "count": _count(db, Dispatch, organization_id, "posting")},
+            {"code": "orders_booking", "label": "Sales orders whose stock booking is not confirmed yet", "count": _count(db, SalesOrder, organization_id, "pending_reservation")},
         ],
         "warnings": [
+            {"code": "sales_orders_active", "label": "Active sales orders (their stock stays reserved while Sales is off)", "count": _count(db, SalesOrder, organization_id, "active")},
             {"code": "delivery_lists_open", "label": "Delivery lists not yet fully dispatched", "count": _count(db, DeliveryList, organization_id, "draft", "ready", "partially_dispatched")},
             {"code": "dispatches_draft", "label": "Draft dispatches", "count": _count(db, Dispatch, organization_id, "draft")},
             {"code": "invoices_draft", "label": "Draft invoices", "count": _count(db, Invoice, organization_id, "draft")},

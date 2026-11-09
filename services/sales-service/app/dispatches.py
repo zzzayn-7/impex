@@ -5,6 +5,11 @@ The rules that matter most:
   * Creating a delivery list, preparing / saving / reviewing a dispatch, and scanning or locating products NEVER change stock.
     Stock changes only when a dispatch is confirmed, and only through the Inventory Service's own audited, idempotent
     operation (see InventoryGateway.post_dispatch). Prices are never sent, so a catalog price can never be touched.
+  * Dispatching a SALES ORDER does not book anything a second time: its quantities are already reserved. Each posted line names its
+    order line, and the Inventory Service deducts the stock AND consumes that reservation in the same transaction (so physical stock
+    and reserved stock can never disagree, and a retried confirmation can never consume twice). When the last line is confirmed the
+    order becomes Delivered, in the same transaction that confirms the dispatch. A list with no order (older lists) is dispatched
+    against AVAILABLE stock only - it can never eat into stock booked for an order.
   * Confirming is a DURABLE two-service workflow:
         1. (short transaction)  the intent is saved: draft -> posting. The quantities are now reserved against the list, so a
                                  second dispatch cannot take them, and the dispatch is frozen.
@@ -36,6 +41,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, refuse_unless_recovering
+from app import orders
 from app.delivery import conflict, get_list_or_404, human, list_items
 from app.inventory import InventoryGateway, InventoryUnavailable, PostingOutcome, ProductInfo, unavailable_error
 from app.models import Client, DeliveryList, DeliveryListItem, Dispatch, DispatchCounter, DispatchLine, DispatchRequest
@@ -213,12 +219,16 @@ def detail(db: Session, tenant: TenantContext, gateway: Optional[InventoryGatewa
             infos = gateway.products({l.product_id for l in lines})
         except InventoryUnavailable:
             stock_status = "unavailable"
+    booked = False
+    if lines:
+        order = orders.order_for_list(db, tenant, dispatch.delivery_list_id)
+        booked = order is not None and order.status == "active"
     rows, exceeding = [], 0
     for l in lines:
         requested = items[l.delivery_list_item_id].quantity
         confirmed, pending = elsewhere.get(l.delivery_list_item_id, (ZERO, ZERO))
         info = infos.get(l.product_id)
-        available = info.total if info is not None else None
+        available = (info.total if booked else info.available) if info is not None else None
         if available is not None and l.quantity > available:  # a product appears once per list, so a line is the whole need
             exceeding += 1
         rows.append(
@@ -272,10 +282,11 @@ def local_rows(db: Session, tenant: TenantContext, delivery_list: DeliveryList, 
     return rows
 
 
-def remote_checks(gateway: InventoryGateway, rows: List[Row], *, require_stock: bool = False) -> None:
+def remote_checks(gateway: InventoryGateway, rows: List[Row], *, require_stock: bool = False, booked: bool = False) -> None:
     """Ask the Inventory Service (caller's own token) whether the products can serve this. Called with no
     transaction open. Archived or unknown things are refused; a product whose unit is no longer the listed one is refused.
-    With require_stock the stock must also hold the quantities (checked again, authoritatively, by the Inventory Service)."""
+    With require_stock the stock must also hold the quantities (checked again, authoritatively, by the Inventory Service): a BOOKED
+    order's lines are covered by their own reservation (physical stock must hold them); any other line may only take AVAILABLE stock."""
     if not rows:
         return
     try:
@@ -300,11 +311,12 @@ def remote_checks(gateway: InventoryGateway, rows: List[Row], *, require_stock: 
     if require_stock:
         by_product = {r.product_id: r for r in rows}
         for product_id, quantity in needed.items():
-            available = products[product_id].total
+            available = products[product_id].total if booked else products[product_id].available
             if quantity > available:
                 r = by_product[product_id]
+                reserved_note = f" ({human(products[product_id].reserved)} {r.unit} is reserved for sales orders)" if not booked and products[product_id].reserved > 0 else ""
                 raise conflict(
-                    f"Not enough stock: {human(available)} {r.unit} of {r.name} in stock, {human(quantity)} to dispatch. "
+                    f"Not enough stock: {human(available)} {r.unit} of {r.name} {'in stock' if booked else 'available'}{reserved_note}, {human(quantity)} to dispatch. "
                     "Nothing was deducted; reduce the quantity.",
                     code="insufficient_stock",
                 )
@@ -359,6 +371,7 @@ def create_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatewa
 
     delivery_list = get_list_or_404(db, tenant, payload.delivery_list_id)  # another organization's list is simply not found
     require_dispatchable_list(delivery_list)
+    orders.require_orderly_dispatch(db, tenant, delivery_list)
     if payload.dispatch_date:
         check_dispatch_date(payload.dispatch_date)
     rows = local_rows(db, tenant, delivery_list, payload.lines)
@@ -378,6 +391,7 @@ def create_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatewa
     try:
         delivery_list = get_list_or_404(db, tenant, list_id, lock=True)  # the list first, always: one lock order for every dispatch operation
         require_dispatchable_list(delivery_list)
+        orders.require_orderly_dispatch(db, tenant, delivery_list)
         check_capacity(db, tenant, rows, None)
         dispatch_id = uuid.uuid4()
         dispatch = Dispatch(
@@ -459,6 +473,7 @@ def save_lines(db: Session, tenant: TenantContext, gateway: InventoryGateway, di
         dispatch = get_dispatch_or_404(db, tenant, dispatch_id, lock=True)
         require_draft(dispatch)  # re-checked under the locks: someone may have started confirming meanwhile
         require_dispatchable_list(delivery_list)
+        orders.require_orderly_dispatch(db, tenant, delivery_list)
         check_capacity(db, tenant, rows, dispatch.id)
         _write_lines(db, tenant, dispatch, rows)
         dispatch.updated_at = _now()
@@ -496,12 +511,15 @@ class Mismatch(Exception):
     """The Inventory Service's answer does not match what was asked for: not trusted."""
 
 
-def posting_body(dispatch: Dispatch, list_number: str, lines: List[DispatchLine]) -> dict:
+def posting_body(dispatch: Dispatch, list_number: str, lines: List[DispatchLine], booked: bool = False) -> dict:
+    """What the Inventory Service is asked to deduct. For a BOOKED order each line also names its order line (the delivery-list item), so
+    the Inventory Service consumes that line's reservation in the same transaction."""
     return {
         "dispatch_number": dispatch.number,
         "delivery_list_number": list_number,
         "lines": [
-            {"line_id": str(l.id), "product_id": str(l.product_id), "quantity": format(l.quantity, "f"), "unit": l.unit}
+            {"line_id": str(l.id), "product_id": str(l.product_id), "quantity": format(l.quantity, "f"), "unit": l.unit,
+             **({"order_line_id": str(l.delivery_list_item_id)} if booked else {})}
             for l in lines
         ],
     }
@@ -561,6 +579,7 @@ def _finish(db: Session, tenant: TenantContext, list_id: uuid.UUID, dispatch_id:
         dispatch.confirmed_at, dispatch.confirmed_by_email, dispatch.last_posting_error = _now(), tenant.email, None
         db.flush()
         recompute_list_status(db, tenant, delivery_list)
+        orders.complete_if_delivered(db, tenant, delivery_list)  # the last line confirmed: the order is Delivered (24-hour history starts)
         db.commit()
     except DBAPIError as exc:
         db.rollback()
@@ -599,10 +618,11 @@ def confirm_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatew
     if dispatch.status == "draft":
         delivery_list = get_list_or_404(db, tenant, list_id)
         require_dispatchable_list(delivery_list)
+        booked = orders.require_orderly_dispatch(db, tenant, delivery_list) is not None
         requested = {i.id: i.quantity for i in list_items(db, tenant, list_id)}
         rows = [row_from_line(l, requested[l.delivery_list_item_id]) for l in dispatch_lines(db, tenant, dispatch.id)]
         db.rollback()
-        remote_checks(gateway, rows, require_stock=True)
+        remote_checks(gateway, rows, require_stock=True, booked=booked)
 
     # -- 1. save the INTENT (short transaction). From here the quantities are reserved and the dispatch is frozen.
     try:
@@ -617,6 +637,7 @@ def confirm_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatew
         lines = dispatch_lines(db, tenant, dispatch.id)
         if dispatch.status == "draft":
             require_dispatchable_list(delivery_list)
+            orders.require_orderly_dispatch(db, tenant, delivery_list)  # an order whose booking is not verified (or is being changed) cannot be dispatched
             if not lines:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "This dispatch has no lines, so there is nothing to deduct from stock. Add the products and quantities, or cancel it.")
             requested = {i.id: i.quantity for i in list_items(db, tenant, list_id)}
@@ -624,7 +645,8 @@ def confirm_dispatch(db: Session, tenant: TenantContext, gateway: InventoryGatew
             dispatch.status, dispatch.posting_started_at = "posting", _now()
         dispatch.posting_attempts += 1
         dispatch.last_posting_attempt_at = _now()
-        body = posting_body(dispatch, delivery_list.number, lines)
+        booked = orders.order_for_list(db, tenant, delivery_list.id) is not None
+        body = posting_body(dispatch, delivery_list.number, lines, booked)
         key, number = dispatch.posting_key, dispatch.number
         db.commit()
     except DBAPIError as exc:

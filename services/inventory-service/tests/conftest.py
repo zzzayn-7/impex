@@ -91,7 +91,7 @@ def database(engine, session_factory):
     """Every test starts with empty inventory tables and uses the test database. (TRUNCATE does not fire the
     append-only row trigger, which is why it can reset the ledger here without the maintenance flag.)"""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE product_identifiers, stock_movements, stock_balances, stock_operations, products"))
+        conn.execute(text("TRUNCATE TABLE product_identifiers, stock_reservations, stock_movements, stock_balances, stock_operations, products"))
 
     def override_get_db():
         db = session_factory()

@@ -6,7 +6,7 @@ import { MODULE_LABELS, MODULE_PAGES, usableModules, type ModuleKey } from "@/li
 
 export type IconName =
   | "dashboard" | "products" | "stock" | "scan" | "movements" | "suppliers" | "orders" | "receipts" | "clients" | "lists" | "dispatches"
-  | "invoices" | "overview" | "accounts" | "expenses" | "journal" | "support" | "settings";
+  | "orderPlus" | "invoices" | "overview" | "accounts" | "expenses" | "journal" | "support" | "settings";
 
 export type NavItem = { key: string; label: string; href: string; icon: IconName };
 export type NavGroup = { id: string; label: string; items: NavItem[] };
@@ -14,7 +14,7 @@ export type NavGroup = { id: string; label: string; items: NavItem[] };
 const ICON_BY_HREF: Record<string, IconName> = {
   "/products": "products", "/stock": "stock", "/scan": "scan", "/movements": "movements",
   "/suppliers": "suppliers", "/purchase-orders": "orders", "/goods-receipts": "receipts",
-  "/clients": "clients", "/delivery-lists": "lists", "/dispatches": "dispatches", "/invoices": "invoices",
+  "/clients": "clients", "/sales-orders/new": "orderPlus", "/delivery-lists": "lists", "/dispatches": "dispatches", "/invoices": "invoices",
   "/finance": "overview", "/finance/accounts": "accounts", "/finance/expenses": "expenses", "/finance/journal": "journal",
 };
 
@@ -57,6 +57,7 @@ export const PAGE_META = {
   purchasing: { title: "Purchase Orders", href: "/purchase-orders", section: "purchasing" },
   receipts: { title: "Goods Receipts", href: "/goods-receipts", section: "purchasing" },
   clients: { title: "Clients", href: "/clients", section: "sales" },
+  newOrder: { title: "Create Order", href: "/sales-orders/new", section: "sales" },
   deliveries: { title: "Delivery Lists", href: "/delivery-lists", section: "sales" },
   dispatches: { title: "Dispatches", href: "/dispatches", section: "sales" },
   invoices: { title: "Invoices", href: "/invoices", section: "sales" },

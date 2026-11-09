@@ -576,14 +576,14 @@ describe("Scan Product: Prepare Dispatch", () => {
     mountPanel();
     const form = await screen.findByRole("form", { name: "Dispatch quantity" });
     for (const text of ["Client requested", "15 pcs", "Already dispatched", "10 pcs", "Remaining", "5 pcs"]) expect(form.textContent, text).toContain(text);
-    expect((screen.getByPlaceholderText("Type the quantity") as HTMLInputElement).value).toBe("");
-    expect(form.textContent).toContain("In stock");
+    expect((screen.getByLabelText("Quantity to dispatch") as HTMLInputElement).value).toBe("");
+    expect(form.textContent).toContain("Available");
     expect(form.textContent).toContain("40 pcs");
     expect(screen.queryByLabelText("Dispatching warehouse")).toBeNull();
     const u = user();
     await u.click(screen.getByRole("button", { name: "Add to the draft dispatch" }));
     expect(screen.getByRole("alert").textContent).toContain("Enter a quantity");
-    await u.type(screen.getByPlaceholderText("Type the quantity"), "6");
+    await u.type(screen.getByLabelText("Quantity to dispatch"), "6");
     await u.click(screen.getByRole("button", { name: "Add to the draft dispatch" }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByRole("alert").textContent).toContain("Only 5 pcs of Steel bolt can still be dispatched");
@@ -604,7 +604,7 @@ describe("Scan Product: Prepare Dispatch", () => {
     mountPanel(onAdded);
     const u = user();
     await screen.findByRole("form", { name: "Dispatch quantity" });
-    await u.type(screen.getByPlaceholderText("Type the quantity"), "6");
+    await u.type(screen.getByLabelText("Quantity to dispatch"), "6");
     await u.click(screen.getByRole("button", { name: "Add to the draft dispatch" }));
     await waitFor(() => expect(onAdded).toHaveBeenCalled());
     const create = posts("/api/sales/dispatches");
@@ -625,7 +625,7 @@ describe("Scan Product: Prepare Dispatch", () => {
     await screen.findByText(/Adding to the open draft/);
     expect(screen.getByRole("status").textContent).toContain("already on DS-000001 with 4 pcs");
     expect(screen.getByRole("status").textContent).toContain("never adds to it");
-    await u.type(screen.getByPlaceholderText("Type the quantity"), "7");
+    await u.type(screen.getByLabelText("Quantity to dispatch"), "7");
     await u.click(screen.getByRole("button", { name: "Replace the quantity on the draft" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     const put = calls.find((c) => c.method === "PUT")!;

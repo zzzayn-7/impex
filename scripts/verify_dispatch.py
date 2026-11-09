@@ -372,7 +372,11 @@ def main() -> int:
         check("the list page shows the status, the progress bars and the dispatch history", status == 200 and "Dispatched" in html and "Dispatch progress" in html and "15 of 15 pcs dispatched" in html and "Dispatches (" in html and "DS-000001" in html and 'role="progressbar"' in html, status)
 
         print("\n== 5. stock can never go negative; nothing is deducted by a refused dispatch")
-        dl2 = ready_list("a", acme["id"], [(a_laptop["id"], "100")])
+        # An OLDER Ready list (made before reservations existed, set up directly): a booked list can never exceed stock, an unbooked one still can.
+        made = jbody(portal("a", "POST", "/api/sales/delivery-lists", {"clientId": acme["id"]})[1]).get("list", {})
+        portal("a", "POST", f"/api/sales/delivery-lists/{made['id']}/items", {"productId": a_laptop["id"], "quantity": "100"})
+        psql("impex_sales", f"UPDATE delivery_lists SET status = 'ready' WHERE id = '{made['id']}'")
+        dl2 = list_detail("a", made["id"])
         before = quantity(a_laptop["id"])  # 37
         s, body = draft("a", dl2["id"], [dl(dl2, a_laptop["id"], "50")])
         d3 = body.get("dispatch", {})

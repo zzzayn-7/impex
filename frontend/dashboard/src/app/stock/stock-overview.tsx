@@ -154,7 +154,9 @@ export default function StockOverview({ list, filters, products }: Props) {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Product</th>
                     <th className="px-4 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold text-right">In stock</th>
+                    <th className="px-4 py-3 font-semibold text-right">On hand</th>
+                    <th className="px-4 py-3 font-semibold text-right">Reserved</th>
+                    <th className="px-4 py-3 font-semibold text-right">Available</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -168,6 +170,10 @@ export default function StockOverview({ list, filters, products }: Props) {
                       <td className="px-4 py-3 text-xs">{item.category}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
                         <span className="text-sm font-semibold text-white">{formatQuantity(item.total_quantity)}</span> <span className="text-slate-400">{item.unit}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300" data-testid={`reserved-${item.sku}`}>{formatQuantity(item.reserved_quantity ?? "0")}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
+                        <span className="text-sm font-semibold text-white" data-testid={`available-${item.sku}`}>{formatQuantity(item.available_quantity ?? item.total_quantity)}</span> <span className="text-slate-400">{item.unit}</span>
                       </td>
                       <td className="px-4 py-3">
                         {item.is_active && !noSetup ? (

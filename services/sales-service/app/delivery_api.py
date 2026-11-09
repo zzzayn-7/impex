@@ -1,12 +1,12 @@
 """Delivery lists and their items. Every route depends on `require_active_tenant`; none accepts an organization id.
 
-NOTHING in this module changes inventory: see app/delivery.py (stock is deducted only by a confirmed dispatch).
+Nothing in this module DEDUCTS stock (only a confirmed dispatch does); marking a list Ready books its quantities: see app/delivery.py.
 """
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy import or_
+from sqlalchemy import exists, or_
 from sqlalchemy.orm import Session
 from typing import Literal
 
@@ -14,7 +14,7 @@ from app import delivery
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
 from app.inventory import InventoryGateway, get_gateway
-from app.models import Client, DeliveryList, DeliveryListItem
+from app.models import Client, DeliveryList, DeliveryListItem, SalesOrder
 from app.schemas import (
     DeliveryListCreate,
     DeliveryListDetail,
@@ -61,6 +61,7 @@ def list_delivery_lists(
     client_id: Optional[uuid.UUID] = None,
     status_filter: Optional[Literal["draft", "ready", "partially_dispatched", "dispatched", "cancelled"]] = Query(default=None, alias="status"),
     q: Optional[str] = Query(default=None, max_length=100, description="Search number, external reference or client name"),
+    has_order: Optional[bool] = Query(default=None, description="true: only lists that belong to a sales order; false: only lists that do not (drafts and older lists)"),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     tenant: TenantContext = Tenant,
@@ -71,6 +72,9 @@ def list_delivery_lists(
         filters.append(DeliveryList.client_id == client_id)
     if status_filter:
         filters.append(DeliveryList.status == status_filter)
+    if has_order is not None:
+        linked = exists().where(SalesOrder.organization_id == DeliveryList.organization_id, SalesOrder.delivery_list_id == DeliveryList.id)
+        filters.append(linked if has_order else ~linked)
     base = scoped_select(DeliveryList, tenant).join(Client, (Client.id == DeliveryList.client_id) & (Client.organization_id == DeliveryList.organization_id))
     count = scoped_count(DeliveryList, tenant).join(Client, (Client.id == DeliveryList.client_id) & (Client.organization_id == DeliveryList.organization_id))
     if q and q.strip():
@@ -83,7 +87,7 @@ def list_delivery_lists(
 
 @router.get("/delivery-lists/{list_id}", response_model=DeliveryListDetail, tags=["Delivery lists"])
 def get_delivery_list(list_id: uuid.UUID, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
-    """The list, its items and the CURRENT stock of each product (information only: stock is not reserved)."""
+    """The list, its items and the CURRENT stock of each product: physical, reserved and available (information only)."""
     return delivery.detail(db, tenant, gateway, delivery.get_list_or_404(db, tenant, list_id))
 
 
@@ -107,8 +111,8 @@ def _status_route(target: str):
 
 
 for _path, _target, _doc in (
-    ("ready", "ready", "Mark the list Ready for dispatch. Does NOT deduct or reserve stock."),
-    ("cancel", "cancelled", "Cancel the list. Nothing is deleted and no stock is involved."),
+    ("ready", "ready", "Mark the list Ready for dispatch. This BOOKS its quantities (an atomic reservation of all lines, or none): the list becomes a sales order. Does not deduct stock."),
+    ("cancel", "cancelled", "Cancel the list. Nothing is deleted. A list that belongs to a sales order is cancelled through the order and its reservation is released."),
     ("reopen", "draft", "Turn a Ready list back into an editable draft."),
 ):
     _handler = _status_route(_target)

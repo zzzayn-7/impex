@@ -72,7 +72,7 @@ def test_a_product_has_one_stock_figure(api, setup):
     api.add(setup["product"], 4)
     (item,) = api.client.get(STOCK_URL, headers=api.headers).json()["items"]
     assert item["total_quantity"] == "14.0000"
-    assert "lines" not in item and "available_quantity" not in item and "warehouse" not in str(item).lower()
+    assert "lines" not in item and item["available_quantity"] == item["total_quantity"] and "warehouse" not in str(item).lower()
 
 
 def test_creating_a_product_creates_no_stock(api):

@@ -187,7 +187,9 @@ class StockProduct(BaseModel):
     unit: str
     unit_allows_fractions: bool
     is_active: bool
-    total_quantity: Decimal  # what is in stock now
+    total_quantity: Decimal  # PHYSICAL stock: what is on hand now
+    reserved_quantity: Decimal = Decimal("0")  # committed to active sales orders, not yet dispatched
+    available_quantity: Decimal = Decimal("0")  # on hand minus reserved: what a new order or a manual stock-out can still take
 
 
 class StockOverview(BaseModel):
@@ -315,7 +317,13 @@ class ReceiptPosting(BaseModel):
 # =====================================================================================================
 class DispatchLine(ReceiptLine):
     """One quantity of one product leaving stock. `line_id` is the dispatch line in the Sales Service: it can be posted
-    only once, ever. `unit` must equal the product's current unit (a quantity is never reinterpreted)."""
+    only once, ever. `unit` must equal the product's current unit (a quantity is never reinterpreted).
+
+    `order_line_id` (sales-order dispatches only; trusted callers only) names the order line whose reservation this quantity
+    consumes: the stock leaves AND the reservation shrinks in the same transaction. Without it the quantity may only come from
+    AVAILABLE stock (on hand minus reserved), never from stock booked for an order."""
+
+    order_line_id: Optional[uuid.UUID] = None
 
 
 class DispatchPost(BaseModel):
@@ -338,3 +346,69 @@ class DispatchPosting(BaseModel):
     dispatch_number: str
     replayed: bool  # true when this was a retry of an earlier posting with the same Idempotency-Key
     movements: List[ReceiptMovement]
+
+
+# =====================================================================================================
+# Stock reservations: stock booked for sales orders. Written only by the Sales Service (shared secret + the administrator's token).
+# =====================================================================================================
+class ReservationLine(BaseModel):
+    """The TOTAL quantity ordered on one order line (not a delta). `line_id` is the order line in the Sales Service."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    line_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: Quantity
+    unit: str = Field(min_length=1, max_length=20)
+
+
+class ReservationSet(BaseModel):
+    """The COMPLETE desired state of one order's reservations. Lines the order no longer has are released; quantities are totals,
+    so applying the same request twice changes nothing the second time. All lines are reserved, or none."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_id: uuid.UUID  # the sales order
+    source_reference: str = Field(min_length=1, max_length=32)  # SO-000001
+    lines: List[ReservationLine] = Field(default=[], max_length=200)
+
+    @model_validator(mode="after")
+    def _no_repeated_lines(self):
+        ids = [l.line_id for l in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("An order line can appear only once.")
+        products = [l.product_id for l in self.lines]
+        if len(products) != len(set(products)):
+            raise ValueError("A product can appear only once in an order.")
+        return self
+
+
+class ReservationRelease(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_id: uuid.UUID
+    source_reference: str = Field(min_length=1, max_length=32)
+
+
+class ReservationState(BaseModel):
+    line_id: uuid.UUID
+    product_id: uuid.UUID
+    original_quantity: Decimal
+    consumed_quantity: Decimal
+    released_quantity: Decimal
+    remaining_quantity: Decimal
+    status: str
+
+
+class ReservationResult(BaseModel):
+    operation_id: uuid.UUID
+    kind: str
+    source_id: uuid.UUID
+    source_reference: str
+    replayed: bool
+    lines: List[ReservationState]
+
+
+class ReservationList(BaseModel):
+    source_id: uuid.UUID
+    lines: List[ReservationState]

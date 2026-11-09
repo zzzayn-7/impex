@@ -4,6 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { Product } from "@/lib/product-validation";
+import QuantityInput from "@/components/ui/quantity-input";
 import {
   ACTION_LABELS,
   API_FIELD_NAMES,
@@ -183,23 +184,22 @@ export default function StockForm({
           {errors.productId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.productId}</span>}
         </label>
 
-        <label className="text-xs font-medium text-slate-400">
-          Quantity{product ? ` (${product.unit})` : ""}
-          <input
+        <div className="text-xs font-medium text-slate-400">
+          <label htmlFor="stock-quantity" className="block">Quantity{product ? ` (${product.unit})` : ""}</label>
+          <QuantityInput
+            id="stock-quantity"
             value={values.quantity}
-            onChange={(e) => update("quantity", e.target.value)}
+            onChange={(v) => update("quantity", v)}
             inputMode={allowsFractions ? "decimal" : "numeric"}
-            autoComplete="off"
-            placeholder={allowsFractions ? "e.g. 12.5" : "e.g. 12"}
             aria-invalid={Boolean(errors.quantity)}
-            className={`${selectClass} font-mono ${fieldBorder(errors.quantity)}`}
+            className="mt-1.5"
           />
           {errors.quantity ? (
             <span role="alert" className="mt-1 block text-xs text-red-400">{errors.quantity}</span>
           ) : product ? (
             <span className="mt-1 block text-[11px] text-slate-500">{allowsFractions ? "Decimals allowed (up to 4 places)." : "Whole numbers only."}</span>
           ) : null}
-        </label>
+        </div>
         <label className="text-xs font-medium text-slate-400">
           Reason <span className="text-slate-600">(optional)</span>
           <input

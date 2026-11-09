@@ -9,6 +9,7 @@ from app.delivery_api import router as delivery_router
 from app.dispatches_api import router as dispatches_router
 from app.invoices_api import router as invoices_router
 from app.module_usage_api import router as module_usage_router
+from app.orders_api import router as orders_router
 from app.finance_feed_api import router as finance_feed_router
 from app.inventory import create_inventory_client
 
@@ -37,6 +38,7 @@ app = FastAPI(
 app.include_router(clients_router)
 app.include_router(delivery_router)
 app.include_router(dispatches_router)
+app.include_router(orders_router)
 app.include_router(invoices_router)
 # Asked only by the Organization Service (shared secret), before Sales is switched off: what is in progress.
 app.include_router(module_usage_router)

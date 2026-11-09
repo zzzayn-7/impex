@@ -170,12 +170,15 @@ class ItemIncrease(BaseModel):
 
 
 class ItemStock(BaseModel):
-    """What the Inventory Service says right now. Information only: stock is NOT reserved."""
+    """What the Inventory Service says right now (live, information only): the PHYSICAL stock on hand, how much of it is reserved for
+    orders, and what is still available to a new order (on hand minus reserved)."""
 
-    total_quantity: Decimal
+    total_quantity: Decimal  # physical stock on hand
+    reserved_quantity: Decimal = Decimal("0")
+    available_quantity: Decimal = Decimal("0")
     product_active: bool
     unit_allows_fractions: bool
-    exceeds_available: bool
+    exceeds_available: bool  # more is wanted than can be booked / dispatched (never true for a line that is already booked)
     shortfall: Decimal  # how much more is wanted than is available (0 when it fits)
 
 
@@ -204,6 +207,16 @@ class ItemResponse(BaseModel):
         return self
 
 
+# How a delivery list relates to stock booking:
+#   booked        its sales order is active: the stock is reserved in the Inventory Service
+#   pending       the order is saved but the Inventory Service has not confirmed the booking yet (never treated as booked)
+#   unbooked      an OLDER Ready list that was made before reservations existed: nothing is reserved for it (can be booked)
+#   unbooked_partial  an OLDER list that already has goods dispatched: needs reconciliation by hand, nothing is reserved for it
+#   draft         a draft list: nothing is booked until it is marked Ready
+#   none          finished (dispatched / cancelled)
+BookingState = Literal["booked", "pending", "unbooked", "unbooked_partial", "draft", "none"]
+
+
 class DeliveryListSummary(BaseModel):
     id: uuid.UUID
     number: str
@@ -215,6 +228,12 @@ class DeliveryListSummary(BaseModel):
     created_by_email: str
     created_at: datetime
     updated_at: datetime
+    # the sales order this list belongs to, if any
+    order_id: Optional[uuid.UUID] = None
+    order_number: Optional[str] = None
+    order_status: Optional[str] = None
+    reservation_status: Optional[str] = None
+    booking_state: BookingState = "none"
 
 
 class DeliveryListPage(BaseModel):
@@ -225,8 +244,8 @@ class DeliveryListPage(BaseModel):
 
 
 STOCK_NOTICE = (
-    "Stock is not reserved by a delivery list. Saving it, marking it Ready or cancelling it never changes inventory, and "
-    "the quantities on hand may change before dispatch."
+    "A draft list reserves nothing. Marking it Ready books its quantities as a sales order (they can then no longer be taken by "
+    "anything else); physical stock is deducted only when a dispatch is confirmed."
 )
 
 
@@ -628,3 +647,136 @@ class ClientAccount(BaseModel):
 
 InvoiceSummary.model_rebuild()
 BillableLine.model_rebuild()
+
+
+# =====================================================================================================
+# Sales orders (Step 23)
+# =====================================================================================================
+OrderStatus = Literal["pending_reservation", "active", "delivered", "closed", "cancelled", "failed"]
+ReservationStatus = Literal["pending", "reserved", "updating", "consumed", "released", "none"]
+
+
+class OrderLineInput(BaseModel):
+    """One product and the quantity the client wants. Name, SKU, unit and stock come from the Inventory Service, never from the caller."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: uuid.UUID
+    quantity: Quantity
+
+
+class OrderLines(BaseModel):
+    lines: List[OrderLineInput] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _no_duplicate_products(self):
+        ids = [l.product_id for l in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("A product can appear only once in an order. Change its quantity instead.")
+        return self
+
+
+class OrderCreate(OrderLines):
+    """Save a customer order: the client and the products required. Prices, discounts, tax and payment are not part of an order."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    client_id: uuid.UUID
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("notes")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class OrderUpdate(OrderLines):
+    """Change an active order: the COMPLETE list of products and quantities it should have afterwards. `version` is the version the
+    editor saw: if somebody changed the order meanwhile the change is refused instead of overwriting theirs."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    version: int = Field(ge=1)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("notes")
+    @classmethod
+    def _blank(cls, value: Optional[str]) -> Optional[str]:
+        return blank_to_none(value)
+
+
+class OrderCancel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Optional[int] = Field(default=None, ge=1)
+
+
+class OrderStock(BaseModel):
+    """The product's stock right now. `reserved_for_order` is the part of the reserved stock that belongs to THIS order line."""
+
+    total_quantity: Decimal
+    reserved_quantity: Decimal
+    available_quantity: Decimal
+    reserved_for_order: Decimal
+    product_active: bool
+
+
+class OrderLineResponse(BaseModel):
+    id: uuid.UUID  # the order line = the delivery-list item
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    unit_allows_fractions: Optional[bool] = None
+    ordered_quantity: Decimal
+    dispatched_quantity: Decimal  # confirmed dispatches only
+    pending_quantity: Decimal  # on a dispatch that is being posted right now
+    remaining_quantity: Decimal  # ordered - dispatched - pending
+    stock: Optional[OrderStock] = None
+
+
+class OrderListRef(BaseModel):
+    id: uuid.UUID
+    number: str
+    status: Status
+
+
+class OrderSummary(BaseModel):
+    id: uuid.UUID
+    number: str
+    client: ClientRef
+    delivery_list: OrderListRef
+    status: OrderStatus
+    reservation_status: ReservationStatus
+    origin: Literal["order", "list"]
+    version: int
+    product_count: int
+    created_by_email: str
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    history_expires_at: Optional[datetime] = None  # delivered / closed orders: when they leave Delivered History (completed_at + 24 h)
+    pending_action: Optional[str] = None
+    last_error: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class OrderDetail(OrderSummary):
+    lines: List[OrderLineResponse]
+    stock_status: Literal["ok", "unavailable"]
+    dispatches: List["DispatchSummary"] = []
+    can_edit: bool = False
+    edit_blocked_reason: Optional[str] = None
+    can_cancel: bool = False
+    can_cancel_remaining: bool = False
+    cancel_blocked_reason: Optional[str] = None
+    can_dispatch: bool = False
+    message: Optional[str] = None  # e.g. "The booking is not confirmed yet"
+
+
+class OrderPage(BaseModel):
+    items: List[OrderSummary]
+    total: int
+    limit: int
+    offset: int

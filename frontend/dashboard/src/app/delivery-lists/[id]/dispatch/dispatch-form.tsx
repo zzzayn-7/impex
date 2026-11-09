@@ -10,6 +10,7 @@ import { exceeds } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
 import { newIdempotencyKey, validateQuantity, type StockProduct } from "@/lib/stock-validation";
 import type { DeliveryItem, DeliveryListDetail, DispatchDetail } from "@/lib/sales";
+import QuantityInput from "@/components/ui/quantity-input";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500";
@@ -55,7 +56,8 @@ export default function DispatchForm({
     return initial;
   });
 
-  const inStock = (item: DeliveryItem): string | null => (stock[item.product_id] ? stock[item.product_id].total_quantity : null);
+  // A BOOKED order's lines are covered by their own reservation (physical stock is the limit); any other list may only take AVAILABLE stock.
+  const inStock = (item: DeliveryItem): string | null => (stock[item.product_id] ? (list.booking_state === "booked" ? stock[item.product_id].total_quantity : stock[item.product_id].available_quantity ?? stock[item.product_id].total_quantity) : null);
 
   function setQuantity(itemId: string, value: string) {
     setQuantities((current) => ({ ...current, [itemId]: value }));
@@ -312,11 +314,11 @@ export default function DispatchForm({
                 <button type="button" onClick={() => startItem(item)} className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Dispatch {item.product_name}</button>
               ) : (
                 <div className="flex flex-wrap items-end gap-3">
-                  <label className="w-44 text-xs font-medium text-slate-400">
-                    Quantity to dispatch
-                    <input aria-label={`Quantity to dispatch of ${item.product_name}`} ref={(el) => { inputs.current[item.id] = el; }}
-                      value={typed} inputMode="decimal" onChange={(e) => setQuantity(item.id, e.target.value)} className={`mt-1.5 ${cellInput}`} placeholder="0" />
-                  </label>
+                  <div className="w-44 text-xs font-medium text-slate-400">
+                    <label htmlFor={`dispatch-qty-${item.id}`} className="block">Quantity to dispatch</label>
+                    <QuantityInput id={`dispatch-qty-${item.id}`} aria-label={`Quantity to dispatch of ${item.product_name}`} inputRef={(el) => { inputs.current[item.id] = el; }}
+                      value={typed} onChange={(v) => setQuantity(item.id, v)} className="mt-1.5" />
+                  </div>
                   {held !== null && <p className="pb-2.5 text-xs text-slate-400">{qty(held)} {item.unit} in stock</p>}
                   <button type="button" onClick={() => stopItem(item.id)} aria-label={`Remove ${item.product_name} from this dispatch`}
                     className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Remove</button>

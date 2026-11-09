@@ -14,7 +14,9 @@ export type StockProduct = {
   unit: string;
   unit_allows_fractions: boolean;
   is_active: boolean;
-  total_quantity: string;
+  total_quantity: string; // PHYSICAL stock on hand
+  reserved_quantity?: string; // committed to sales orders, not yet dispatched
+  available_quantity?: string; // on hand minus reserved: what a new order or a manual stock-out can still take
 };
 
 export type MovementType = "opening" | "in" | "out";

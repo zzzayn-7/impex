@@ -17,6 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -67,7 +68,7 @@ class StockOperation(TenantOwnedMixin, Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "idempotency_key", name="uq_stock_operations_organization_id_idempotency_key"),
         UniqueConstraint("organization_id", "id", name="uq_stock_operations_organization_id_id"),
-        CheckConstraint("kind IN ('opening', 'in', 'out', 'receipt', 'dispatch')", name="kind_valid"),
+        CheckConstraint("kind IN ('opening', 'in', 'out', 'receipt', 'dispatch', 'reserve', 'release')", name="kind_valid"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -78,10 +79,14 @@ class StockOperation(TenantOwnedMixin, Base):
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)  # fingerprint of the request body
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    result: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # reservations: the first answer, replayed on a retry
 
 
 class StockBalance(TenantOwnedMixin, Base):
-    """How much of a product the organization has in stock. Never negative (CHECK), changed only together with a movement."""
+    """How much of a product the organization has in stock. Never negative (CHECK), changed only together with a movement.
+
+    `reserved_quantity` is the part of it committed to active sales orders (see StockReservation). Available = quantity - reserved.
+    The database guarantees 0 <= reserved_quantity <= quantity, so no operation can take stock that an order has booked."""
 
     __tablename__ = "stock_balances"
     __table_args__ = (
@@ -90,6 +95,8 @@ class StockBalance(TenantOwnedMixin, Base):
         ForeignKeyConstraint(["organization_id", "product_id"], ["products.organization_id", "products.id"],
                              name="fk_stock_balances_product_same_organization", ondelete="RESTRICT"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
+        CheckConstraint("reserved_quantity >= 0", name="reserved_non_negative"),
+        CheckConstraint("reserved_quantity <= quantity", name="reserved_within_stock"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -97,9 +104,53 @@ class StockBalance(TenantOwnedMixin, Base):
     )
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    reserved_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class StockReservation(TenantOwnedMixin, Base):
+    """Stock committed to ONE line of a sales order. Owned by the Inventory Service (the Sales Service only asks for changes).
+
+    original = consumed + released + remaining, always (CHECK). `remaining_quantity` is what is still held back from sale:
+      * a CONFIRMED dispatch of the line consumes it (stock leaves and the reservation shrinks in the same transaction);
+      * reducing or cancelling the order releases it.
+    status: active (remaining > 0), fulfilled (nothing left, something was dispatched), released (nothing left, nothing dispatched).
+    """
+
+    __tablename__ = "stock_reservations"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "source_type", "source_line_id", name="uq_stock_reservations_source_line"),
+        ForeignKeyConstraint(["organization_id", "product_id"], ["products.organization_id", "products.id"],
+                             name="fk_stock_reservations_product_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("source_type = 'sales_order'", name="source_type_valid"),
+        CheckConstraint("original_quantity > 0", name="original_positive"),
+        CheckConstraint("consumed_quantity >= 0 AND released_quantity >= 0 AND remaining_quantity >= 0", name="quantities_non_negative"),
+        CheckConstraint("original_quantity = consumed_quantity + released_quantity + remaining_quantity", name="quantities_add_up"),
+        CheckConstraint(
+            "(status = 'active' AND remaining_quantity > 0) OR "
+            "(status = 'fulfilled' AND remaining_quantity = 0 AND consumed_quantity > 0) OR "
+            "(status = 'released' AND remaining_quantity = 0 AND consumed_quantity = 0)",
+            name="status_consistent",
+        ),
+        Index("ix_stock_reservations_organization_id_source_id", "organization_id", "source_id"),
+        Index("ix_stock_reservations_organization_id_product_id_active", "organization_id", "product_id", postgresql_where=text("status = 'active'")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False, default="sales_order")
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the sales order
+    source_reference: Mapped[str] = mapped_column(String(32), nullable=False)  # its number, SO-000001 (display only)
+    source_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the order line (the delivery-list item)
+    original_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    consumed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    released_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0, server_default=text("0"))
+    remaining_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="active", server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class StockMovement(TenantOwnedMixin, Base):

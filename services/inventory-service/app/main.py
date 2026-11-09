@@ -15,6 +15,7 @@ from app.models import Product
 from app.schemas import ProductCreate, ProductList, ProductResponse, ProductUpdate
 from app.search import like_pattern
 from app.scan_api import router as scan_router
+from app.reservations_api import router as reservations_router
 from app.stock_api import router as stock_router
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
 
@@ -37,6 +38,7 @@ app = FastAPI(
 )
 
 app.include_router(stock_router)  # stock
+app.include_router(reservations_router)  # stock booked for sales orders (written by the Sales Service only)
 app.include_router(scan_router)  # scannable codes, labels and scan lookup
 
 # Every product endpoint depends on this: an ACTIVE organization administrator whose organization is active.

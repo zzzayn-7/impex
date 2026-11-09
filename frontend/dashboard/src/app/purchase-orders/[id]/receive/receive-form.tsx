@@ -10,6 +10,7 @@ import { api, exceeds, jsonBody, qty } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, ReceiptDetail } from "@/lib/purchasing";
+import QuantityInput from "@/components/ui/quantity-input";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500 disabled:opacity-40";
@@ -298,13 +299,13 @@ export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDeta
                     <td className="px-3 py-3 text-right font-mono">{qty(line.received_quantity ?? "0")}</td>
                     <td className="px-3 py-3 text-right font-mono">{qty(line.pending_quantity ?? "0")}</td>
                     <td className="px-3 py-3 text-right font-mono font-semibold text-white">{qty(remaining)}</td>
-                    <td className="px-3 py-3 w-32">
-                      <input aria-label={`Accepted quantity of ${line.product_name}`} ref={(el) => { inputs.current[line.id] = el; }} value={row.accepted} disabled={done} inputMode="decimal"
-                        onChange={(e) => set(line.id, { accepted: e.target.value })} className={cellInput} placeholder={done ? "done" : "0"} />
+                    <td className="px-3 py-3 w-44">
+                      <QuantityInput aria-label={`Accepted quantity of ${line.product_name}`} inputRef={(el) => { inputs.current[line.id] = el; }} value={row.accepted} disabled={done}
+                        onChange={(v) => set(line.id, { accepted: v })} placeholder={done ? "done" : "0"} />
                     </td>
-                    <td className="px-3 py-3 w-28">
-                      <input aria-label={`Rejected quantity of ${line.product_name}`} value={row.rejected} disabled={done} inputMode="decimal"
-                        onChange={(e) => set(line.id, { rejected: e.target.value })} className={cellInput} placeholder="0" />
+                    <td className="px-3 py-3 w-44">
+                      <QuantityInput aria-label={`Rejected quantity of ${line.product_name}`} value={row.rejected} disabled={done}
+                        onChange={(v) => set(line.id, { rejected: v })} />
                     </td>
                   </tr>
                 );

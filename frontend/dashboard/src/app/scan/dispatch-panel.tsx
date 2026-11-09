@@ -7,6 +7,7 @@ import type { Product } from "@/lib/product-validation";
 import { api, exceeds, jsonBody, qty } from "@/lib/sales-browser";
 import type { DeliveryListDetail, DeliveryListSummary, DispatchDetail } from "@/lib/sales";
 import { newIdempotencyKey, validateQuantity, type StockProduct } from "@/lib/stock-validation";
+import QuantityInput from "@/components/ui/quantity-input";
 
 type Props = {
   product: Product;
@@ -138,21 +139,21 @@ export default function DispatchPanel({ product, stock, onAdded, onClose }: Prop
             <Figure label="Client requested" value={`${qty(item.quantity)} ${item.unit}`} />
             <Figure label="Already dispatched" value={`${qty(item.dispatched_quantity ?? "0")} ${item.unit}`} />
             <Figure label="Remaining" value={`${qty(remaining)} ${item.unit}`} tone="good" />
-            <Figure label="In stock" value={`${qty(stock.total_quantity)} ${item.unit}`} />
+            <Figure label="Available" value={`${qty(stock.available_quantity ?? stock.total_quantity)} ${item.unit}`} />
           </dl>
           {draft && <p className="text-xs text-slate-400">Adding to the open draft <Link href={`/dispatches/${draft.id}`} className="font-mono text-indigo-300 hover:text-indigo-200">{draft.number}</Link>.</p>}
 
-          <label className="block text-xs font-medium text-slate-400">
-            Quantity to dispatch
-            <input value={quantity} onChange={(e) => { setQuantity(e.target.value); setError(null); }} inputMode="decimal" autoComplete="off" placeholder="Type the quantity" className={`${fieldClass} font-mono`} />
-          </label>
+          <div className="block text-xs font-medium text-slate-400">
+            <label htmlFor="scan-dispatch-quantity" className="block">Quantity to dispatch</label>
+            <QuantityInput id="scan-dispatch-quantity" value={quantity} onChange={(v) => { setQuantity(v); setError(null); }} className="mt-1.5" />
+          </div>
           {existing && (
             <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               This product is already on {draft?.number} with {qty(existing.quantity)} {item.unit}. Saving replaces that quantity with what you type; scanning again never adds to it.
             </p>
           )}
-          {quantity.trim() !== "" && !validateQuantity(quantity.trim(), true) && exceeds(quantity.trim(), stock.total_quantity) && (
-            <p role="status" className="text-xs text-amber-300">That is more than the {qty(stock.total_quantity)} {item.unit} in stock right now. You can save the draft, but it cannot be confirmed until the stock is there.</p>
+          {quantity.trim() !== "" && !validateQuantity(quantity.trim(), true) && exceeds(quantity.trim(), stock.available_quantity ?? stock.total_quantity) && (
+            <p role="status" className="text-xs text-amber-300">That is more than the {qty(stock.available_quantity ?? stock.total_quantity)} {item.unit} available right now (stock reserved for orders is not counted). You can save the draft, but it cannot be confirmed until the stock is there.</p>
           )}
           {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
           <button type="submit" disabled={busy} className="min-h-11 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">{busy ? "Saving…" : existing ? "Replace the quantity on the draft" : "Add to the draft dispatch"}</button>

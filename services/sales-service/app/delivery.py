@@ -1,9 +1,10 @@
 """Delivery-list business rules.
 
 The rules that matter most:
-  * Nothing here changes inventory, ever. A list is a promise-to-deliver note: adding items, editing them, marking the
-    list Ready or cancelling it never deducts or reserves stock (there is no code path that could: this module never
-    calls a write endpoint of the Inventory Service).
+  * Nothing here DEDUCTS stock. A draft list is only a note: adding items, editing them or cancelling it touches nothing. Marking a list
+    Ready is different since sales orders exist: it BOOKS the list's quantities (an atomic reservation in the Inventory Service, see
+    app/orders.py) - so there is one booking policy, whether a list comes from the Create Order form or from scanning products into a
+    draft. A list that belongs to a sales order is changed and cancelled through the order, never directly.
   * Product facts (name, SKU, unit, active, stock) always come from the Inventory Service, asked with the caller's token.
   * A product appears at most once per list. Adding it again is refused with the existing line, so the caller can
     EXPLICITLY set or increase its quantity; quantities are never incremented implicitly.
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import TenantContext
 from app.inventory import InventoryGateway, InventoryUnavailable, ProductInfo, unavailable_error
-from app.models import Client, DeliveryList, DeliveryListCounter, DeliveryListItem
+from app.models import Client, DeliveryList, DeliveryListCounter, DeliveryListItem, SalesOrder
 from app.schemas import (
     ClientRef,
     DeliveryListDetail,
@@ -117,14 +118,25 @@ def summaries(db: Session, tenant: TenantContext, lists: List[DeliveryList]) -> 
             .group_by(DeliveryListItem.delivery_list_id)
         ).all()
     )
+    orders = {o.delivery_list_id: o for o in db.scalars(scoped_select(SalesOrder, tenant).where(SalesOrder.delivery_list_id.in_([l.id for l in lists])))}
     return [
         DeliveryListSummary(
             id=l.id, number=l.number, client=ClientRef(id=clients[l.client_id].id, name=clients[l.client_id].name, is_active=clients[l.client_id].is_active),
             external_reference=l.external_reference, status=l.status, notes=l.notes, item_count=counts.get(l.id, 0),
             created_by_email=l.created_by_email, created_at=l.created_at, updated_at=l.updated_at,
+            order_id=orders[l.id].id if l.id in orders else None, order_number=orders[l.id].number if l.id in orders else None,
+            order_status=orders[l.id].status if l.id in orders else None, reservation_status=orders[l.id].reservation_status if l.id in orders else None,
+            booking_state=booking_state(l, orders.get(l.id)),
         )
         for l in lists
     ]
+
+
+def booking_state(delivery_list: DeliveryList, order: Optional[SalesOrder]) -> str:
+    """How the list relates to stock booking (see schemas.BookingState)."""
+    if order is not None:
+        return {"pending_reservation": "pending", "active": "booked"}.get(order.status, "none")
+    return {"draft": "draft", "ready": "unbooked", "partially_dispatched": "unbooked_partial"}.get(delivery_list.status, "none")
 
 
 def list_items(db: Session, tenant: TenantContext, list_id: uuid.UUID) -> List[DeliveryListItem]:
@@ -137,19 +149,21 @@ def list_items(db: Session, tenant: TenantContext, list_id: uuid.UUID) -> List[D
     )
 
 
-def item_stock(item: DeliveryListItem, info: Optional[ProductInfo]) -> Optional[ItemStock]:
+def item_stock(item: DeliveryListItem, info: Optional[ProductInfo], booked: bool = False) -> Optional[ItemStock]:
+    """Live stock for a line. A BOOKED line (its order holds a reservation) can never be short: its quantity is already set aside. Any other
+    line is compared with what is still AVAILABLE (on hand minus what is reserved for orders), not with the physical stock."""
     if info is None:
         return None
-    shortfall = max(item.quantity - info.total, ZERO)
+    shortfall = ZERO if booked else max(item.quantity - info.available, ZERO)
     return ItemStock(
-        total_quantity=info.total, product_active=info.is_active,
-        unit_allows_fractions=info.allows_fractions, exceeds_available=item.quantity > info.total, shortfall=shortfall,
+        total_quantity=info.total, reserved_quantity=info.reserved, available_quantity=info.available, product_active=info.is_active,
+        unit_allows_fractions=info.allows_fractions, exceeds_available=shortfall > 0, shortfall=shortfall,
     )
 
 
-def item_response(item: DeliveryListItem, info: Optional[ProductInfo]) -> ItemResponse:
+def item_response(item: DeliveryListItem, info: Optional[ProductInfo], booked: bool = False) -> ItemResponse:
     response = ItemResponse.model_validate(item)
-    response.stock = item_stock(item, info)
+    response.stock = item_stock(item, info, booked)
     return response
 
 
@@ -167,9 +181,11 @@ def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, delive
         except InventoryUnavailable:
             stock_status = "unavailable"
     sums = dispatches.list_quantities(db, tenant, items)
+    order = db.scalar(scoped_select(SalesOrder, tenant).where(SalesOrder.delivery_list_id == delivery_list.id))
+    booked = order is not None and order.status == "active"
     rendered = []
     for i in items:
-        response = item_response(i, infos.get(i.product_id))
+        response = item_response(i, infos.get(i.product_id), booked)
         done, pending = sums[i.id]
         response.dispatched_quantity, response.pending_quantity = done, pending
         response.remaining_quantity = max(i.quantity - done - pending, Decimal("0.0000"))
@@ -181,7 +197,8 @@ def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, delive
         stock_status=stock_status,
         items_exceeding_stock=sum(1 for r in rendered if r.stock and r.stock.exceeds_available),
         dispatches=dispatches.dispatches_of_list(db, tenant, delivery_list.id),
-        can_dispatch=delivery_list.status in dispatches.DISPATCHABLE_LIST_STATUSES and any(r.remaining_quantity > 0 for r in rendered),
+        can_dispatch=delivery_list.status in dispatches.DISPATCHABLE_LIST_STATUSES and any(r.remaining_quantity > 0 for r in rendered)
+        and (order is None or (order.status == "active" and order.pending_action is None)),
     )
 
 
@@ -301,6 +318,25 @@ def remove_item(db: Session, tenant: TenantContext, list_id: uuid.UUID, item_id:
 
 # --- status -------------------------------------------------------------------------------------------------------------
 def change_status(db: Session, tenant: TenantContext, gateway: InventoryGateway, list_id: uuid.UUID, target: str) -> DeliveryList:
+    from app import orders
+
+    delivery_list = get_list_or_404(db, tenant, list_id)
+    order = orders.order_for_list(db, tenant, list_id)
+    db.rollback()
+    if target == "ready" and (order is None or order.status == "pending_reservation"):
+        # ONE booking policy: a list becomes Ready only together with an atomic reservation of its quantities
+        booked, outcome = orders.book_list(db, tenant, gateway, list_id)
+        _raise_unless_done(outcome)
+        return get_list_or_404(db, tenant, list_id)
+    if order is not None:
+        if target == "cancelled":  # a list that belongs to an order is cancelled THROUGH the order: its reservation is released with it
+            _, outcome = orders.cancel_order(db, tenant, gateway, order.id)
+            _raise_unless_done(outcome)
+            return get_list_or_404(db, tenant, list_id)
+        if target == "draft" and order.status in ("pending_reservation", "active"):
+            raise conflict(f"{delivery_list.number} belongs to sales order {order.number} and is booked. Edit the order instead of reopening the list.")
+        if target == "ready" and delivery_list.status in ("ready", "partially_dispatched"):
+            return get_list_or_404(db, tenant, list_id)  # a booked list is already Ready
     delivery_list = get_list_or_404(db, tenant, list_id, lock=True)
     if delivery_list.status == target:
         db.rollback()
@@ -326,19 +362,18 @@ def change_status(db: Session, tenant: TenantContext, gateway: InventoryGateway,
         for draft in (d for d in dispatch_rows if d.status == "draft"):  # unfinished drafts go with the cancellation / reopening
             draft.status, draft.cancelled_at, draft.cancelled_by_email = "cancelled", datetime.now(timezone.utc), tenant.email
         db.flush()
-    if target == "ready":
-        require_active_client(db, tenant, delivery_list)
-        items = list_items(db, tenant, list_id)
-        if not items:
-            raise conflict("Add at least one product before marking the list Ready.")
-        try:
-            infos = gateway.products(i.product_id for i in items)
-        except InventoryUnavailable:
-            raise unavailable_error()
-        problems = [f"{i.product_name} ({i.product_sku})" for i in items if i.product_id not in infos or not infos[i.product_id].is_active]
-        if problems:
-            raise conflict("These products are no longer available (archived or missing): " + ", ".join(problems) + ". Remove them first.")
     delivery_list.status = target
     db.commit()
     db.refresh(delivery_list)
     return delivery_list
+
+
+def _raise_unless_done(outcome) -> None:
+    """Turn the result of a booking / cancellation into the HTTP answer: refused = 409 with the reason, not yet known = 503."""
+    if outcome.kind == "rejected":
+        raise HTTPException(status.HTTP_409_CONFLICT, {"message": outcome.message, "code": outcome.code or "inventory_rejected", **({"shortages": outcome.shortages} if outcome.shortages else {})})
+    if outcome.kind == "pending":
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            {"message": "The inventory service has not confirmed the stock booking yet, so nothing is booked. Try again in a moment; it will not be booked twice.", "code": "booking_pending"},
+        )

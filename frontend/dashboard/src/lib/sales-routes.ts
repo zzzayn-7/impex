@@ -120,3 +120,26 @@ export function parseInvoiceLines(value: unknown): { ok: true; lines: InvoiceLin
   }
   return { ok: true, lines };
 }
+
+
+// ---- sales orders (Step 23) -------------------------------------------------------------------------------------------------
+/** The order lines as sent by the browser: only a product id and an exact quantity string are read. Name, SKU, unit and stock come from the
+ *  Inventory Service; the organization, the numbers and the reservation are decided by the Sales Service. */
+export function parseOrderLines(value: unknown): { ok: true; lines: { product_id: string; quantity: string }[] } | { ok: false; message: string } {
+  if (!Array.isArray(value) || value.length === 0) return { ok: false, message: "Add at least one product." };
+  if (value.length > 200) return { ok: false, message: "An order can have at most 200 products." };
+  const seen = new Set<string>();
+  const lines: { product_id: string; quantity: string }[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return { ok: false, message: "Invalid order line." };
+    const line = entry as Record<string, unknown>;
+    const productId = checkUuid(line.productId);
+    if (!productId) return { ok: false, message: "Choose a product for every line." };
+    if (seen.has(productId)) return { ok: false, message: "A product can appear only once in an order. Change its quantity instead." };
+    seen.add(productId);
+    const quantity = checkQuantity(line.quantity);
+    if (!quantity.ok) return { ok: false, message: quantity.message };
+    lines.push({ product_id: productId, quantity: quantity.value });
+  }
+  return { ok: true, lines };
+}

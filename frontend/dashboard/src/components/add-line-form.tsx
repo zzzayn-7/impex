@@ -6,6 +6,7 @@ import { NO_STOCK_NOTICE, lineTotal, validatePrice } from "@/lib/purchasing-brow
 import { api, jsonBody, qty } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
 import { validateQuantity } from "@/lib/stock-validation";
+import QuantityInput from "@/components/ui/quantity-input";
 
 export type OrderProduct = { id: string; name: string; sku: string; unit: string; unit_allows_fractions?: boolean };
 
@@ -71,12 +72,11 @@ export default function AddLineForm({ orderId, orderNumber, currency, product, o
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-medium text-slate-400">
-          Quantity to order ({product.unit})
-          <input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode={allowsFractions ? "decimal" : "numeric"} autoComplete="off" aria-invalid={Boolean(quantityProblem)}
-            placeholder={allowsFractions ? "e.g. 25.5" : "e.g. 50"} className={`${inputClass} ${border(quantityProblem)}`} />
+        <div className="block text-xs font-medium text-slate-400">
+          <label htmlFor="order-line-quantity" className="block">Quantity to order ({product.unit})</label>
+          <QuantityInput id="order-line-quantity" value={quantity} onChange={setQuantity} inputMode={allowsFractions ? "decimal" : "numeric"} aria-invalid={Boolean(quantityProblem)} className="mt-1.5" />
           {quantityProblem && <span role="alert" className="mt-1 block text-xs text-red-400">{quantityProblem}</span>}
-        </label>
+        </div>
         <label className="block text-xs font-medium text-slate-400">
           Unit purchase price ({currency})
           <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" autoComplete="off" aria-invalid={Boolean(priceProblem)} placeholder="e.g. 1.25"

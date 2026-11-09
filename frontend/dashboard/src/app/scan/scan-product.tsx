@@ -208,10 +208,18 @@ export default function ScanProduct({ initialListId = null }: { initialListId?: 
             </div>
           </div>
 
-          <dl>
+          <dl className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-              <dt className="text-xs text-slate-400">In stock</dt>
-              <dd className="mt-1 font-mono text-xl font-semibold text-white">{formatQuantity(stock.total_quantity)} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
+              <dt className="text-xs text-slate-400">Physical stock</dt>
+              <dd className="mt-1 font-mono text-xl font-semibold text-white" data-testid="physical-stock">{formatQuantity(stock.total_quantity)} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <dt className="text-xs text-slate-400">Reserved for orders</dt>
+              <dd className="mt-1 font-mono text-xl font-semibold text-white" data-testid="reserved-stock">{formatQuantity(stock.reserved_quantity ?? "0")} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <dt className="text-xs text-slate-400">Available to order</dt>
+              <dd className="mt-1 font-mono text-xl font-semibold text-white" data-testid="available-stock">{formatQuantity(stock.available_quantity ?? stock.total_quantity)} <span className="text-sm font-normal text-slate-400">{product.unit}</span></dd>
             </div>
           </dl>
 

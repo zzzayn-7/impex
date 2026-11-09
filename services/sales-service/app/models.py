@@ -20,6 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -450,4 +451,106 @@ class InvoicePayment(TenantOwnedMixin, Base):
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     recorded_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     recorded_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# =====================================================================================================
+# Sales orders (Step 23): a customer order that books stock and owns an automatically generated delivery list.
+# =====================================================================================================
+class SalesOrderCounter(TenantOwnedMixin, Base):
+    """The last sales-order number handed out to an organization (one row per organization)."""
+
+    __tablename__ = "sales_order_counters"
+    __table_args__ = (UniqueConstraint("organization_id", name="uq_sales_order_counters_organization_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+
+
+class SalesOrder(TenantOwnedMixin, Base):
+    """A customer order. Saving it books the stock in the Inventory Service and generates ONE linked delivery list.
+
+    The order's LINES are the items of its delivery list (one authoritative record, so the order and the list can never disagree).
+
+    status:  pending_reservation -> active -> delivered | closed | cancelled          (or pending_reservation -> failed)
+      * pending_reservation  saved, but the Inventory Service has not yet CONFIRMED the booking. Never treated as booked.
+      * active               the booking is verified; the delivery list is Ready (or Partially Dispatched). Stays so until delivered or
+                             cancelled: there is no expiry.
+      * delivered            every line fully dispatched; `completed_at` starts the 24-hour Delivered History window.
+      * closed               the undelivered rest was cancelled after a partial delivery (the reservation released); history like delivered.
+      * cancelled            cancelled before anything was dispatched (the reservation released).
+      * failed               the Inventory Service definitively refused the booking; nothing is booked.
+    reservation_status: pending | reserved | updating (a change is being applied) | consumed | released | none.
+
+    `pending_*` is the durable INTENT of a change that needs the Inventory Service (create, edit, cancel, close): it is saved BEFORE the
+    Inventory Service is asked, with a stable Idempotency-Key, so a timeout or a crash is recovered by asking again.
+    """
+
+    __tablename__ = "sales_orders"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "number", name="uq_sales_orders_organization_id_number"),
+        UniqueConstraint("organization_id", "id", name="uq_sales_orders_organization_id_id"),
+        UniqueConstraint("organization_id", "delivery_list_id", name="uq_sales_orders_organization_id_delivery_list_id"),
+        ForeignKeyConstraint(["organization_id", "client_id"], ["clients.organization_id", "clients.id"],
+                             name="fk_sales_orders_client_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "delivery_list_id"], ["delivery_lists.organization_id", "delivery_lists.id"],
+                             name="fk_sales_orders_delivery_list_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("status IN ('pending_reservation', 'active', 'delivered', 'closed', 'cancelled', 'failed')", name="status_valid"),
+        CheckConstraint("reservation_status IN ('pending', 'reserved', 'updating', 'consumed', 'released', 'none')", name="reservation_status_valid"),
+        CheckConstraint("origin IN ('order', 'list')", name="origin_valid"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "(status = 'pending_reservation' AND reservation_status = 'pending') OR "
+            "(status = 'active' AND reservation_status IN ('reserved', 'updating')) OR "
+            "(status = 'delivered' AND reservation_status = 'consumed') OR "
+            "(status IN ('closed', 'cancelled') AND reservation_status = 'released') OR "
+            "(status = 'failed' AND reservation_status = 'none')",
+            name="reservation_matches_status",
+        ),
+        CheckConstraint("(status IN ('delivered', 'closed')) = (completed_at IS NOT NULL)", name="completed_when_finished"),
+        CheckConstraint("status NOT IN ('cancelled', 'closed') OR cancelled_at IS NOT NULL", name="cancelled_has_time"),
+        CheckConstraint("(pending_action IS NULL) = (pending_key IS NULL)", name="pending_consistent"),
+        CheckConstraint("pending_action IS NULL OR pending_action IN ('create', 'edit', 'cancel', 'close')", name="pending_action_valid"),
+        Index("ix_sales_orders_organization_id_status", "organization_id", "status"),
+        Index("ix_sales_orders_organization_id_completed_at", "organization_id", "completed_at"),
+        Index("ix_sales_orders_organization_id_client_id", "organization_id", "client_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    number: Mapped[str] = mapped_column(String(32), nullable=False)  # SO-000001, unique per organization
+    client_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    delivery_list_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the ONE list generated for this order
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending_reservation", server_default=text("'pending_reservation'"))
+    reservation_status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending", server_default=text("'pending'"))
+    origin: Mapped[str] = mapped_column(String(12), nullable=False, default="order", server_default=text("'order'"))  # 'order', or 'list' (an older list that was booked)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    pending_action: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    pending_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pending_lines: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    pending_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+
+
+class SalesOrderRequest(TenantOwnedMixin, Base):
+    """One create-order REQUEST (by Idempotency-Key): saving twice returns the same order instead of a second one."""
+
+    __tablename__ = "sales_order_requests"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "idempotency_key", name="uq_sales_order_requests_organization_id_idempotency_key"),
+        ForeignKeyConstraint(["organization_id", "order_id"], ["sales_orders.organization_id", "sales_orders.id"],
+                             name="fk_sales_order_requests_order_same_organization", ondelete="RESTRICT"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

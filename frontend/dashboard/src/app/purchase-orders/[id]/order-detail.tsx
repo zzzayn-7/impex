@@ -12,6 +12,7 @@ import { formatMoney } from "@/lib/product-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
 import { validateQuantity } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, Supplier } from "@/lib/purchasing";
+import QuantityInput from "@/components/ui/quantity-input";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
@@ -162,8 +163,7 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
                       <td colSpan={3} className="px-3 py-3">
                         <div className="flex flex-col items-end gap-2">
                           <div className="flex flex-wrap justify-end gap-2">
-                            <input aria-label={`Quantity of ${line.product_name}`} value={editing.quantity} onChange={(e) => { setEditing({ ...editing, quantity: e.target.value }); setEditError(null); }} inputMode="decimal" autoFocus
-                              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500" />
+                            <QuantityInput aria-label={`Quantity of ${line.product_name}`} value={editing.quantity} onChange={(v) => { setEditing({ ...editing, quantity: v }); setEditError(null); }} autoFocus className="w-40" />
                             <input aria-label={`Unit price of ${line.product_name}`} value={editing.price} onChange={(e) => { setEditing({ ...editing, price: e.target.value }); setEditError(null); }} inputMode="decimal"
                               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveLine(line); } if (e.key === "Escape") setEditing(null); }}
                               className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500" />

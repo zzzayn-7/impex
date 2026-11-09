@@ -23,6 +23,7 @@ from app.schemas import (
     StockOverview,
     StockSummary,
 )
+from app.reservations_api import internal_key_ok
 from app.tenancy import scoped_select
 
 router = APIRouter(prefix="/api/v1/inventory")
@@ -141,10 +142,12 @@ def goods_receipt_by_key(key: str, tenant: TenantContext = Tenant, db: Session =
 # Client dispatches (Step 17A): called by the Sales Service with the administrator's own token
 # =====================================================================================================
 @router.post("/dispatches", response_model=DispatchPosting, status_code=status.HTTP_201_CREATED, tags=["Stock"])
-def post_dispatch(payload: DispatchPost, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
+def post_dispatch(payload: DispatchPost, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db),
+                  x_internal_key: Optional[str] = Header(default=None)):
     """Deduct the quantities of a client dispatch from stock, all lines atomically. 201 the first time, 200 on a replay.
-    409 when stock would go negative: nothing at all is deducted."""
-    result = stock.execute_dispatch(db, tenant, payload, key)
+    409 when the AVAILABLE stock (on hand minus reserved for orders) is not enough: nothing at all is deducted. A line that names
+    its order line (trusted callers only) consumes that order's reservation in the same transaction."""
+    result = stock.execute_dispatch(db, tenant, payload, key, trusted=internal_key_ok(x_internal_key))
     response.status_code = status.HTTP_200_OK if result.replayed else status.HTTP_201_CREATED
     return result
 

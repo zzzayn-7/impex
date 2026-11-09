@@ -1,9 +1,24 @@
 // Browser-side helper for the portal's own /api/sales/* routes. The browser never talks to the Sales Service directly and
 // never names an organization; the HttpOnly cookie identifies the administrator on the server.
-import type { DeliveryItem, DispatchStatus, InvoiceStatus, ListStatus, PaymentMethod, PaymentStatusFilter } from "@/lib/sales";
+import type { BookingState, DeliveryItem, DispatchStatus, InvoiceStatus, ListStatus, OrderStatus, PaymentMethod, PaymentStatusFilter, ReservationStatus } from "@/lib/sales";
 
 export const STOCK_NOTICE =
-  "Stock is not reserved by a delivery list. Saving it, marking it Ready or cancelling it never changes inventory, and the quantities on hand may change before dispatch.";
+  "A draft list reserves nothing. Marking it Ready books its quantities as a sales order (they can then no longer be taken by anything else); physical stock is deducted only when a dispatch is confirmed.";
+
+// ---- sales orders (Step 23) ----------------------------------------------------------------------------------------------------------
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  pending_reservation: "Booking pending", active: "Active", delivered: "Delivered", closed: "Closed (rest cancelled)", cancelled: "Cancelled", failed: "Not booked",
+};
+export const RESERVATION_LABELS: Record<ReservationStatus, string> = {
+  pending: "Not booked yet", reserved: "Stock reserved", updating: "Updating reservation", consumed: "Delivered", released: "Reservation released", none: "Nothing reserved",
+};
+export const BOOKING_LABELS: Record<BookingState, string> = {
+  booked: "Stock reserved", pending: "Booking pending", unbooked: "Not booked (older list)", unbooked_partial: "Needs reconciliation", draft: "Draft: nothing reserved", none: "",
+};
+/** Fulfilment of an active order, from its delivery list's status. */
+export const FULFILMENT_LABELS: Record<string, string> = {
+  draft: "Waiting for booking", ready: "Ready for dispatch", partially_dispatched: "Partially delivered", dispatched: "Delivered", cancelled: "Cancelled",
+};
 
 export const STATUS_LABELS: Record<ListStatus, string> = {
   draft: "Draft", ready: "Ready", partially_dispatched: "Partially Dispatched", dispatched: "Dispatched", cancelled: "Cancelled",

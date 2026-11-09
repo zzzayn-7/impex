@@ -9,6 +9,9 @@ Guarantees (each is also backed by a database constraint, so a bug here cannot s
   * Tenants never mix.                  Every query is tenant-scoped, and composite foreign keys tie a stock row
                                         and its product to the same organization in the database.
   * Quantities are exact decimals, whole numbers for indivisible units (pieces, boxes, ...).
+  * Reserved stock is untouchable. Stock booked for a sales order (balance.reserved_quantity) cannot be taken by a manual stock-out or
+    by a dispatch that is not that order's own; only a dispatch of the order line itself consumes its reservation, in the same
+    transaction (and the database refuses reserved > on hand).
 """
 import hashlib
 import json
@@ -23,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext
-from app.models import Product, StockBalance, StockMovement, StockOperation
+from app.models import Product, StockBalance, StockMovement, StockOperation, StockReservation
 from app.schemas import (
     MovementList,
     MovementResponse,
@@ -96,7 +99,13 @@ def _check_quantity_for_unit(product: Product, quantity: Decimal) -> None:
         )
 
 
-def _insufficient(product: Product, available: Decimal, requested: Decimal) -> HTTPException:
+def _insufficient(product: Product, available: Decimal, requested: Decimal, reserved: Decimal = ZERO) -> HTTPException:
+    if reserved > 0:
+        return HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Insufficient available stock: {human(available)} {product.unit} of {product.name} available, {human(requested)} requested. "
+            f"{human(reserved)} {product.unit} is reserved for sales orders and cannot be taken.",
+        )
     return HTTPException(
         status.HTTP_409_CONFLICT,
         f"Insufficient stock: {human(available)} {product.unit} of {product.name} available, {human(requested)} requested.",
@@ -242,8 +251,8 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
                     "before any other movement; use Add stock or Remove stock instead.",
                 )
         new_balance = balance.quantity + payload.quantity if kind in ("opening", "in") else balance.quantity - payload.quantity
-        if new_balance < ZERO:
-            raise _insufficient(product, balance.quantity, payload.quantity)
+        if new_balance < balance.reserved_quantity:  # also covers < 0: stock booked for orders cannot be taken
+            raise _insufficient(product, balance.quantity - balance.reserved_quantity, payload.quantity, balance.reserved_quantity)
 
         balance.quantity = new_balance
         _add_movement(db, tenant, operation, product, kind, payload.quantity, new_balance, reason)
@@ -361,7 +370,11 @@ def receipt_by_key(db: Session, tenant: TenantContext, key: str) -> ReceiptPosti
 # --- client dispatch: several quantities of goods leaving for a client, atomically ---------------------------------
 def _dispatch_fingerprint(payload: DispatchPost) -> str:
     lines = sorted(
-        ({"line": str(l.line_id), "product": str(l.product_id), "quantity": canonical(l.quantity), "unit": l.unit} for l in payload.lines),
+        (
+            {"line": str(l.line_id), "product": str(l.product_id), "quantity": canonical(l.quantity), "unit": l.unit,
+             **({"order_line": str(l.order_line_id)} if l.order_line_id else {})}  # only when present: older postings keep their fingerprint
+            for l in payload.lines
+        ),
         key=lambda item: item["line"],
     )
     body = json.dumps({"kind": "dispatch", "dispatch": payload.dispatch_number, "list": payload.delivery_list_number or "", "lines": lines}, sort_keys=True)
@@ -373,14 +386,20 @@ def _dispatch_result(db: Session, tenant: TenantContext, operation: uuid.UUID, d
     return DispatchPosting(operation_id=posting.operation_id, dispatch_number=dispatch_number, replayed=replayed, movements=posting.movements)
 
 
-def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, key: str) -> DispatchPosting:
+def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, key: str, trusted: bool = False) -> DispatchPosting:
     """Deduct the dispatched quantities of one client dispatch from stock: ALL lines or none, once per Idempotency-Key.
 
     Stock never goes negative (the balance rows are locked, in a fixed order, while they are read and changed; the database
     also checks quantity >= 0). A dispatch line can produce at most one movement ever (unique index), whatever key the caller
     uses. The product's unit must equal the unit on the line - a quantity is never reinterpreted - and archived products are
     refused.
+
+    Reservations: a line that names its `order_line_id` (trusted callers only) consumes that order line's reservation - the stock
+    leaves and the reservation shrinks in this same transaction, so they can never disagree. Every other line may only take AVAILABLE
+    stock (on hand minus reserved), so a dispatch can never eat into stock booked for another order.
     """
+    if any(l.order_line_id for l in payload.lines) and not trusted:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Sales Service can dispatch against an order reservation.")
     request_hash = _dispatch_fingerprint(payload)
     try:
         operation = _start_operation(db, tenant, "dispatch", key, request_hash)
@@ -406,13 +425,38 @@ def execute_dispatch(db: Session, tenant: TenantContext, payload: DispatchPost, 
             _check_quantity_for_unit(product, line.quantity)
 
         balances = _lock_balances(db, tenant, list(products))
-        for line in lines:
+        reservations: Dict[uuid.UUID, StockReservation] = {}
+        order_lines = [l.order_line_id for l in lines if l.order_line_id]
+        if order_lines:
+            reservations = {
+                r.source_line_id: r
+                for r in db.scalars(
+                    scoped_select(StockReservation, tenant).where(StockReservation.source_line_id.in_(order_lines)).order_by(StockReservation.id)
+                    .with_for_update().execution_options(populate_existing=True)
+                ).all()
+            }
+        # the order's own lines first (they consume what is booked for them), then everything else against what is still AVAILABLE
+        for line in sorted(lines, key=lambda l: 0 if l.order_line_id else 1):
             balance = balances[line.product_id]
-            if balance.quantity < line.quantity:
-                raise _insufficient(products[line.product_id], balance.quantity, line.quantity)
+            product = products[line.product_id]
+            if line.order_line_id:
+                reservation = reservations.get(line.order_line_id)
+                if reservation is None or reservation.product_id != line.product_id or reservation.status != "active":
+                    raise HTTPException(status.HTTP_409_CONFLICT, {"code": "no_reservation", "message": f"No stock is reserved for {product.name} on this order line."})
+                if line.quantity > reservation.remaining_quantity:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        {"code": "exceeds_reservation", "message": f"{human(line.quantity)} {product.unit} of {product.name} cannot be dispatched: only {human(reservation.remaining_quantity)} is reserved for this order line."},
+                    )
+                reservation.consumed_quantity += line.quantity
+                reservation.remaining_quantity -= line.quantity
+                reservation.status = "active" if reservation.remaining_quantity > 0 else "fulfilled"
+                balance.reserved_quantity -= line.quantity
+            elif balance.quantity - balance.reserved_quantity < line.quantity:
+                raise _insufficient(product, balance.quantity - balance.reserved_quantity, line.quantity, balance.reserved_quantity)
             balance.quantity = balance.quantity - line.quantity
             _add_movement(
-                db, tenant, operation, products[line.product_id], "out", line.quantity,
+                db, tenant, operation, product, "out", line.quantity,
                 balance.quantity, reason, source_reference=payload.dispatch_number, source_line_id=line.line_id, source_type="client_dispatch",
             )
         db.commit()
@@ -469,18 +513,22 @@ def list_movements(
 def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product]) -> List[StockProduct]:
     """What is in stock for the given products (all of them the tenant's), tenant-scoped."""
     quantities: Dict[uuid.UUID, Decimal] = {}
+    reserved: Dict[uuid.UUID, Decimal] = {}
     if products:
-        for product_id, quantity in db.execute(
-            select(StockBalance.product_id, StockBalance.quantity).where(
+        for product_id, quantity, held in db.execute(
+            select(StockBalance.product_id, StockBalance.quantity, StockBalance.reserved_quantity).where(
                 StockBalance.organization_id == tenant.organization_id, StockBalance.product_id.in_([p.id for p in products])
             )
         ).all():
             quantities[product_id] = quantity
+            reserved[product_id] = held
     return [
         StockProduct(
             product_id=p.id, sku=p.sku, name=p.name, category=p.category, unit=p.unit,
             unit_allows_fractions=allows_fractions(p.unit), is_active=p.is_active,
             total_quantity=quantities.get(p.id) or ZERO,  # nothing in stock reads "0", whether or not a balance row exists
+            reserved_quantity=reserved.get(p.id) or ZERO,
+            available_quantity=(quantities.get(p.id) or ZERO) - (reserved.get(p.id) or ZERO),
         )
         for p in products
     ]

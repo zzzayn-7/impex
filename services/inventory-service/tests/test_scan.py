@@ -81,7 +81,7 @@ def test_the_result_carries_product_details_and_current_stock(api, shop):
     assert (product["name"], product["unit"], product["unit_allows_fractions"], product["unit_locked"]) == ("Steel bolt", "pcs", False, True)
     assert "organization_id" not in str(body)
     assert stock["total_quantity"] == "50.0000"
-    assert "warehouse" not in str(body).lower() and "lines" not in stock and "available_quantity" not in stock
+    assert "warehouse" not in str(body).lower() and "lines" not in stock and stock["available_quantity"] == stock["total_quantity"] and stock["reserved_quantity"] in ("0", "0.0000")
     flour = resolve(api, "FLOUR").json()
     assert flour["product"]["unit_allows_fractions"] is True and flour["stock"]["total_quantity"] == "2.5000"
 

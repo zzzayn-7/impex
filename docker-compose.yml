@@ -126,6 +126,8 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
       - ORG_SERVICE_URL=http://organization-service:8001
+      # The shared secret only the Sales Service holds: needed (besides the administrator's token) to book or release stock for a sales order.
+      - RESERVATION_API_KEY=${RESERVATION_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,6 +155,7 @@ services:
       - ORG_SERVICE_URL=http://organization-service:8001
       - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}  # lets the Organization Service ask what is in progress before a module is switched off
       - INVENTORY_SERVICE_URL=http://inventory-service:8002
+      - RESERVATION_API_KEY=${RESERVATION_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # books and releases stock for sales orders in the Inventory Service
     depends_on:
       postgres:
         condition: service_healthy

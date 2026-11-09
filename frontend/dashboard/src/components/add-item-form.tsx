@@ -4,9 +4,10 @@ import { FormEvent, useState } from "react";
 
 import { DuplicateItem, STOCK_NOTICE, addDecimal, api, exceeds, jsonBody, qty, shortfall } from "@/lib/sales-browser";
 import { validateQuantity } from "@/lib/stock-validation";
+import QuantityInput from "@/components/ui/quantity-input";
 
 export type AddProduct = { id: string; name: string; sku: string; unit: string; unit_allows_fractions?: boolean };
-export type AddStock = { total_quantity: string };
+export type AddStock = { total_quantity: string; reserved_quantity?: string; available_quantity?: string };
 
 type Props = {
   listId: string;
@@ -33,7 +34,7 @@ export default function AddItemForm({ listId, listNumber, product, stock, onChan
   const clean = quantity.trim();
   const problem = clean ? validateQuantity(clean, allowsFractions, product.unit) : undefined;
   const valid = Boolean(clean) && !problem;
-  const available = stock?.total_quantity ?? null;
+  const available = stock ? stock.available_quantity ?? stock.total_quantity : null; // what is still free: stock reserved for orders cannot be added to a draft's promise
   const tooMuch = valid && available !== null && exceeds(clean, available);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -79,26 +80,27 @@ export default function AddItemForm({ listId, listNumber, product, stock, onChan
         </p>
         {stock ? (
           <p className="mt-1 text-xs text-slate-300" data-testid="availability">
-            In stock now: <span className="font-mono font-semibold text-emerald-400">{qty(stock.total_quantity)} {product.unit}</span>
+            On hand: <span className="font-mono font-semibold text-ix-text">{qty(stock.total_quantity)} {product.unit}</span>
+            {stock.reserved_quantity !== undefined && <> · Reserved: <span className="font-mono text-slate-300">{qty(stock.reserved_quantity)}</span></>}
+            {" · "}Available: <span className="font-mono font-semibold text-emerald-400">{qty(stock.available_quantity ?? stock.total_quantity)} {product.unit}</span>
           </p>
         ) : (
           <p className="mt-1 text-xs text-slate-500">Current stock could not be loaded.</p>
         )}
       </div>
 
-      <label className="block text-xs font-medium text-slate-400">
-        Quantity to deliver ({product.unit})
-        <input
+      <div className="block text-xs font-medium text-slate-400">
+        <label htmlFor="deliver-quantity" className="block">Quantity to deliver ({product.unit})</label>
+        <QuantityInput
+          id="deliver-quantity"
           value={quantity}
-          onChange={(e) => { setQuantity(e.target.value); setDuplicate(null); setError(null); }}
+          onChange={(v) => { setQuantity(v); setDuplicate(null); setError(null); }}
           inputMode={allowsFractions ? "decimal" : "numeric"}
-          autoComplete="off"
-          placeholder={allowsFractions ? "e.g. 2.5" : "e.g. 10"}
           aria-invalid={Boolean(problem)}
-          className={`${inputClass} ${problem ? "border-red-500/60 focus:border-red-500 focus:ring-red-500" : "border-slate-800 focus:border-indigo-500 focus:ring-indigo-500"}`}
+          className="mt-1.5"
         />
         {problem && <span role="alert" className="mt-1 block text-xs text-red-400">{problem}</span>}
-      </label>
+      </div>
 
       {tooMuch && available !== null && (
         <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">

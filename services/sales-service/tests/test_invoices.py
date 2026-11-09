@@ -204,7 +204,7 @@ def test_the_selling_price_is_independent_of_the_catalog_and_the_catalog_is_unto
     invoice = api.issued_invoice(world["client"]["id"], [bill(world["dispatch"], depot["bolt"], 10, "0.01")])  # far below any catalog price
     api.pay(invoice["id"], "0.10")
     assert (inventory.snapshot(), len(inventory.requests), len(inventory.ledger)) == before  # not one request reached the Inventory Service
-    assert inventory.writes() == [("POST", "/api/v1/inventory/dispatches", "admin-alpha")]  # the dispatch of the fixture is the only write ever made
+    assert inventory.deduction_writes() == [("POST", "/api/v1/inventory/dispatches", "admin-alpha")]  # the dispatch of the fixture is the only deduction ever made
 
 
 def test_invoicing_works_while_the_inventory_service_is_down(api, depot, inventory, world):

@@ -229,7 +229,7 @@ def main() -> int:
         s, body = resolve("a", code_a)
         stock_info = body["stock"]
         check("the result carries unit and the stock on hand - and nothing about warehouses", body["product"]["unit"] == "pcs" and body["product"]["unit_allows_fractions"] is False
-              and stock_info["total_quantity"] == "50.0000" and "lines" not in stock_info and "available_quantity" not in stock_info and "warehouse" not in json.dumps(body).lower(), body)
+              and stock_info["total_quantity"] == "50.0000" and "lines" not in stock_info and stock_info["available_quantity"] in ("50", "50.0000") and stock_info["reserved_quantity"] in ("0", "0.0000") and "warehouse" not in json.dumps(body).lower(), body)
         check("...and no organization id", "organization_id" not in json.dumps(body))
         s, body = resolve("a", "FLOUR-EAN-1")
         check("a kg product reports that decimals are allowed", s == 200 and body["product"]["unit_allows_fractions"] is True and body["stock"]["total_quantity"] == "2.5000", (s, body))

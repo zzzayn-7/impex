@@ -9,6 +9,7 @@ import { validateQuantity } from "@/lib/stock-validation";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, STATUS_LABELS, STATUS_STYLE, STOCK_NOTICE, api, jsonBody, percent, qty } from "@/lib/sales-browser";
 import type { DeliveryItem, DeliveryListDetail as Detail } from "@/lib/sales";
+import QuantityInput from "@/components/ui/quantity-input";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
@@ -44,7 +45,7 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
   }
 
   const changeStatus = async (action: "ready" | "cancel" | "reopen") => {
-    const text = action === "ready" ? `${list.number} is marked Ready. No stock was deducted or reserved.` : action === "cancel" ? `${list.number} was cancelled. Nothing was deleted and no stock was involved.` : `${list.number} is a draft again.`;
+    const text = action === "ready" ? `${list.number} is marked Ready and its stock is booked. Physical stock is deducted only when a dispatch is confirmed.` : action === "cancel" ? `${list.number} was cancelled. Nothing was deleted and no stock was involved.` : `${list.number} is a draft again.`;
     if (await call(`/api/sales/delivery-lists/${list.id}/${action}`, { method: "POST" }, text)) setConfirmCancel(false);
   };
 
@@ -79,7 +80,7 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
         <div className="flex flex-wrap gap-2" role="group" aria-label="List actions">
           {draft && <button type="button" disabled={busy || list.items.length === 0} onClick={() => changeStatus("ready")} className="min-h-11 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Mark Ready</button>}
           {list.can_dispatch && <Link href={`/delivery-lists/${list.id}/dispatch`} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Prepare dispatch</Link>}
-          {list.status === "ready" && !hasFulfilment && <button type="button" disabled={busy} onClick={() => changeStatus("reopen")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">Reopen as draft</button>}
+          {list.status === "ready" && !hasFulfilment && list.booking_state !== "booked" && <button type="button" disabled={busy} onClick={() => changeStatus("reopen")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50">Reopen as draft</button>}
           {(list.status === "draft" || list.status === "ready") && !hasFulfilment && (confirmCancel ? (
             <span className="flex items-center gap-2">
               <span className="text-xs text-slate-300">Cancel this list?</span>
@@ -136,9 +137,9 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
                     <td className="px-3 py-3 text-right font-mono">
                       {editing?.id === item.id ? (
                         <div className="flex flex-col items-end gap-1">
-                          <input aria-label={`Quantity of ${item.product_name}`} value={editing.value} onChange={(e) => { setEditing({ id: item.id, value: e.target.value }); setEditError(null); }}
+                          <QuantityInput aria-label={`Quantity of ${item.product_name}`} value={editing.value} onChange={(v) => { setEditing({ id: item.id, value: v }); setEditError(null); }}
                             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveQuantity(item); } if (e.key === "Escape") setEditing(null); }}
-                            inputMode="decimal" autoFocus className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right text-sm text-white outline-none focus:border-indigo-500" />
+                            autoFocus className="w-40" />
                           {editError && <span role="alert" className="max-w-[12rem] text-right text-xs text-red-400">{editError}</span>}
                           <span className="flex gap-1">
                             <button type="button" disabled={busy} onClick={() => saveQuantity(item)} className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">Save</button>
@@ -152,7 +153,8 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
                     <td className="px-3 py-3 text-right font-mono text-xs">
                       {item.stock ? (
                         <span className={item.stock.exceeds_available ? "text-amber-300" : "text-emerald-400"}>
-                          {qty(item.stock.total_quantity)} {item.unit}
+                          {qty(item.stock.available_quantity ?? item.stock.total_quantity)} {item.unit} available
+                          <span className="block text-[11px] text-slate-400">{qty(item.stock.total_quantity)} on hand · {qty(item.stock.reserved_quantity ?? "0")} reserved</span>
                           {item.stock.exceeds_available && <span className="block text-[11px]">short by {qty(item.stock.shortfall)}</span>}
                         </span>
                       ) : <span className="text-slate-600">—</span>}
@@ -238,7 +240,9 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
       ) : (
         list.status === "ready" && (hasFulfilment
           ? <p className="text-xs text-slate-500">This list has dispatches, so its products are frozen.</p>
-          : <p className="text-xs text-slate-500">This list is Ready. Reopen it as a draft to change its products.</p>)
+          : list.booking_state === "booked"
+            ? <p className="text-xs text-slate-500">This list belongs to sales order {list.order_number} and its stock is reserved. Change its products with Edit on the Delivery Lists page.</p>
+            : <p className="text-xs text-slate-500">This list is Ready. Reopen it as a draft to change its products.</p>)
       )}
     </div>
   );
