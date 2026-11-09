@@ -204,9 +204,9 @@ class FakeInventory:
         self._res_lock = threading.RLock()  # the real service books under a row lock: one booking at a time
 
     # -- building the world
-    def add_product(self, org: str, sku: str, name: str, unit: str = "pcs", active: bool = True) -> str:
+    def add_product(self, org: str, sku: str, name: str, unit: str = "pcs", active: bool = True, price=None, currency: str = "USD") -> str:
         pid = str(uuid.uuid4())
-        self.products.setdefault(org, {})[pid] = {"id": pid, "sku": sku, "name": name, "unit": unit, "is_active": active}
+        self.products.setdefault(org, {})[pid] = {"id": pid, "sku": sku, "name": name, "unit": unit, "is_active": active, "price": price, "currency": currency}
         return pid
 
     def set_stock(self, product: str, quantity) -> None:
@@ -239,6 +239,7 @@ class FakeInventory:
             "total_quantity": format(total, "f") if total > 0 else "0",
             "reserved_quantity": format(reserved, "f") if reserved > 0 else "0",
             "available_quantity": format(total - reserved, "f") if total - reserved > 0 else "0",
+            **({} if product.get("price") is None else {"selling_price": format(Decimal(str(product["price"])), "f"), "currency_code": product["currency"]}),
         }
 
     def handle(self, request: httpx.Request) -> httpx.Response:

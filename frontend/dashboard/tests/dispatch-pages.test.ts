@@ -248,7 +248,7 @@ describe("Prepare dispatch page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_LIST);
-    for (const expected of ["Prepare dispatch", "DL-000001", "Alpha steel bolt", "Requested", "Dispatched", "In progress", "Remaining", "Review dispatch", "Find a product on this list", "Use camera", "Dispatch date", "Tracking / reference number", "does not change your stock"]) {
+    for (const expected of ["Prepare dispatch", "DL-000001", "Alpha steel bolt", "Requested", "Dispatched", "In progress", "Remaining", "Review dispatch", "Find a product on this list", "Scan Product", "Dispatch date", "Tracking / reference number", "does not change your stock"]) {
       expect(html, expected).toContain(expected);
     }
   });
@@ -352,6 +352,6 @@ describe("navigation", () => {
     // there is no Dispatches tab any more: the dispatch pages belong to Delivery Lists, which stays highlighted
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Delivery Lists");
     expect(html).not.toContain('href="/dispatches"');
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
   });
 });

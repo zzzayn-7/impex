@@ -5,14 +5,14 @@ import { MODULE_LABELS, MODULE_PAGES, usableModules, type ModuleKey } from "@/li
 // Dashboard, Help & Support and Settings are permanent. This only decides what to LIST: the services behind every page enforce access again.
 
 export type IconName =
-  | "dashboard" | "products" | "stock" | "scan" | "movements" | "suppliers" | "orders" | "receipts" | "clients" | "lists"
+  | "dashboard" | "products" | "stock" | "movements" | "suppliers" | "orders" | "receipts" | "clients" | "lists"
   | "orderPlus" | "invoices" | "overview" | "accounts" | "expenses" | "journal" | "support" | "settings";
 
 export type NavItem = { key: string; label: string; href: string; icon: IconName };
 export type NavGroup = { id: string; label: string; items: NavItem[] };
 
 const ICON_BY_HREF: Record<string, IconName> = {
-  "/products": "products", "/stock": "stock", "/scan": "scan", "/movements": "movements",
+  "/products": "products", "/stock": "stock", "/movements": "movements",
   "/suppliers": "suppliers", "/purchase-orders": "orders", "/goods-receipts": "receipts",
   "/clients": "clients", "/sales-orders/new": "orderPlus", "/delivery-lists": "lists", "/invoices": "invoices",
   "/finance": "overview", "/finance/accounts": "accounts", "/finance/expenses": "expenses", "/finance/journal": "journal",
@@ -51,7 +51,6 @@ export const PAGE_META = {
   dashboard: { title: "Dashboard", href: "/", section: "main" },
   products: { title: "Products", href: "/products", section: "inventory" },
   stock: { title: "Stock", href: "/stock", section: "inventory" },
-  scan: { title: "Scan Product", href: "/scan", section: "inventory" },
   movements: { title: "Movements", href: "/movements", section: "inventory" },
   suppliers: { title: "Suppliers", href: "/suppliers", section: "purchasing" },
   purchasing: { title: "Purchase Orders", href: "/purchase-orders", section: "purchasing" },

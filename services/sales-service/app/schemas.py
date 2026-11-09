@@ -751,6 +751,10 @@ class OrderSummary(BaseModel):
     origin: Literal["order", "list"]
     version: int
     product_count: int
+    # What the order is worth at the catalog's CURRENT selling prices (ordered quantity x price, one currency). Only the order LIST works it out; it is
+    # None when the products use different currencies, a product is gone, or the Inventory Service could not be asked: never a guess.
+    total_amount: Optional[Decimal] = None
+    currency_code: Optional[str] = None
     created_by_email: str
     created_at: datetime
     updated_at: datetime

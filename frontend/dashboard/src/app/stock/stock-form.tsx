@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import type { Product } from "@/lib/product-validation";
 import QuantityInput from "@/components/ui/quantity-input";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
+import type { ScanResult } from "@/lib/scan";
 import {
   ACTION_LABELS,
   API_FIELD_NAMES,
@@ -13,6 +15,7 @@ import {
   StockAction,
   StockFieldErrors,
   StockFormValues,
+  formatQuantity,
   newIdempotencyKey,
   normalizeStock,
   toStockBody,
@@ -59,6 +62,8 @@ export default function StockForm({
   // timeout) reuses the key, so the change is applied once; changing anything starts a new action with a new key.
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
 
+  // The product a scan identified, with the stock figures it came with (shown while that product is still the selected one).
+  const [scanned, setScanned] = useState<ScanResult | null>(null);
   const product = products.find((p) => p.id === values.productId);
   const allowsFractions = product?.unit_allows_fractions ?? false;
 
@@ -66,6 +71,15 @@ export default function StockForm({
     setValues((prev) => ({ ...prev, [field]: value }));
     setConfirming(null); // any change cancels a pending confirmation: what was summarised is no longer what is in the form
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+  }
+
+  // A scan identifies the product and selects it. It never sends anything: the quantity (and reason) already typed stay as they are, and the stock
+  // changes only when the form is submitted (and confirmed) as always.
+  const notOnTheList = (r: ScanResult) => (products.some((p) => p.id === r.product.id) ? null : `${r.product.name} (${r.product.sku}) is not available for stock changes here.`);
+  function onScanned(result: ScanResult) {
+    setScanned(result);
+    setFormError(null);
+    update("productId", result.product.id);
   }
 
   function switchAction(next: StockAction) {
@@ -175,14 +189,26 @@ export default function StockForm({
       {formError && <div role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">{formError}</div>}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="text-xs font-medium text-slate-400 sm:col-span-2">
-          Product
-          <select value={values.productId} onChange={(e) => update("productId", e.target.value)} disabled={lockProduct} aria-invalid={Boolean(errors.productId)} className={`${selectClass} ${fieldBorder(errors.productId)}`}>
-            <option value="">Choose a product…</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku}) — counted in {p.unit}</option>)}
-          </select>
+        <div className="text-xs font-medium text-slate-400 sm:col-span-2">
+          <label htmlFor="stock-product" className="block">Product</label>
+          <div className="mt-1.5 flex gap-2">
+            <select id="stock-product" value={values.productId} onChange={(e) => update("productId", e.target.value)} disabled={lockProduct} aria-invalid={Boolean(errors.productId)} className={`${selectClass.replace("mt-1.5 ", "")} min-w-0 flex-1 ${fieldBorder(errors.productId)}`}>
+              <option value="">Choose a product…</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku}) — counted in {p.unit}</option>)}
+            </select>
+            {!lockProduct && <ScanProductButton check={notOnTheList} onFound={onScanned} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800" />}
+          </div>
           {errors.productId && <span role="alert" className="mt-1 block text-xs text-red-400">{errors.productId}</span>}
-        </label>
+          {scanned && scanned.product.id === values.productId && (
+            <p role="status" className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs font-normal text-slate-300">
+              Scanned: <strong className="font-semibold text-white">{scanned.product.name}</strong> <span className="font-mono text-indigo-300">{scanned.product.sku}</span>
+              {" · "}On hand {formatQuantity(scanned.stock.total_quantity)} {scanned.product.unit}
+              {" · "}Reserved {formatQuantity(scanned.stock.reserved_quantity ?? "0")}
+              {" · "}<span className="text-white">Available {formatQuantity(scanned.stock.available_quantity ?? scanned.stock.total_quantity)} {scanned.product.unit}</span>
+              {action === "out" && <span className="mt-1 block text-slate-400">Stock reserved for customer orders cannot be removed: only the available quantity can leave.</span>}
+            </p>
+          )}
+        </div>
 
         <div className="text-xs font-medium text-slate-400">
           <label htmlFor="stock-quantity" className="block">Quantity{product ? ` (${product.unit})` : ""}</label>

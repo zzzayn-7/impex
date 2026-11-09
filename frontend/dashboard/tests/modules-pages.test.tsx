@@ -70,7 +70,7 @@ function Probe() {
 const layouts: [string, string, (p: any) => any, string[]][] = [
   ["inventory", "Products", ProductsLayout, ["inventory"]],
   ["inventory", "Stock", StockLayout, ["inventory"]],
-  ["inventory", "Scan Product", ScanLayout, ["inventory"]],
+  ["inventory", "the old Scan page (no longer in the menu)", ScanLayout, ["inventory"]],
   ["inventory", "Movements", MovementsLayout, ["inventory"]],
   ["purchasing", "Suppliers", SuppliersLayout, ["inventory", "purchasing"]],
   ["purchasing", "Purchase Orders", PurchaseOrdersLayout, ["inventory", "purchasing"]],
@@ -144,11 +144,11 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
+      ["Dashboard", "Products", "Stock", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {
-    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Help & Support", "Settings"]);
+    same(labels(nav(["inventory"])), ["Dashboard", "Products", "Stock", "Movements", "Help & Support", "Settings"]);
   });
   it("Inventory and Sales", () => {
     const shown = labels(nav(["inventory", "sales"]));

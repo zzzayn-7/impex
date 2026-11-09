@@ -157,6 +157,10 @@ export type OrderSummary = {
   origin: "order" | "list";
   version: number;
   product_count: number;
+  /** What the order is worth at the catalog's current selling prices (exact decimal string) and its currency. Null when it cannot be totalled: products in two
+   *  currencies, a product that is gone, or the Inventory Service could not be asked. Only the order LIST carries it. */
+  total_amount?: string | null;
+  currency_code?: string | null;
   created_by_email: string;
   created_at: string;
   updated_at: string;

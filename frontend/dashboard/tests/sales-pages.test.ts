@@ -196,11 +196,12 @@ describe("Delivery list detail page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(ALPHA_LIST);
-    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "on hand", "short by 7", "Mark Ready", "Cancel list", "Scan products for this list",
+    for (const expected of ["DL-000001", "Alpha Acme", "Alpha steel bolt", "SKU-1", "12", "pcs", "on hand", "short by 7", "Mark Ready", "Cancel list", "Scan Product",
       "reserves nothing", "books its quantities", "deducted only when a dispatch is confirmed", "asks for more than is available"]) {
       expect(html, expected).toContain(expected);
     }
-    expect(html).toContain(`href="/scan?list=${ALPHA_LIST}"`);
+    expect(html).not.toContain("/scan?list="); // no link to the old Scan page any more: the Scan Product button opens a dialog
+    expect(html).toContain("Scan Product");
   });
 
   it("two organizations: another organization's list id is simply 'not found'", async () => {
@@ -294,7 +295,7 @@ describe("navigation and layouts", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (layout as any)({ children: "PAGE" }));
     expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe(label);
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/", "/products", "/stock", "/movements", "/delivery-lists", "/clients"]) expect(html).toContain(`href="${href}"`);
   });
 });
 

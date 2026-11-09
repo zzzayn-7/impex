@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import AddItemForm from "@/components/add-item-form";
 import { validateQuantity } from "@/lib/stock-validation";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
 import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, STATUS_LABELS, STATUS_STYLE, STOCK_NOTICE, api, jsonBody, percent, qty } from "@/lib/sales-browser";
 import type { DeliveryItem, DeliveryListDetail as Detail } from "@/lib/sales";
@@ -23,6 +24,7 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
   const [editError, setEditError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [scanned, setScanned] = useState<ScanResult | null>(null); // a product identified by the Scan Product dialog, waiting for its quantity
 
   const draft = list.status === "draft";
   const dispatches = list.dispatches ?? [];
@@ -230,10 +232,26 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-white">Add a product</h3>
             <div className="flex gap-2">
-              <Link href={`/scan?list=${list.id}`} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Scan products for this list</Link>
+              <ScanProductButton onFound={(r) => { setAdding(false); setScanned(r); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500" />
               <button type="button" onClick={() => setAdding((v) => !v)} aria-expanded={adding} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">{adding ? "Close" : "Type a SKU or barcode"}</button>
             </div>
           </div>
+          {scanned && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+                <span>Scanned: <strong className="font-semibold text-white">{scanned.product.name}</strong> <span className="font-mono text-indigo-300">{scanned.product.sku}</span></span>
+                <button type="button" onClick={() => setScanned(null)} className="text-slate-400 underline-offset-2 hover:text-white hover:underline">Clear</button>
+              </div>
+              <AddItemForm
+                key={scanned.product.id}
+                listId={list.id}
+                listNumber={list.number}
+                product={scanned.product}
+                stock={scanned.stock}
+                onChanged={({ message }) => { setScanned(null); setMessage({ ok: true, text: message }); refresh(); }}
+              />
+            </div>
+          )}
           {adding && <ManualAdd list={list} onChanged={(text) => { setMessage({ ok: true, text }); refresh(); }} />}
           <ListNotes list={list} onSaved={(text) => { setMessage({ ok: true, text }); refresh(); }} />
         </section>

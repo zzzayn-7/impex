@@ -25,7 +25,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException, status
@@ -709,7 +709,31 @@ def _client_refs(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -
     return {c.id: c for c in db.scalars(scoped_select(Client, tenant).where(Client.id.in_({o.client_id for o in orders})))}
 
 
-def summaries(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -> List[OrderSummary]:
+def order_totals(db: Session, tenant: TenantContext, gateway: InventoryGateway, list_ids: List[uuid.UUID]) -> Dict[uuid.UUID, Tuple[Decimal, str]]:
+    """delivery list id -> (ordered quantity x CURRENT selling price summed, currency), for the lists that can be totalled. One query for the lines and
+    one batched question to the Inventory Service (the caller's own token). A list whose products use different currencies, or with a product the
+    Inventory Service no longer knows, is left out: no total is better than a wrong one. An Inventory outage leaves every list out and breaks nothing."""
+    rows = db.execute(
+        select(DeliveryListItem.delivery_list_id, DeliveryListItem.product_id, DeliveryListItem.quantity)
+        .where(DeliveryListItem.organization_id == tenant.organization_id, DeliveryListItem.delivery_list_id.in_(list_ids))
+    ).all()
+    try:
+        infos = gateway.products({product_id for _, product_id, _ in rows})
+    except (InventoryUnavailable, HTTPException):
+        return {}
+    sums: Dict[uuid.UUID, Decimal] = {}
+    currencies: Dict[uuid.UUID, str] = {}
+    unusable = set()
+    for list_id, product_id, quantity in rows:
+        info = infos.get(product_id)
+        if info is None or info.selling_price is None or not info.currency_code or currencies.setdefault(list_id, info.currency_code) != info.currency_code:
+            unusable.add(list_id)
+            continue
+        sums[list_id] = sums.get(list_id, ZERO) + Decimal(quantity) * info.selling_price
+    return {i: (total.quantize(QUANT, rounding=ROUND_HALF_UP), currencies[i]) for i, total in sums.items() if i not in unusable}
+
+
+def summaries(db: Session, tenant: TenantContext, orders: List[SalesOrder], gateway: Optional[InventoryGateway] = None) -> List[OrderSummary]:
     if not orders:
         return []
     clients = _client_refs(db, tenant, orders)
@@ -721,10 +745,13 @@ def summaries(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -> L
             .group_by(DeliveryListItem.delivery_list_id)
         ).all()
     )
+    totals = order_totals(db, tenant, gateway, list(lists)) if gateway is not None else {}
     out = []
     for o in orders:
         c, l = clients[o.client_id], lists[o.delivery_list_id]
+        total_amount, currency_code = totals.get(l.id, (None, None))
         out.append(OrderSummary(
+            total_amount=total_amount, currency_code=currency_code,
             id=o.id, number=o.number, client=ClientRef(id=c.id, name=c.name, is_active=c.is_active),
             delivery_list=OrderListRef(id=l.id, number=l.number, status=l.status), status=o.status, reservation_status=o.reservation_status,
             origin=o.origin, version=o.version, product_count=counts.get(l.id, 0), created_by_email=o.created_by_email, created_at=o.created_at,
@@ -827,4 +854,4 @@ def list_orders(db: Session, tenant: TenantContext, gateway: InventoryGateway, *
                 db.rollback()
         if any(o.pending_action is not None or o.status == "pending_reservation" for o in rows):
             rows = list(db.scalars(base.where(*filters).order_by(*order_by).limit(limit).offset(offset)))
-    return summaries(db, tenant, rows), total
+    return summaries(db, tenant, rows, gateway), total

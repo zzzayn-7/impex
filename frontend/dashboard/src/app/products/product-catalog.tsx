@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { ProductFilters, ProductListResult } from "@/lib/inventory";
 import { Product, formatMoney } from "@/lib/product-validation";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import ProductForm from "./product-form";
 
 type Props = {
@@ -133,6 +134,12 @@ export default function ProductCatalog({ list, categories, filters }: Props) {
               />
             </label>
             <button type="submit" className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Search</button>
+            {/* A scan only identifies the product: its SKU is put in the search box and the list shows it (archived products too). Nothing is changed. */}
+            <ScanProductButton
+              activeOnly={false}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+              onFound={({ product }) => { setSearch(product.sku); navigate({ q: product.sku, ...(product.is_active ? {} : { status: "all" as const }) }); }}
+            />
           </form>
           <label className="text-xs font-medium text-slate-400">
             Category

@@ -4,7 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import CameraScanner from "@/app/scan/camera-scanner";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import { DISPATCH_NOTICE, DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, api, jsonBody, qty } from "@/lib/sales-browser";
 import { exceeds } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
@@ -40,7 +40,6 @@ export default function DispatchForm({
     trackingReference: draft?.tracking_reference ?? "", notes: draft?.notes ?? "",
   });
   const savedHeader = useRef(header);
-  const [camera, setCamera] = useState(false);
   const [code, setCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -81,9 +80,23 @@ export default function DispatchForm({
     if (result.kind === "unauthorized") return router.replace("/login");
     if (result.kind !== "found") return setError(result.message);
     const found = result.result.product;
+    const problem = problemWith(found);
+    if (problem) return setError(problem);
+    accept(found);
+  }
+
+  // A scanned product must be ON this list and still have something left to dispatch: anything else is refused with the reason.
+  function problemWith(found: { id: string; name: string; sku: string }): string | null {
     const item = items.find((i) => i.product_id === found.id);
-    if (!item) return setError(`${found.name} (${found.sku}) is not on ${list.number}, so it cannot be dispatched against this list.`);
-    if (!exceeds(remainingOf(item), "0")) return setError(`${found.name} is already fully dispatched on ${list.number}.`);
+    if (!item) return `${found.name} (${found.sku}) is not on ${list.number}, so it cannot be dispatched against this list.`;
+    if (!exceeds(remainingOf(item), "0")) return `${found.name} is already fully dispatched on ${list.number}.`;
+    return null;
+  }
+
+  // Opens the product's row with an EMPTY quantity and focuses it. It never fills in or increases a quantity.
+  function accept(found: { id: string; name: string; sku: string }) {
+    const item = items.find((i) => i.product_id === found.id);
+    if (!item) return;
     startItem(item);
     setHighlight(item.id);
     setNotice(`${found.name} (${found.sku}) located. Enter the quantity to dispatch.`);
@@ -274,10 +287,9 @@ export default function DispatchForm({
           </label>
           <div className="flex gap-2">
             <button type="submit" disabled={looking || !code.trim()} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50 sm:flex-none">{looking ? "Looking…" : "Find product"}</button>
-            <button type="button" onClick={() => setCamera((on) => !on)} aria-expanded={camera} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 sm:flex-none">{camera ? "Hide camera" : "Use camera"}</button>
+            <ScanProductButton check={(r) => problemWith(r.product)} onFound={(r) => { setError(null); setHighlight(null); accept(r.product); }} className="min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800" />
           </div>
         </form>
-        {camera && <CameraScanner onDetected={(text) => { setCamera(false); void locate(text); }} onClose={() => setCamera(false)} />}
         {notice && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
         {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
       </section>

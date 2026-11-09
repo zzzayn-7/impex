@@ -4,7 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import CameraScanner from "@/app/scan/camera-scanner";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import { RECEIPT_NOTICE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE, validateReceivedQuantity } from "@/lib/purchasing-browser";
 import { api, exceeds, jsonBody, qty } from "@/lib/sales-browser";
 import { lookupOnServer, normalizeScanned } from "@/lib/scan";
@@ -51,7 +51,6 @@ export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDeta
   const [code, setCode] = useState("");
   const [looking, setLooking] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
-  const [camera, setCamera] = useState(false);
 
   const set = (lineId: string, patch: Partial<Row>) => {
     setRows((current) => ({ ...current, [lineId]: { ...current[lineId], ...patch } }));
@@ -79,9 +78,23 @@ export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDeta
     if (result.kind === "unauthorized") return router.replace("/login");
     if (result.kind !== "found") return setError(result.message);
     const found = result.result.product;
+    const problem = problemWith(found);
+    if (problem) return setError(problem);
+    accept(found);
+  }
+
+  // A scanned product must be ON this order and still have something to receive: anything else is refused with the reason, and nothing is added.
+  function problemWith(found: { id: string; name: string; sku: string }): string | null {
     const line = lines.find((l) => l.product_id === found.id);
-    if (!line) return setError(`${found.name} (${found.sku}) is not on ${order.number}, so it cannot be received against this order.`);
-    if (exceeds("0.0001", remainingOf(line))) return setError(`${found.name} is already fully received on ${order.number}.`);
+    if (!line) return `${found.name} (${found.sku}) is not on ${order.number}, so it cannot be received against this order.`;
+    if (exceeds("0.0001", remainingOf(line))) return `${found.name} is already fully received on ${order.number}.`;
+    return null;
+  }
+
+  // Moves to the product's row and focuses its quantity. It never fills in or increases a quantity.
+  function accept(found: { id: string; name: string; sku: string }) {
+    const line = lines.find((l) => l.product_id === found.id);
+    if (!line) return;
     setHighlight(line.id);
     setNotice(`${found.name} (${found.sku}) located. Enter the quantity that arrived.`);
     setCode("");
@@ -262,10 +275,9 @@ export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDeta
         </label>
         <div className="flex gap-2">
           <button type="submit" disabled={looking || !code.trim()} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50 sm:flex-none">{looking ? "Looking…" : "Find product"}</button>
-          <button type="button" onClick={() => setCamera((on) => !on)} aria-expanded={camera} className="min-h-11 flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 sm:flex-none">{camera ? "Hide camera" : "Use camera"}</button>
+          <ScanProductButton check={(r) => problemWith(r.product)} onFound={(r) => { setError(null); setHighlight(null); accept(r.product); }} className="min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800" />
         </div>
       </form>
-      {camera && <CameraScanner onDetected={(text) => { setCamera(false); void locateCode(text); }} onClose={() => setCamera(false)} />}
       {notice && <p role="status" className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
 

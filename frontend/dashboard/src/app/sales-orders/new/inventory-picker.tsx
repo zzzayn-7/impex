@@ -1,12 +1,11 @@
 "use client";
 
 import { KeyboardEvent, useEffect, useId, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { buttonClass } from "@/components/ui/controls";
 import { type OrderRow, type PickerProduct, rowFromProduct } from "@/lib/order-form";
 import { api, qty } from "@/lib/sales-browser";
-import ScanDialog from "./scan-dialog";
+import { ScanProductButton } from "@/components/scan/scan-product-modal";
 import QuantityInput from "@/components/ui/quantity-input";
 
 // The inventory list of Create Order: the organization's active products in the same layout as the Products tab (product + SKU, category, unit),
@@ -33,7 +32,6 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, string>>({}); // quantities typed for products that are not on the order (yet)
-  const [scanOpen, setScanOpen] = useState(false);
   const [scanned, setScanned] = useState<PickerProduct | null>(null); // the product a scan found: shown instead of the list until cleared
 
   useEffect(() => {
@@ -81,10 +79,10 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
   return (
     <div className="space-y-4" onKeyDown={keepEnterFromSubmitting}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <button type="button" onClick={() => setScanOpen(true)} disabled={disabled} className={`${buttonClass.secondary} shrink-0`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10" /></svg>
-          Scan Products
-        </button>
+        <ScanProductButton
+          disabled={disabled}
+          onFound={({ stock, product }) => { setTerm(""); setOffset(0); setScanned({ ...stock, category: stock.category ?? product.category }); }}
+        />
         <div className="min-w-0 flex-1">
           <input
             id={searchId}
@@ -204,10 +202,6 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
         </div>
       )}
 
-      {scanOpen && typeof document !== "undefined" && createPortal(
-        <ScanDialog onClose={() => setScanOpen(false)} onFound={(p) => { setScanOpen(false); setTerm(""); setOffset(0); setScanned(p); }} />,
-        document.body,
-      )}
     </div>
   );
 }

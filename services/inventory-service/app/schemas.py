@@ -190,6 +190,8 @@ class StockProduct(BaseModel):
     total_quantity: Decimal  # PHYSICAL stock: what is on hand now
     reserved_quantity: Decimal = Decimal("0")  # committed to active sales orders, not yet dispatched
     available_quantity: Decimal = Decimal("0")  # on hand minus reserved: what a new order or a manual stock-out can still take
+    selling_price: Optional[Decimal] = None  # the catalog's price per unit, and its currency: lets the Sales Service total an order
+    currency_code: Optional[str] = None
 
 
 class StockOverview(BaseModel):

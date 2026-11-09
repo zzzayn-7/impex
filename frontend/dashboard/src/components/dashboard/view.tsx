@@ -236,7 +236,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   }
 
   const actions: { label: string; href: string; icon: IconKey; tone: Tone }[] = [];
-  if (enabled.includes("inventory")) actions.push({ label: "Scan a product", href: "/scan", icon: "scan", tone: "yellow" }, { label: "Adjust stock", href: "/stock", icon: "stock", tone: "neutral" });
+  if (enabled.includes("inventory")) actions.push({ label: "Adjust stock", href: "/stock", icon: "stock", tone: "yellow" });
   if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "yellow" });
   if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "neutral" });
   if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "neutral" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "neutral" });

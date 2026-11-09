@@ -529,6 +529,7 @@ def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product])
             total_quantity=quantities.get(p.id) or ZERO,  # nothing in stock reads "0", whether or not a balance row exists
             reserved_quantity=reserved.get(p.id) or ZERO,
             available_quantity=(quantities.get(p.id) or ZERO) - (reserved.get(p.id) or ZERO),
+            selling_price=p.selling_price, currency_code=p.currency_code,
         )
         for p in products
     ]

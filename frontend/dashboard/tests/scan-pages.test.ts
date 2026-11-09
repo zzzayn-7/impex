@@ -131,14 +131,16 @@ describe("Scan Product page", () => {
     expect(inventoryCalls()).toHaveLength(0);
   });
 
-  it("is reachable from the navigation as 'Scan Product', marked current, and redirects invalid sessions before streaming", async () => {
+  it("is no longer a menu entry: its layout keeps the page working (Stock marked current) and redirects invalid sessions before streaming", async () => {
     stubWorld();
     await expect(ScanLayout({ children: null })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await ScanLayout({ children: "PAGE" }));
     expect(html).toContain("PAGE");
-    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Scan Product");
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements"]) expect(html).toContain(`href="${href}"`);
+    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Stock");
+    expect(html).not.toContain("Scan Product"); // no navigation entry
+    expect(html).not.toContain('href="/scan"');
+    for (const href of ["/", "/products", "/stock", "/movements"]) expect(html).toContain(`href="${href}"`);
   });
 });
 

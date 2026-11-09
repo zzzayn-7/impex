@@ -55,6 +55,10 @@ class ProductInfo:
         self.reserved = Decimal(str(data.get("reserved_quantity", "0")))  # committed to active sales orders, not yet dispatched
         # available = on hand - reserved. An older Inventory Service that does not say reserves nothing, so available = on hand.
         self.available = Decimal(str(data["available_quantity"])) if "available_quantity" in data else self.total - self.reserved
+        # The catalog price per unit and its currency (an older Inventory Service does not say: both stay None and no total is shown).
+        price = data.get("selling_price")
+        self.selling_price: Optional[Decimal] = None if price is None else Decimal(str(price))
+        self.currency_code: Optional[str] = data.get("currency_code")
 
 
 class InventoryGateway:

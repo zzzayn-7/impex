@@ -517,7 +517,8 @@ describe("Delivery list detail", () => {
   it("finds a product by SKU or barcode (typed or scanned into the box) and adds it with an explicit quantity", async () => {
     const user = userEvent.setup();
     render(<DeliveryListDetail list={list() as any} />);
-    expect(screen.getByRole("link", { name: "Scan products for this list" }).getAttribute("href")).toBe(`/scan?list=${L1}`);
+    expect(screen.queryByRole("link", { name: /Scan products for this list/ })).toBeNull(); // no link to the old Scan page
+    expect(screen.getByRole("button", { name: "Scan Product" })).toBeTruthy(); // the shared dialog instead
     await user.click(screen.getByRole("button", { name: "Type a SKU or barcode" }));
     await user.type(screen.getByLabelText("SKU or barcode"), "flour{Enter}");
     const form = await screen.findByRole("form", { name: "Add Flour to DL-000001" });
@@ -526,6 +527,31 @@ describe("Delivery list detail", () => {
     await user.click(within(form).getByRole("button", { name: "Add to delivery list" }));
     await screen.findByText("Added 1.5 kg of Flour to DL-000001.");
     expect(itemCalls()).toEqual([{ url: `/api/sales/delivery-lists/${L1}/items`, method: "POST", body: { productId: FLOUR, quantity: "1.5" } }]);
+  });
+
+  it("Scan Product (the shared dialog) identifies a product for the draft list and adds NOTHING until a quantity is entered and Add is pressed", async () => {
+    const user = userEvent.setup();
+    render(<DeliveryListDetail list={list() as any} />);
+    await user.click(screen.getByRole("button", { name: "Scan Product" }));
+    await user.type(within(await screen.findByRole("dialog")).getByLabelText(/Scan or type a barcode/), "flour{Enter}");
+    const form = await screen.findByRole("form", { name: "Add Flour to DL-000001" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText(/Scanned:/).textContent).toContain("Flour");
+    expect(itemCalls()).toEqual([]); // identified only: the list is unchanged
+    await user.type(within(form).getByLabelText(/^Quantity to deliver/), "1.5");
+    await user.click(within(form).getByRole("button", { name: "Add to delivery list" }));
+    await screen.findByText("Added 1.5 kg of Flour to DL-000001.");
+    expect(itemCalls()).toEqual([{ url: `/api/sales/delivery-lists/${L1}/items`, method: "POST", body: { productId: FLOUR, quantity: "1.5" } }]); // ONE request, after the explicit Add
+  });
+
+  it("an archived product scanned for a list is refused inside the dialog and is not offered for adding", async () => {
+    const user = userEvent.setup();
+    render(<DeliveryListDetail list={list() as any} />);
+    await user.click(screen.getByRole("button", { name: "Scan Product" }));
+    await user.type(within(await screen.findByRole("dialog")).getByLabelText(/Scan or type a barcode/), "OLD-1{Enter}");
+    expect((await screen.findByRole("alert")).textContent).toContain("Old bolt is archived");
+    expect(screen.queryByRole("form", { name: /Add Old bolt/ })).toBeNull();
+    expect(itemCalls()).toEqual([]);
   });
 
   it("reports an unknown or archived product when looking up manually", async () => {

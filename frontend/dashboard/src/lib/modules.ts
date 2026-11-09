@@ -25,7 +25,6 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
   inventory: [
     { label: "Products", href: "/products" },
     { label: "Stock", href: "/stock" },
-    { label: "Scan Product", href: "/scan" },
     { label: "Movements", href: "/movements" },
   ],
   purchasing: [
@@ -49,7 +48,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
 
 // Header navigation keys -> module. A key that is not here (dashboard, support) is always available.
 export const NAV_MODULE: Record<string, ModuleKey> = {
-  products: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
+  products: "inventory", stock: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
   deliveries: "sales", newOrder: "sales", invoices: "sales", clients: "sales",
   finance: "finance",

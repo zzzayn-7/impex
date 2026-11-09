@@ -11,7 +11,8 @@ import { GlassPanel } from "@/components/ui/glass";
 import { PageHeader, StatusBadge } from "@/components/ui/page";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { Client, DeliveryListSummary, OrderSummary, Paged } from "@/lib/sales";
-import { BOOKING_LABELS, FULFILMENT_LABELS, ORDER_STATUS_LABELS, RESERVATION_LABELS, STATUS_LABELS, api, jsonBody } from "@/lib/sales-browser";
+import { formatMoney } from "@/lib/product-validation";
+import { BOOKING_LABELS, FULFILMENT_LABELS, ORDER_STATUS_LABELS, STATUS_LABELS, api, jsonBody } from "@/lib/sales-browser";
 import { EditOrderModal, ViewListModal, orderTone, stamp } from "./order-modals";
 
 type Modal = { kind: "view" | "edit"; id: string } | null;
@@ -175,9 +176,9 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <div><dt className="text-ix-muted">{view === "history" ? "Delivered" : "Created"}</dt><dd className="mt-0.5 text-ix-text">{stamp(view === "history" ? order.completed_at : order.created_at)}</dd></div>
-                  <div><dt className="text-ix-muted">Products</dt><dd className="mt-0.5 text-ix-text">{order.product_count}</dd></div>
+                  <div><dt className="text-ix-muted">No. of items</dt><dd className="mt-0.5 text-ix-text">{order.product_count}</dd></div>
                   <div><dt className="text-ix-muted">Fulfilment</dt><dd className="mt-0.5 text-ix-text">{finishedOn ? FULFILMENT_LABELS.dispatched : FULFILMENT_LABELS[order.delivery_list.status] ?? order.delivery_list.status}</dd></div>
-                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Reservation"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : finishedOn ? RESERVATION_LABELS.consumed : RESERVATION_LABELS[order.reservation_status]}</dd></div>
+                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Cost"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : order.total_amount && order.currency_code ? formatMoney(order.total_amount, order.currency_code) : <span title="The order could not be totalled: its products have different currencies or no price">—</span>}</dd></div>
                 </dl>
                 {order.status === "pending_reservation" && (
                   <p role="status" className="rounded-xl border border-amber-200/25 bg-amber-100/10 px-3 py-2 text-xs text-amber-100">

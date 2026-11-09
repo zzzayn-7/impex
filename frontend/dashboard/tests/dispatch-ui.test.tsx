@@ -198,6 +198,12 @@ describe("Prepare dispatch: choosing quantities", () => {
 });
 
 // =====================================================================================================
+// The camera is reached through the shared Scan Product dialog: the button opens it, the camera starts only when asked.
+async function openCamera(u: ReturnType<typeof userEvent.setup>) {
+  await u.click(screen.getByRole("button", { name: "Scan Product" }));
+  await u.click(await screen.findByRole("button", { name: "Use the camera" }));
+}
+
 describe("Prepare dispatch: locating a product by SKU, barcode or camera", () => {
   const box = () => screen.getByPlaceholderText(/Type, or scan into this box/);
 
@@ -246,7 +252,7 @@ describe("Prepare dispatch: locating a product by SKU, barcode or camera", () =>
     HTMLMediaElement.prototype.pause = vi.fn() as any;
     mount();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Steel bolt (BOLT-1) located"), { timeout: 3000 });
     expect(tracks[0].stop).toHaveBeenCalled();
@@ -263,7 +269,7 @@ describe("Prepare dispatch: locating a product by SKU, barcode or camera", () =>
     decoderState.code = "NAILS";
     mount();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("is not on DL-000001"), { timeout: 3000 });
   });
@@ -667,10 +673,10 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
   const mountReceive = () => render(<ReceiveForm order={order} draft={null} />);
   const accepted = (name: string) => screen.getByLabelText(`Accepted quantity of ${name}`) as HTMLInputElement;
 
-  it("offers Use camera beside the manual box and keeps manual entry working", async () => {
+  it("offers Scan Product beside the manual box and keeps manual entry working", async () => {
     fakeCamera();
     mountReceive();
-    expect(screen.getByRole("button", { name: "Use camera" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Scan Product" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Find product" })).toBeTruthy();
     const u = user();
     await u.type(screen.getByPlaceholderText(/Type, or scan into this box/), "FLOUR{Enter}");
@@ -681,7 +687,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     const { getUserMedia } = fakeCamera();
     mountReceive();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     expect(getUserMedia).not.toHaveBeenCalled();
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     expect(getUserMedia).toHaveBeenCalledTimes(1);
@@ -692,7 +698,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     decoderState.code = "BOLT-1";
     mountReceive();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Steel bolt (BOLT-1) located"), { timeout: 3000 });
     expect(tracks[0].stop).toHaveBeenCalled();
@@ -707,7 +713,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     decoderState.code = "NAILS";
     mountReceive();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Nails (NAILS) is not on PO-000001"), { timeout: 3000 });
     expect(tracks[0].stop).toHaveBeenCalled();
@@ -720,7 +726,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     mountReceive();
     const u = user();
     for (let round = 0; round < 2; round++) {
-      await u.click(screen.getByRole("button", { name: "Use camera" }));
+      await openCamera(u);
       await u.click(screen.getByRole("button", { name: "Start camera" }));
       await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/scan/resolve")).length).toBe(round + 1), { timeout: 3000 });
       if (round === 0) await u.type(accepted("Steel bolt"), "3");
@@ -728,16 +734,17 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     expect(accepted("Steel bolt").value).toBe("3");
   });
 
-  it("turns the camera off when it is hidden", async () => {
+  it("turns the camera off when the dialog is closed", async () => {
     const { tracks } = fakeCamera();
     decoderState.code = null;
     mountReceive();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await screen.findByRole("button", { name: "Stop camera" });
-    await u.click(screen.getByRole("button", { name: "Hide camera" }));
+    await u.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
     expect(tracks[0].stop).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("releases the camera when the page is left", async () => {
@@ -745,7 +752,7 @@ describe("Receive Goods: the phone camera (Step 16B follow-up)", () => {
     decoderState.code = null;
     const { unmount } = mountReceive();
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Use camera" }));
+    await openCamera(u);
     await u.click(screen.getByRole("button", { name: "Start camera" }));
     await screen.findByRole("button", { name: "Stop camera" });
     unmount();

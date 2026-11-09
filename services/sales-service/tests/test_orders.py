@@ -780,3 +780,65 @@ def test_the_module_usage_counts_orders(client, two_orgs, water, acme, api, monk
     answer = client.get(f"/internal/v1/organizations/{two_orgs['alpha_id']}/module-usage", headers={"X-Internal-Key": "usage-key"}).json()
     counts = {item["code"]: item["count"] for item in answer["blocking"] + answer["warnings"]}
     assert counts["sales_orders_active"] == 1 and counts["orders_booking"] == 0
+
+
+# =====================================================================================================================================
+# What an order is worth (the Delivery Lists card's "Cost"): ordered quantity x the catalog's selling price, from the Inventory Service
+# =====================================================================================================================================
+@pytest.fixture
+def priced(inventory, two_orgs):
+    org = two_orgs["alpha_id"]
+    bottle = inventory.add_product(org, "P-WATER", "Priced water", "pcs", price="1.2500", currency="USD")
+    flour = inventory.add_product(org, "P-FLOUR", "Priced flour", "kg", price="3.3333", currency="USD")
+    euro = inventory.add_product(org, "P-EURO", "Priced in euro", "pcs", price="10", currency="EUR")
+    bare = inventory.add_product(org, "P-NONE", "Without a price", "pcs")
+    for product in (bottle, flour, euro, bare):
+        inventory.set_stock(product, 1000)
+    return {"bottle": bottle, "flour": flour, "euro": euro, "bare": bare}
+
+
+def test_the_order_list_totals_each_order_at_the_current_selling_price(api, priced, acme):
+    new_order(api, acme, (priced["bottle"], 40), (priced["flour"], "2.5"))
+    (card,) = orders_view(api)["items"]
+    assert card["currency_code"] == "USD"
+    assert d(card["total_amount"]) == d("58.3333")  # 40 x 1.25 + 2.5 x 3.3333 = 58.33325 exactly, kept to four decimals (half up)
+
+
+def test_each_order_gets_its_own_total(api, priced, acme):
+    first = new_order(api, acme, (priced["bottle"], 10))
+    second = new_order(api, acme, (priced["bottle"], 100))
+    totals = {o["number"]: d(o["total_amount"]) for o in orders_view(api)["items"]}
+    assert totals == {first["number"]: d("12.5"), second["number"]: d("125")}
+
+
+def test_orders_with_products_in_two_currencies_or_without_a_price_have_no_total_instead_of_a_wrong_one(api, priced, acme):
+    new_order(api, acme, (priced["bottle"], 1), (priced["euro"], 1))
+    new_order(api, acme, (priced["bare"], 3))
+    new_order(api, acme, (priced["bottle"], 2))
+    by_amount = sorted(orders_view(api)["items"], key=lambda o: o["number"])
+    assert [(o["total_amount"], o["currency_code"]) for o in by_amount[:2]] == [(None, None), (None, None)]
+    assert (d(by_amount[2]["total_amount"]), by_amount[2]["currency_code"]) == (d("2.5"), "USD")
+
+
+def test_an_unreachable_inventory_service_leaves_the_totals_empty_and_the_list_working(api, priced, acme, inventory):
+    order = new_order(api, acme, (priced["bottle"], 5))
+    inventory.mode = "down"
+    page = orders_view(api)
+    assert [o["id"] for o in page["items"]] == [order["id"]]
+    assert page["items"][0]["total_amount"] is None and page["items"][0]["currency_code"] is None
+    inventory.mode = None
+    assert d(orders_view(api)["items"][0]["total_amount"]) == d("6.25")  # it comes back by itself
+
+
+def test_only_the_order_list_works_out_a_total_and_it_only_reads_from_the_inventory_service(api, priced, acme, inventory):
+    order = new_order(api, acme, (priced["bottle"], 5))
+    assert get(api, order["id"])["total_amount"] is None  # the single order does not ask for prices
+    before, asked = inventory.snapshot(), len(inventory.requests)
+    orders_view(api)
+    assert inventory.snapshot() == before  # no stock moved
+    assert inventory.requests[asked:] and all(method == "GET" for method, path, _ in inventory.requests[asked:])
+
+
+def test_another_organization_never_sees_these_orders_or_their_totals(api, priced, acme, two_orgs):
+    new_order(api, acme, (priced["bottle"], 5))
+    assert orders_view(two_orgs["beta"])["items"] == []

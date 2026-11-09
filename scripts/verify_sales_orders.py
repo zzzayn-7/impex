@@ -447,6 +447,10 @@ def main() -> int:
         s, body = make_order("a", one_client["id"], [(one["id"], "40")])
         order_one = body.get("order") or {}
         check("an order for 40 of 100 reserves 40: on hand 100 / reserved 40 / available 60", s == 201 and figures(one["id"]) == (100, 40, 60), (s, figures(one["id"])))
+        card = next((o for o in orders_view("a") if o["id"] == order_one["id"]), {})
+        check("the order list carries the order's cost for the Delivery Lists card: 40 x the 9.99 USD selling price = 399.60 USD",
+              card.get("currency_code") == "USD" and Decimal(card.get("total_amount") or "0") == Decimal("399.60") and card.get("product_count") == 1, card)
+        check("organization B's order list shows none of it", order_one["id"] not in [o["id"] for o in orders_view("b")])
         s, text, _ = portal("a", "POST", f"/api/sales/orders/{order_one['id']}/dispatch")
         done = jbody(text)
         created.add("dispatches", (done.get("dispatch") or {}).get("id"))

@@ -30,7 +30,7 @@ const PRODUCTS = [
 
 const summary = (id: string, number: string, list: string, listNumber: string, extra: Record<string, unknown> = {}) => ({
   id, number, client: { id: C1, name: "Acme Ltd", is_active: true }, delivery_list: { id: list, number: listNumber, status: "ready" }, status: "active", reservation_status: "reserved",
-  origin: "order", version: 1, product_count: 2, created_by_email: "a@b.c", created_at: now, updated_at: now, completed_at: null, cancelled_at: null, history_expires_at: null,
+  origin: "order", version: 1, product_count: 2, total_amount: "1250.0000", currency_code: "USD", created_by_email: "a@b.c", created_at: now, updated_at: now, completed_at: null, cancelled_at: null, history_expires_at: null,
   pending_action: null, last_error: null, notes: null, ...extra,
 });
 const detail = (extra: Record<string, unknown> = {}) => ({
@@ -241,11 +241,11 @@ describe("Create Order", () => {
     expect(box.closest(".ix-qty")!.className).not.toMatch(/bg-/); // no fill of its own: it sits on the page background
   });
 
-  it("is ONE form: the client first, then Scan Products and the search bar, then the inventory, then Cancel / View List / Save Order", async () => {
+  it("is ONE form: the client first, then Scan Product and the search bar, then the inventory, then Cancel / View List / Save Order", async () => {
     render(<CreateOrderForm clients={clients as any} />);
     expect(screen.getAllByRole("form")).toHaveLength(1);
     const form = screen.getByRole("form", { name: "Create order" });
-    const order = [form.querySelector("#client-heading")!, screen.getByRole("button", { name: /Scan Products/ }), screen.getByRole("searchbox", { name: "Search products" }), await screen.findByRole("table", { name: "Inventory" }), screen.getByRole("link", { name: "Cancel" }), screen.getByRole("button", { name: /View List/ }), screen.getByRole("button", { name: "Save Order" })];
+    const order = [form.querySelector("#client-heading")!, screen.getByRole("button", { name: /Scan Product/ }), screen.getByRole("searchbox", { name: "Search products" }), await screen.findByRole("table", { name: "Inventory" }), screen.getByRole("link", { name: "Cancel" }), screen.getByRole("button", { name: /View List/ }), screen.getByRole("button", { name: "Save Order" })];
     order.slice(1).forEach((el, i) => expect(!!(order[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING), `${i}`).toBe(true));
   });
 
@@ -351,7 +351,7 @@ describe("Create Order", () => {
 
   describe("Scan Products", () => {
     const openScan = async (user: ReturnType<typeof userEvent.setup>) => {
-      await user.click(screen.getByRole("button", { name: /Scan Products/ }));
+      await user.click(screen.getByRole("button", { name: /Scan Product/ }));
       return screen.findByRole("dialog");
     };
 
@@ -481,7 +481,10 @@ describe("Delivery Lists board", () => {
   it("shows each active order as a card with client, number, date, product count, fulfilment and reservation, and EXACTLY Edit, Remove, View List", () => {
     board();
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
-    for (const text of ["Acme Ltd", "SO-000001", "DL-000001", "2026-11-09 10:00 UTC", "Ready for dispatch", "Stock reserved"]) expect(card.textContent, text).toContain(text);
+    for (const text of ["Acme Ltd", "SO-000001", "DL-000001", "2026-11-09 10:00 UTC", "Ready for dispatch", "No. of items", "Cost", "1,250.00 USD"]) expect(card.textContent, text).toContain(text);
+    expect(card.textContent).not.toContain("Reservation"); // replaced by the cost
+    expect(card.textContent).not.toContain("Stock reserved");
+    expect(card.textContent).not.toMatch(/Products\d/); // "Products" became "No. of items"
     // top right: a pencil and a red bin, as bare icons (no text, no circle or border); bottom left View List; bottom right Dispatch
     expect(within(card).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit SO-000001", "Remove SO-000001", "View list SO-000001", "Dispatch SO-000001"]);
     const header = card.firstElementChild as HTMLElement;
@@ -504,6 +507,26 @@ describe("Delivery Lists board", () => {
     expect(dispatch.className).toContain("bg-ix-butter"); // the golden theme
     const partly = screen.getByText("SO-000002").closest("[data-order]") as HTMLElement;
     expect(partly.textContent).toContain("Partially delivered");
+  });
+
+  it("shows the number of items and the order's cost on each card, and a dash when the order cannot be totalled", () => {
+    const mixed = { ok: true as const, items: [summary(O1, "SO-000001", L1, "DL-000001", { product_count: 3, total_amount: "58.33325", currency_code: "EUR" }), summary(O2, "SO-000002", L2, "DL-000002", { total_amount: null, currency_code: null })], total: 2, limit: 100, offset: 0 };
+    board({ orders: mixed as any });
+    const one = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
+    const fact = (card: HTMLElement, label: string) => within(card).getByText(label).parentElement!.textContent;
+    expect(fact(one, "No. of items")).toBe("No. of items3"); // the number of products on the order, as before
+    expect(fact(one, "Cost")).toBe("Cost58.33325 EUR"); // exact: nothing is rounded again in the browser
+    expect(fact(screen.getByText("SO-000002").closest("[data-order]") as HTMLElement, "Cost")).toBe("Cost—");
+  });
+
+  it("an order dispatched on this page keeps its cost", async () => {
+    const user = userEvent.setup();
+    handlers["POST /api/sales/orders/" + O1 + "/dispatch"] = () => json(200, { dispatch: { status: "confirmed" }, confirmed: true, dispatchedOn: "2026-11-09" });
+    board();
+    await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+    const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
+    await waitFor(() => expect(card.textContent).toContain("Dispatched on 2026-11-09"));
+    expect(card.textContent).toContain("1,250.00 USD");
   });
 
   it("has no Scan products button at the top: only Create Order", () => {

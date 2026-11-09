@@ -267,9 +267,17 @@ describe("modules that are not enabled", () => {
 
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
+    for (const href of ["/", "/products", "/stock", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
       "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
     for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
+  });
+
+  it("Scan Product is not a menu entry or a dashboard shortcut: scanning happens inside the workflows", async () => {
+    const html = await render();
+    expect(html).not.toContain('href="/scan"');
+    expect(html).not.toContain("Scan Product");
+    expect(html).not.toContain("Scan a product");
+    expect(html).toContain('href="/stock"'); // Stock is still there, and so is its shortcut
   });
 });
 
