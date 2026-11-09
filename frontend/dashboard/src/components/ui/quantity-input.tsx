@@ -3,10 +3,11 @@
 import type { InputHTMLAttributes, KeyboardEvent, Ref } from "react";
 
 import { decrease, increase, isZero } from "@/lib/quantity";
+import "./quantity-input.css";
 
 // THE quantity selector of the portal: a minus button, the number, a plus button. It starts at zero and moves in jumps of 10 on every click; the
 // number in the middle is a real text box, so the administrator can also click it and type any quantity. It has no fill of its own: it sits on the
-// page's background (see .ix-qty in globals.css). The value is a decimal STRING and is passed through exactly as typed: the form that owns it
+// page's background (see quantity-input.css next to this file). The value is a decimal STRING and is passed through exactly as typed: the form that owns it
 // validates it (unit rules, stock limits), as before.
 //
 // Pass the same `aria-label` / `id` / `aria-invalid` / `placeholder` you would give a plain <input>; they go to the number box. When the selector sits

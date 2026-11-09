@@ -161,7 +161,8 @@ describe("navigation", () => {
     render(<PortalShell admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }}>{null}</PortalShell>);
     const link = screen.getByRole("link", { name: "Invoices" });
     expect(link.getAttribute("href")).toBe("/invoices");
-    expect(screen.getByRole("link", { name: "Dispatches" }).getAttribute("href")).toBe("/dispatches");
+    expect(screen.queryByRole("link", { name: "Dispatches" })).toBeNull(); // dispatching happens inside Delivery Lists
+    expect(screen.getByRole("link", { name: "Delivery Lists" }).getAttribute("href")).toBe("/delivery-lists");
   });
 });
 

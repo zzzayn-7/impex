@@ -87,7 +87,7 @@ export default function CreateOrderForm({ clients: initialClients }: { clients: 
 
         <section className="space-y-4 border-t border-ix-mist/10 pt-6" aria-labelledby="products-heading">
           <h3 id="products-heading" className="text-[15px] font-semibold text-ix-text">Products required</h3>
-          <InventoryPicker rows={rows} onChange={changeRows} errors={errors} disabled={busy} />
+          <InventoryPicker rows={rows} onChange={changeRows} errors={errors} disabled={busy} locked={!clientId} />
         </section>
       </GlassPanel>
 

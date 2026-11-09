@@ -111,7 +111,7 @@ describe("the sidebar lists exactly what the organization can use", () => {
       ["main", ["Dashboard"]],
       ["inventory", ["Products", "Stock", "Scan Product", "Movements"]],
       ["purchasing", ["Suppliers", "Purchase Orders", "Goods Receipts"]],
-      ["sales", ["Clients", "Create Order", "Delivery Lists", "Dispatches", "Invoices"]],
+      ["sales", ["Clients", "Create Order", "Delivery Lists", "Invoices"]],
       ["finance", ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]],
       ["workspace", ["Help & Support", "Settings"]],
     ]);

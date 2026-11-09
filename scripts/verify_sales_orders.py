@@ -439,6 +439,49 @@ def main() -> int:
         check("the goods the confirmed dispatches carry are exactly the goods deducted from stock",
               psql("impex_sales", f"SELECT coalesce(sum(dl.quantity), 0) FROM dispatch_lines dl JOIN dispatches d ON d.id = dl.dispatch_id WHERE d.organization_id = '{org_ids['a']}' AND d.status = 'confirmed'")
               == psql("impex_inventory", f"SELECT coalesce(sum(quantity), 0) FROM stock_movements WHERE organization_id = '{org_ids['a']}' AND source_type = 'client_dispatch'"))
+
+        print("\n== 12. Dispatch from the Delivery Lists page: one click takes the whole order (or what is left of it) out of stock")
+        one = product("a", "SO-ONECLICK", "One click item")
+        stock_in("a", one["id"], "100")
+        one_client = new_client("a", "One Click Client")
+        s, body = make_order("a", one_client["id"], [(one["id"], "40")])
+        order_one = body.get("order") or {}
+        check("an order for 40 of 100 reserves 40: on hand 100 / reserved 40 / available 60", s == 201 and figures(one["id"]) == (100, 40, 60), (s, figures(one["id"])))
+        s, text, _ = portal("a", "POST", f"/api/sales/orders/{order_one['id']}/dispatch")
+        done = jbody(text)
+        created.add("dispatches", (done.get("dispatch") or {}).get("id"))
+        check("Dispatch answers 200: confirmed, with the date it was dispatched on", s == 200 and done.get("confirmed") is True and bool(done.get("dispatchedOn")), (s, text[:200]))
+        check("the 40 left the inventory and its reservation was consumed: on hand 60 / reserved 0 / available 60", figures(one["id"]) == (60, 0, 60), figures(one["id"]))
+        check("exactly one stock movement was written for it", movements(one["id"]) == 2, movements(one["id"]))  # the stock-in and the dispatch
+        after = order_detail("a", order_one["id"])
+        check("the order is Delivered, can no longer be edited or removed, and its list is dispatched",
+              after.get("status") == "delivered" and after.get("can_edit") is False and after.get("can_cancel") is False and list_detail("a", order_one["delivery_list"]["id"]).get("status") == "dispatched",
+              (after.get("status"), after.get("can_edit"), after.get("can_cancel")))
+        check("it left the Active view and is in Delivered History", order_one["id"] not in [o["id"] for o in orders_view("a")] and order_one["id"] in [o["id"] for o in orders_view("a", "delivered")])
+        s, text, _ = portal("a", "POST", f"/api/sales/orders/{order_one['id']}/dispatch")
+        check("pressing Dispatch again is refused (409) and takes nothing more out", s == 409 and figures(one["id"]) == (60, 0, 60), (s, text[:120], figures(one["id"])))
+        s, text, _ = portal("a", "POST", f"/api/sales/orders/{order_one['id']}/cancel")
+        check("a dispatched order cannot be removed afterwards (409)", s == 409, (s, text[:120]))
+
+        s, body = make_order("a", one_client["id"], [(one["id"], "30")])
+        order_two = body.get("order") or {}
+        dl_two = list_detail("a", order_two["delivery_list"]["id"])
+        s1, d_part = dispatch("a", dl_two["id"], dispatch_lines("a", dl_two, one["id"], "10"))
+        s2, _ = confirm("a", d_part["id"])
+        check("a partly delivered order (10 of 30 dispatched): on hand 50 / reserved 20 / available 30", s1 == 201 and s2 == 200 and figures(one["id"]) == (50, 20, 30), (s1, s2, figures(one["id"])))
+        s, text, _ = portal("a", "POST", f"/api/sales/orders/{order_two['id']}/dispatch")
+        done = jbody(text)
+        created.add("dispatches", (done.get("dispatch") or {}).get("id"))
+        check("Dispatch sends exactly what was left (20): on hand 30 / reserved 0 / available 30", s == 200 and figures(one["id"]) == (30, 0, 30), (s, text[:160], figures(one["id"])))
+        check("the order is Delivered with two confirmed dispatches (10 and 20)",
+              order_detail("a", order_two["id"]).get("status") == "delivered"
+              and psql("impex_sales", f"SELECT string_agg(quantity::text, ',' ORDER BY quantity) FROM dispatch_lines dl JOIN dispatches d ON d.id = dl.dispatch_id WHERE d.delivery_list_id = '{order_two['delivery_list']['id']}' AND d.status = 'confirmed'") in ("10.0000,20.0000", "10,20"))
+        s, text, _ = call(TENANT_PORTAL, "POST", f"/api/sales/orders/{order_two['id']}/dispatch")
+        check("without a session the Dispatch route answers 401", s == 401, (s, text[:80]))
+        s, text, _ = portal("b", "POST", f"/api/sales/orders/{order_one['id']}/dispatch")
+        check("another organization cannot dispatch it: the order is simply not found (404)", s == 404, (s, text[:120]))
+        drift = psql("impex_inventory", f"SELECT count(*) FROM stock_balances b WHERE b.organization_id = '{org_ids['a']}' AND b.reserved_quantity <> COALESCE((SELECT sum(remaining_quantity) FROM stock_reservations r WHERE r.organization_id = b.organization_id AND r.product_id = b.product_id AND r.status = 'active'), 0)")
+        check("the books still agree after the one-click dispatches", drift == "0", drift)
     finally:
         print("\n== cleanup (exactly the rows this run created, by id)")
         orgs = created.get("organizations")

@@ -143,6 +143,7 @@ describe("Create Order", () => {
   }
   // The inventory list loads on its own; "Add <product>" is the row's button.
   async function addProduct(user: ReturnType<typeof userEvent.setup>, name: string, quantity?: string) {
+    if ((screen.getByRole("combobox", { name: "Select client" }) as HTMLInputElement).value === "") await pickClient(user);
     const button = await screen.findByRole("button", { name: `Add ${name}` });
     if (quantity !== undefined) await user.type(screen.getByLabelText(new RegExp(`^Order quantity of ${name} in`)), quantity);
     await user.click(button);
@@ -262,6 +263,24 @@ describe("Create Order", () => {
     expect((within(row).getByRole("button", { name: "Drop Water bottle" }) as HTMLButtonElement).disabled).toBe(true); // nothing to drop yet
   });
 
+  it("no product can be added or given a quantity until a client is selected", async () => {
+    const user = userEvent.setup();
+    render(<CreateOrderForm clients={clients as any} />);
+    const add = (await screen.findByRole("button", { name: "Add Water bottle" })) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    expect(add.title).toBe("Select a client first");
+    expect((qtyBox("Water bottle", "pcs") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Increase order quantity of Water bottle in pcs" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(add);
+    expect(screen.getByRole("button", { name: /View List/ }).textContent).toContain("0"); // nothing was added
+    await user.type(screen.getByRole("searchbox", { name: "Search products" }), "flo"); // the inventory can still be searched
+    expect(await screen.findByRole("button", { name: "Add Flour" })).toBeTruthy();
+    await user.clear(screen.getByRole("searchbox", { name: "Search products" }));
+    await pickClient(user);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Add Water bottle" }) as HTMLButtonElement).disabled).toBe(false));
+    expect((qtyBox("Water bottle", "pcs") as HTMLInputElement).disabled).toBe(false);
+  });
+
   it("searches the inventory", async () => {
     const user = userEvent.setup();
     render(<CreateOrderForm clients={clients as any} />);
@@ -346,6 +365,8 @@ describe("Create Order", () => {
       expect(calls.some((c) => c.url === "/api/scan/resolve?code=FLOUR")).toBe(true);
       expect(screen.getByRole("status").textContent).toContain("Flour");
       expect(screen.queryByRole("button", { name: "Add Water bottle" })).toBeNull(); // only the scanned product is shown
+      expect((screen.getByRole("button", { name: "Add Flour" }) as HTMLButtonElement).disabled).toBe(true); // still no client
+      await pickClient(user);
       await user.click(screen.getByRole("button", { name: "Add Flour" }));
       expect((screen.getByRole("button", { name: "Add Flour" }) as HTMLButtonElement).textContent).toBe("Added");
       await user.click(screen.getByRole("button", { name: "Show all products" }));
@@ -461,7 +482,26 @@ describe("Delivery Lists board", () => {
     board();
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
     for (const text of ["Acme Ltd", "SO-000001", "DL-000001", "2026-11-09 10:00 UTC", "Ready for dispatch", "Stock reserved"]) expect(card.textContent, text).toContain(text);
-    expect(within(card).getAllByRole("button").map((b) => b.textContent)).toEqual(["Edit", "Remove", "View List"]);
+    // top right: a pencil and a red bin, as bare icons (no text, no circle or border); bottom left View List; bottom right Dispatch
+    expect(within(card).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit SO-000001", "Remove SO-000001", "View list SO-000001", "Dispatch SO-000001"]);
+    const header = card.firstElementChild as HTMLElement;
+    const edit = within(header).getByRole("button", { name: "Edit SO-000001" });
+    const bin = within(header).getByRole("button", { name: "Remove SO-000001" });
+    for (const icon of [edit, bin]) {
+      expect(icon.textContent).toBe("");
+      expect(icon.querySelector("svg")).toBeTruthy();
+      expect(icon.className).not.toMatch(/\b(border|rounded\S*|bg-\S+)\b/);
+    }
+    expect(bin.className).toContain("text-red-400");
+    expect(header.textContent).not.toContain("Ready for dispatch"); // the status badge is gone from the corner
+    const footer = card.lastElementChild as HTMLElement;
+    const view = footer.firstElementChild as HTMLElement;
+    expect(view.getAttribute("aria-label")).toBe("View list SO-000001");
+    expect(view.className).toContain("border-ix-mist/20"); // the same calm look as the Cancel buttons
+    expect(view.className).not.toContain("bg-ix-butter");
+    const dispatch = footer.lastElementChild as HTMLElement;
+    expect(dispatch.textContent).toBe("Dispatch");
+    expect(dispatch.className).toContain("bg-ix-butter"); // the golden theme
     const partly = screen.getByText("SO-000002").closest("[data-order]") as HTMLElement;
     expect(partly.textContent).toContain("Partially delivered");
   });
@@ -486,6 +526,7 @@ describe("Delivery Lists board", () => {
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
     expect(within(card).getAllByRole("button").map((b) => b.textContent)).toEqual(["View List"]);
     expect(card.textContent).toContain("2026-11-10 12:00 UTC");
+    expect(card.textContent).toContain("Dispatched on 2026-11-09");
     expect(screen.getByText(/stay here for 24 hours/)).toBeTruthy();
     expect(screen.queryByText("Draft and older lists")).toBeNull();
   });
@@ -544,6 +585,84 @@ describe("Delivery Lists board", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  describe("Dispatch", () => {
+    const dispatchUrl = `/api/sales/orders/${O1}/dispatch`;
+    const cardOf = (number = "SO-000001") => screen.getByText(number).closest("[data-order]") as HTMLElement;
+
+    it("asks for a confirmation first, and Cancel changes nothing", async () => {
+      const user = userEvent.setup();
+      (window.confirm as any).mockReturnValue(false);
+      board();
+      await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+      expect((window.confirm as any)).toHaveBeenCalledWith(expect.stringContaining("taken out of your inventory"));
+      expect(calls.some((c) => c.url === dispatchUrl)).toBe(false);
+      expect(within(cardOf()).getByRole("button", { name: "Edit SO-000001" })).toBeTruthy();
+      expect(cardOf().textContent).not.toContain("Dispatched on");
+    });
+
+    it("Confirm dispatches the order: the card says 'Dispatched on <date>' and loses Edit, Remove and Dispatch", async () => {
+      const user = userEvent.setup();
+      handlers["POST " + dispatchUrl] = () => json(200, { dispatch: { status: "confirmed" }, confirmed: true, dispatchedOn: "2026-11-09" });
+      board();
+      await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+      const card = cardOf();
+      await waitFor(() => expect(card.textContent).toContain("Dispatched on 2026-11-09"));
+      expect(calls.filter((c) => c.url === dispatchUrl && c.method === "POST")).toHaveLength(1);
+      expect(calls.find((c) => c.url === dispatchUrl)!.body).toBeUndefined(); // the browser sends nothing but the order in the address
+      for (const gone of ["Edit SO-000001", "Remove SO-000001", "Dispatch SO-000001"]) expect(within(card).queryByRole("button", { name: gone })).toBeNull();
+      expect(within(card).getByRole("button", { name: "View list SO-000001" })).toBeTruthy(); // the list can still be looked at
+      expect(card.textContent).toContain("Delivered"); // fulfilment and reservation now say it left
+      expect(card.textContent).not.toContain("Ready for dispatch");
+      expect((await screen.findByRole("status")).textContent).toContain("SO-000001 was dispatched on 2026-11-09. Its items were taken out of your inventory.");
+      // the other order is untouched
+      expect(within(cardOf("SO-000002")).getByRole("button", { name: "Dispatch SO-000002" })).toBeTruthy();
+    });
+
+    it("an order that was only partly delivered is dispatched too (what is left)", async () => {
+      const user = userEvent.setup();
+      handlers["POST " + `/api/sales/orders/${O2}/dispatch`] = () => json(200, { dispatch: {}, confirmed: true, dispatchedOn: "2026-11-09" });
+      board();
+      await user.click(screen.getByRole("button", { name: "Dispatch SO-000002" }));
+      await waitFor(() => expect(cardOf("SO-000002").textContent).toContain("Dispatched on 2026-11-09"));
+    });
+
+    it("shows the server's reason (for example not enough stock) and keeps every button", async () => {
+      const user = userEvent.setup();
+      handlers["POST " + dispatchUrl] = () => json(409, { error: "Only 10 pcs of Water bottle are on hand." });
+      board();
+      await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Only 10 pcs of Water bottle are on hand.");
+      expect(cardOf().textContent).not.toContain("Dispatched on");
+      expect(within(cardOf()).getByRole("button", { name: "Edit SO-000001" })).toBeTruthy();
+      expect((within(cardOf()).getByRole("button", { name: "Dispatch SO-000001" }) as HTMLButtonElement).disabled).toBe(false); // can be tried again
+    });
+
+    it("an unconfirmed posting (202) is said plainly; the order is NOT shown as dispatched", async () => {
+      const user = userEvent.setup();
+      handlers["POST " + dispatchUrl] = () => json(202, { dispatch: { status: "posting" }, confirmed: false, dispatchedOn: "2026-11-09" });
+      board();
+      await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Press Dispatch again to finish it");
+      expect(cardOf().textContent).not.toContain("Dispatched on");
+    });
+
+    it("cannot be pressed while the booking is unconfirmed or twice at once", async () => {
+      const user = userEvent.setup();
+      let release: (r: Response) => void = () => undefined;
+      handlers["POST " + dispatchUrl] = () => { throw new Error("unused"); };
+      (fetch as any).mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+      board();
+      const button = screen.getByRole("button", { name: "Dispatch SO-000001" }) as HTMLButtonElement;
+      await user.click(button);
+      await waitFor(() => expect(button.disabled).toBe(true));
+      expect(button.textContent).toBe("Dispatching…");
+      await user.click(button);
+      expect(calls.filter((c) => c.url === dispatchUrl)).toHaveLength(0); // the stubbed request is still pending and no second one was sent
+      release(json(200, { dispatchedOn: "2026-11-09", confirmed: true }));
+      await waitFor(() => expect(cardOf().textContent).toContain("Dispatched on 2026-11-09"));
+    });
+  });
+
   it("Remove asks first, then cancels the order and says its stock was released", async () => {
     const user = userEvent.setup();
     handlers["POST /api/sales/orders/" + O1 + "/cancel"] = () => json(200, { order: detail({ status: "cancelled" }), pending: false });
@@ -590,6 +709,7 @@ describe("Delivery Lists board", () => {
     expect(card.textContent).toContain("not confirmed yet");
     expect((within(card).getByRole("button", { name: "Edit SO-000001" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(card).getByRole("button", { name: "Remove SO-000001" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(card).getByRole("button", { name: "Dispatch SO-000001" }) as HTMLButtonElement).disabled).toBe(true); // an unbooked order cannot be dispatched
     await user.click(within(card).getByRole("button", { name: "Retry booking" }));
     await waitFor(() => expect(calls.some((c) => c.url === `/api/sales/orders/${O1}/reconcile`)).toBe(true));
   });

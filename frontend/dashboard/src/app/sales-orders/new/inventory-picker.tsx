@@ -18,11 +18,13 @@ const cell = "px-4 py-3 align-middle";
 
 type Page = { items: PickerProduct[]; total: number; offset: number };
 
-export default function InventoryPicker({ rows, onChange, errors, disabled = false }: {
+export default function InventoryPicker({ rows, onChange, errors, disabled = false, locked = false }: {
   rows: OrderRow[];
   onChange: (rows: OrderRow[]) => void;
   errors: Record<string, string>;
   disabled?: boolean;
+  /** No client is selected yet: the inventory can be searched and scanned, but no product can be added or given a quantity. */
+  locked?: boolean;
 }) {
   const searchId = useId();
   const [term, setTerm] = useState("");
@@ -152,7 +154,7 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
                         id={inputId}
                         aria-label={`Order quantity of ${p.name} in ${p.unit}`}
                         value={row ? row.quantity : drafts[p.product_id] ?? ""}
-                        disabled={disabled || (none && !added)}
+                        disabled={disabled || locked || (none && !added)}
                         onChange={(v) => setQuantity(p, v)}
                         aria-invalid={problem ? true : undefined}
                         aria-describedby={problem ? `${inputId}-error` : undefined}
@@ -164,9 +166,9 @@ export default function InventoryPicker({ rows, onChange, errors, disabled = fal
                         <button
                           type="button"
                           onClick={() => add(p)}
-                          disabled={disabled || added || none}
+                          disabled={disabled || locked || added || none}
                           aria-label={`Add ${p.name}`}
-                          title={none && !added ? "Nothing is available to order" : undefined}
+                          title={locked && !added ? "Select a client first" : none && !added ? "Nothing is available to order" : undefined}
                           className="rounded-lg border border-ix-butter/40 bg-ix-butter/10 px-3 py-1.5 text-xs font-semibold text-ix-butter transition-colors hover:bg-ix-butter/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {added ? "Added" : "Add"}

@@ -230,24 +230,10 @@ body {
     border-color: rgb(var(--ix-accent-rgb) / 0.75);
     box-shadow: var(--ix-ring);
   }
+  /* one control height: a text box is as tall as the dropdown, button and date field beside it (2.5rem). A box inside a table cell stays compact. */
+  .ix-dash :is(input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"], input[type="number"]):not(td *, th *) { min-height: 2.5rem; }
   .ix-dash :is(input, select, textarea):disabled { cursor: not-allowed; opacity: 0.55; }
   .ix-dash :is(input, textarea)::placeholder { color: rgba(181, 203, 201, 0.6); }
-
-  /* quantity selector (components/ui/quantity-input.tsx): [ - ] number [ + ] on the page's own background, with no fill of its own. The border and the
-     focus ring belong to the whole group; the number box inside has none (the selectors are specific enough to beat the field rules above). */
-  .ix-dash .ix-qty { display: inline-flex; align-items: stretch; width: 100%; min-width: 7.5rem; border: 1px solid rgba(216, 232, 227, 0.2); border-radius: var(--ix-radius-field); background: transparent; transition: border-color var(--ix-dur-fast) ease, box-shadow var(--ix-dur-fast) ease; }
-  .ix-dash .ix-qty:hover:not(:focus-within) { border-color: rgba(216, 232, 227, 0.34); }
-  .ix-dash .ix-qty:focus-within { border-color: rgb(var(--ix-accent-rgb) / 0.75); box-shadow: var(--ix-ring); }
-  .ix-dash .ix-qty:has(input[aria-invalid="true"]) { border-color: rgba(252, 165, 165, 0.6); }
-  .ix-dash .ix-qty[data-disabled="true"] { opacity: 0.55; }
-  .ix-dash .ix-qty input.ix-qty-input { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0.55rem 0.15rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; text-align: center; font-variant-numeric: tabular-nums; }
-  .ix-dash .ix-qty input.ix-qty-input:is(:hover, :focus, :disabled) { border: 0; background: transparent; box-shadow: none; outline: none; }
-  .ix-dash .ix-qty .ix-qty-step { flex: none; display: grid; place-items: center; width: 2.25rem; padding: 0; border: 0; background: transparent; color: var(--ix-muted); cursor: pointer; transition: color var(--ix-dur-fast) ease, background-color var(--ix-dur-fast) ease; }
-  .ix-dash .ix-qty .ix-qty-step:first-child { border-radius: var(--ix-radius-field) 0 0 var(--ix-radius-field); }
-  .ix-dash .ix-qty .ix-qty-step:last-child { border-radius: 0 var(--ix-radius-field) var(--ix-radius-field) 0; }
-  .ix-dash .ix-qty .ix-qty-step:hover:not(:disabled) { color: var(--ix-text); background: rgba(216, 232, 227, 0.08); }
-  .ix-dash .ix-qty .ix-qty-step:focus-visible { outline: 2px solid var(--ix-focus); outline-offset: -2px; }
-  .ix-dash .ix-qty .ix-qty-step:disabled { opacity: 0.35; cursor: not-allowed; }
   .ix-dash input[type="checkbox"], .ix-dash input[type="radio"] { accent-color: var(--ix-accent); cursor: pointer; }
   .ix-dash input[type="date"], .ix-dash input[type="datetime-local"], .ix-dash input[type="month"], .ix-dash input[type="time"] { color-scheme: dark; min-height: 2.5rem; }
   .ix-dash input[type="date"]::-webkit-calendar-picker-indicator,

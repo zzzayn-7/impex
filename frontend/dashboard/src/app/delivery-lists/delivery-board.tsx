@@ -30,6 +30,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
   const [modal, setModal] = useState<Modal>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(created ? { ok: true, text: `${created} was saved. Its stock is reserved and its delivery list is ready for dispatch.` } : null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [dispatchedOn, setDispatchedOn] = useState<Record<string, string>>({}); // orders dispatched on this page: order id -> date. They stay on the card until the page is reloaded.
   const [filter, setFilter] = useState("");
   const [confirm, dialog] = useConfirm();
 
@@ -67,6 +68,28 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
     if (r.status === 401) return router.replace("/login");
     if (!r.ok) return setMessage({ ok: false, text: r.error });
     refresh(partly ? `${order.number}: the undelivered quantity was cancelled and its stock released.` : `${order.number} was removed and its stock released.`);
+  }
+
+  // DISPATCH: everything not yet dispatched leaves the inventory together. Asks first (Cancel / Confirm); the order then shows "Dispatched on <date>" and
+  // loses its Edit, Remove and Dispatch buttons. The Sales Service does the work (see /api/sales/orders/[id]/dispatch); it is safe to repeat.
+  async function dispatchNow(order: OrderSummary) {
+    const ok = await confirm({
+      title: `Dispatch ${order.number}?`,
+      message: `All ${order.product_count} ${order.product_count === 1 ? "product" : "products"} of this order for ${order.client.name} will be dispatched and taken out of your inventory now. The order can no longer be edited or removed.`,
+      confirmLabel: "Confirm",
+      danger: false,
+    });
+    if (!ok) return;
+    setBusyId(order.id);
+    setMessage(null);
+    const r = await api(`/api/sales/orders/${order.id}/dispatch`, { method: "POST" });
+    setBusyId(null);
+    if (r.status === 401) return router.replace("/login");
+    if (r.status === 202) return setMessage({ ok: false, text: `${order.number} is being posted to your inventory, but the Inventory Service has not confirmed it yet. Press Dispatch again to finish it; nothing is taken out twice.` });
+    if (!r.ok) return setMessage({ ok: false, text: r.error });
+    const date: string = r.data?.dispatchedOn ?? new Date().toISOString().slice(0, 10);
+    setDispatchedOn((done) => ({ ...done, [order.id]: date }));
+    setMessage({ ok: true, text: `${order.number} was dispatched on ${date}. Its items were taken out of your inventory.` });
   }
 
   async function retry(order: OrderSummary) {
@@ -121,7 +144,9 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
         </GlassPanel>
       ) : (
         <ul aria-label={view === "history" ? "Delivered orders" : "Active delivery lists"} className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,21rem),1fr))]">
-          {shown.map((order) => (
+          {shown.map((order) => {
+            const finishedOn = dispatchedOn[order.id] ?? (order.status === "delivered" && order.completed_at ? order.completed_at.slice(0, 10) : null);
+            return (
             <li key={order.id}>
               <GlassCard className="flex h-full flex-col gap-4 p-5" data-order={order.number} lift>
                 <div className="flex items-start justify-between gap-3">
@@ -129,13 +154,30 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     <h3 className="truncate text-base font-semibold text-ix-text">{order.client.name}</h3>
                     <p className="mt-0.5 font-mono text-xs text-ix-butter">{order.number} <span className="text-ix-muted">· {order.delivery_list.number}</span></p>
                   </div>
-                  <StatusBadge tone={orderTone(order.status)}>{view === "history" ? ORDER_STATUS_LABELS[order.status] : FULFILMENT_LABELS[order.delivery_list.status] ?? ORDER_STATUS_LABELS[order.status]}</StatusBadge>
+                  {finishedOn ? (
+                    <StatusBadge tone={orderTone("delivered")}>Dispatched on {finishedOn}</StatusBadge>
+                  ) : view === "active" ? (
+                    <div className="-mr-1 -mt-1 flex shrink-0 items-center gap-0.5">
+                      <Tooltip label="Edit">
+                        <button type="button" onClick={() => setModal({ kind: "edit", id: order.id })} disabled={order.status !== "active" || busyId === order.id} aria-label={`Edit ${order.number}`} className="p-1.5 text-ix-muted transition-colors hover:text-ix-text focus-visible:outline-none focus-visible:text-ix-text disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ix-muted">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Remove">
+                        <button type="button" onClick={() => remove(order)} disabled={order.status !== "active" || busyId === order.id} aria-label={`Remove ${order.number}`} className="p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:outline-none focus-visible:text-red-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-red-400">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+                        </button>
+                      </Tooltip>
+                    </div>
+                  ) : (
+                    <StatusBadge tone={orderTone(order.status)}>{ORDER_STATUS_LABELS[order.status]}</StatusBadge>
+                  )}
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <div><dt className="text-ix-muted">{view === "history" ? "Delivered" : "Created"}</dt><dd className="mt-0.5 text-ix-text">{stamp(view === "history" ? order.completed_at : order.created_at)}</dd></div>
                   <div><dt className="text-ix-muted">Products</dt><dd className="mt-0.5 text-ix-text">{order.product_count}</dd></div>
-                  <div><dt className="text-ix-muted">Fulfilment</dt><dd className="mt-0.5 text-ix-text">{FULFILMENT_LABELS[order.delivery_list.status] ?? order.delivery_list.status}</dd></div>
-                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Reservation"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : RESERVATION_LABELS[order.reservation_status]}</dd></div>
+                  <div><dt className="text-ix-muted">Fulfilment</dt><dd className="mt-0.5 text-ix-text">{finishedOn ? FULFILMENT_LABELS.dispatched : FULFILMENT_LABELS[order.delivery_list.status] ?? order.delivery_list.status}</dd></div>
+                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Reservation"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : finishedOn ? RESERVATION_LABELS.consumed : RESERVATION_LABELS[order.reservation_status]}</dd></div>
                 </dl>
                 {order.status === "pending_reservation" && (
                   <p role="status" className="rounded-xl border border-amber-200/25 bg-amber-100/10 px-3 py-2 text-xs text-amber-100">
@@ -143,18 +185,24 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     <button type="button" onClick={() => retry(order)} disabled={busyId === order.id} className="ml-2 font-semibold underline underline-offset-2">Retry booking</button>
                   </p>
                 )}
-                <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                  {view === "active" && (
-                    <>
-                      <button type="button" onClick={() => setModal({ kind: "edit", id: order.id })} disabled={order.status !== "active" || busyId === order.id} aria-label={`Edit ${order.number}`} className={buttonClass.secondary}>Edit</button>
-                      <button type="button" onClick={() => remove(order)} disabled={order.status !== "active" || busyId === order.id} aria-label={`Remove ${order.number}`} className={buttonClass.destructive}>Remove</button>
-                    </>
+                <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <button type="button" onClick={() => setModal({ kind: "view", id: order.id })} aria-label={`View list ${order.number}`} className={buttonClass.secondary}>View List</button>
+                  {view === "active" && !finishedOn && (
+                    <button
+                      type="button"
+                      onClick={() => dispatchNow(order)}
+                      disabled={busyId === order.id || order.status !== "active" || !(order.delivery_list.status === "ready" || order.delivery_list.status === "partially_dispatched")}
+                      aria-label={`Dispatch ${order.number}`}
+                      className={buttonClass.primary}
+                    >
+                      {busyId === order.id ? "Dispatching…" : "Dispatch"}
+                    </button>
                   )}
-                  <button type="button" onClick={() => setModal({ kind: "view", id: order.id })} aria-label={`View list ${order.number}`} className={`${view === "active" ? buttonClass.primary : buttonClass.secondary} ml-auto`}>View List</button>
                 </div>
               </GlassCard>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 

@@ -144,7 +144,7 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Create Order", "Delivery Lists", "Dispatches", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
+      ["Dashboard", "Products", "Stock", "Scan Product", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {

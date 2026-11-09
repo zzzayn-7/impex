@@ -267,7 +267,7 @@ describe("modules that are not enabled", () => {
 
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices",
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
       "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
     for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
   });

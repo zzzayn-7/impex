@@ -230,6 +230,8 @@ body {
     border-color: rgb(var(--ix-accent-rgb) / 0.75);
     box-shadow: var(--ix-ring);
   }
+  /* one control height: a text box is as tall as the dropdown, button and date field beside it (2.5rem). A box inside a table cell stays compact. */
+  .ix-dash :is(input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"], input[type="number"]):not(td *, th *) { min-height: 2.5rem; }
   .ix-dash :is(input, select, textarea):disabled { cursor: not-allowed; opacity: 0.55; }
   .ix-dash :is(input, textarea)::placeholder { color: rgba(181, 203, 201, 0.6); }
   .ix-dash input[type="checkbox"], .ix-dash input[type="radio"] { accent-color: var(--ix-accent); cursor: pointer; }

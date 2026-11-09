@@ -8,7 +8,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { InboxFilters, InboxPage } from "@/lib/support";
 import { CATEGORIES, CATEGORY_LABELS, PRIORITIES, PRIORITY_LABELS, PRIORITY_STYLE, STATUSES, STATUS_LABELS, STATUS_STYLE, stamp } from "@/lib/support-labels";
 
-const selectClass = "mt-1.5 block max-w-[13rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
+const selectClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 sm:max-w-[13rem]";
 
 /** The Support Inbox: every organization's requests, newest activity first. Filters live in the address (shareable, back button works). */
 export default function SupportInbox({ list, filters }: { list: InboxPage; filters: InboxFilters }) {
@@ -63,21 +63,21 @@ export default function SupportInbox({ list, filters }: { list: InboxPage; filte
             </label>
             <button type="submit" className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Search</button>
           </form>
-          <label className="text-xs font-medium text-slate-400">
+          <label className="w-full text-xs font-medium text-slate-400 sm:w-auto">
             Status
             <select value={filters.status} onChange={(e) => navigate({ status: e.target.value as InboxFilters["status"] })} className={selectClass}>
               <option value="">All statuses</option>
               {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
             </select>
           </label>
-          <label className="text-xs font-medium text-slate-400">
+          <label className="w-full text-xs font-medium text-slate-400 sm:w-auto">
             Category
             <select value={filters.category} onChange={(e) => navigate({ category: e.target.value as InboxFilters["category"] })} className={selectClass}>
               <option value="">All categories</option>
               {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
             </select>
           </label>
-          <label className="text-xs font-medium text-slate-400">
+          <label className="w-full text-xs font-medium text-slate-400 sm:w-auto">
             Priority
             <select value={filters.priority} onChange={(e) => navigate({ priority: e.target.value as InboxFilters["priority"] })} className={selectClass}>
               <option value="">All priorities</option>

@@ -57,13 +57,13 @@ export default async function OrganizationsPage() {
         </section>
 
         <section id="organizations" className="scroll-mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <div>
               <h2 className="text-base font-semibold text-white">Organizations</h2>
               <p className="text-xs text-slate-400">Stored in PostgreSQL by the Organization Service</p>
             </div>
             {result.ok && (
-              <span className="text-xs text-slate-400">
+              <span className="whitespace-nowrap text-xs text-slate-400">
                 {result.organizations.length} {result.organizations.length === 1 ? "organization" : "organizations"}
               </span>
             )}

@@ -349,7 +349,9 @@ describe("navigation", () => {
     await expect((DispatchesLayout as any)({ children: null })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (DispatchesLayout as any)({ children: "PAGE" }));
-    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Dispatches");
-    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/dispatches", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    // there is no Dispatches tab any more: the dispatch pages belong to Delivery Lists, which stays highlighted
+    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Delivery Lists");
+    expect(html).not.toContain('href="/dispatches"');
+    for (const href of ["/", "/products", "/stock", "/scan", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
   });
 });

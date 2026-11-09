@@ -1,0 +1,21 @@
+/* The quantity selector (components/ui/quantity-input.tsx): [ - ] number [ + ] on the page's own background, with no fill of its own.
+ *
+ * This is APPLICATION-SPECIFIC styling of the Organization Portal, so it lives next to its component and not in globals.css: globals.css is the shared
+ * theme, kept identical in both portals (the Super Admin test theme-and-shell.test.tsx enforces that). Nothing here defines a token or a colour of its
+ * own; it only uses the shared ones (--ix-radius-field, --ix-accent-rgb, --ix-ring, --ix-muted, --ix-text, --ix-focus, --ix-dur-fast).
+ * The border and the focus ring belong to the whole group; the number box inside has none. The selectors are specific enough to beat the shared field
+ * rules, whatever the order the stylesheets load in.
+ */
+.ix-dash .ix-qty { display: inline-flex; align-items: stretch; width: 100%; min-width: 7.5rem; border: 1px solid rgba(216, 232, 227, 0.2); border-radius: var(--ix-radius-field); background: transparent; transition: border-color var(--ix-dur-fast) ease, box-shadow var(--ix-dur-fast) ease; }
+.ix-dash .ix-qty:hover:not(:focus-within) { border-color: rgba(216, 232, 227, 0.34); }
+.ix-dash .ix-qty:focus-within { border-color: rgb(var(--ix-accent-rgb) / 0.75); box-shadow: var(--ix-ring); }
+.ix-dash .ix-qty:has(input[aria-invalid="true"]) { border-color: rgba(252, 165, 165, 0.6); }
+.ix-dash .ix-qty[data-disabled="true"] { opacity: 0.55; }
+.ix-dash .ix-qty input.ix-qty-input { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0.55rem 0.15rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; text-align: center; font-variant-numeric: tabular-nums; }
+.ix-dash .ix-qty input.ix-qty-input:is(:hover, :focus, :disabled) { border: 0; background: transparent; box-shadow: none; outline: none; }
+.ix-dash .ix-qty .ix-qty-step { flex: none; display: grid; place-items: center; width: 2.25rem; padding: 0; border: 0; background: transparent; color: var(--ix-muted); cursor: pointer; transition: color var(--ix-dur-fast) ease, background-color var(--ix-dur-fast) ease; }
+.ix-dash .ix-qty .ix-qty-step:first-child { border-radius: var(--ix-radius-field) 0 0 var(--ix-radius-field); }
+.ix-dash .ix-qty .ix-qty-step:last-child { border-radius: 0 var(--ix-radius-field) var(--ix-radius-field) 0; }
+.ix-dash .ix-qty .ix-qty-step:hover:not(:disabled) { color: var(--ix-text); background: rgba(216, 232, 227, 0.08); }
+.ix-dash .ix-qty .ix-qty-step:focus-visible { outline: 2px solid var(--ix-focus); outline-offset: -2px; }
+.ix-dash .ix-qty .ix-qty-step:disabled { opacity: 0.35; cursor: not-allowed; }

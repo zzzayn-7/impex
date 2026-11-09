@@ -37,7 +37,6 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
     { label: "Clients", href: "/clients" },
     { label: "Create Order", href: "/sales-orders/new" },
     { label: "Delivery Lists", href: "/delivery-lists" },
-    { label: "Dispatches", href: "/dispatches" },
     { label: "Invoices", href: "/invoices" },
   ],
   finance: [
@@ -52,7 +51,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
 export const NAV_MODULE: Record<string, ModuleKey> = {
   products: "inventory", stock: "inventory", scan: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
-  deliveries: "sales", newOrder: "sales", dispatches: "sales", invoices: "sales", clients: "sales",
+  deliveries: "sales", newOrder: "sales", invoices: "sales", clients: "sales",
   finance: "finance",
 };
 

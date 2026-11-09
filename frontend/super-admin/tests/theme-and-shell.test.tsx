@@ -139,17 +139,39 @@ describe("the Super Admin Portal uses the shared theme: ONE pale butter yellow a
     expect(read("src/app/organizations/[id]/modules/module-manager.tsx")).toContain('(on ? "On" : "Off")');
   });
 
+  it("text boxes, dropdowns and buttons share one 2.5rem control height (a box inside a table cell stays compact)", () => {
+    expect(css).toMatch(/input\[type="search"\][^{]*:not\(td \*, th \*\)\s*\{\s*min-height:\s*2\.5rem/);
+    expect(css).toMatch(/select:not\(\[multiple\]\):not\(\[size\]\)\s*\{[^}]*min-height:\s*2\.5rem/);
+  });
+
   it("printing stays black on white with no glass", () => {
     const printBlock = css.slice(css.lastIndexOf("@media print"));
     expect(printBlock).toMatch(/\.ix-dash::before\s*\{\s*display:\s*none/);
     expect(printBlock).toMatch(/backdrop-filter:\s*none\s*!important/);
   });
 
-  // The two portals keep their own copies of the theme (no shared package). Where both are checked out together they must not drift apart.
+  // The two portals keep their own copies of the SHARED theme (no shared package): globals.css, tailwind.config.ts and the tooltip must be identical,
+  // wherever both folders are checked out together. Styling that belongs to ONE application (for example the Organization Portal's quantity selector)
+  // does not go into globals.css: it lives in a stylesheet next to its component, so it can never make the shared files differ.
   const sibling = join(root, "..", "dashboard");
-  it.skipIf(!existsSync(join(sibling, "src/app/globals.css")))("globals.css and tailwind.config.ts are identical in both portals", () => {
-    expect(css).toBe(readFileSync(join(sibling, "src/app/globals.css"), "utf-8"));
-    expect(tailwind).toBe(readFileSync(join(sibling, "tailwind.config.ts"), "utf-8"));
-    expect(read("src/components/ui/tooltip.tsx")).toBe(readFileSync(join(sibling, "src/components/ui/tooltip.tsx"), "utf-8"));
+  const both = existsSync(join(sibling, "src/app/globals.css"));
+  const other = (p: string) => readFileSync(join(sibling, p), "utf-8");
+
+  it.skipIf(!both)("globals.css is identical in both portals (shared theme only: tokens, glass, fields, menus, print)", () => {
+    expect(css, "frontend/super-admin/src/app/globals.css and frontend/dashboard/src/app/globals.css must be the same file. If a rule belongs to ONE portal's own component, put it in a stylesheet next to that component instead.").toBe(other("src/app/globals.css"));
+  });
+
+  it.skipIf(!both)("tailwind.config.ts and the tooltip are identical in both portals", () => {
+    expect(tailwind).toBe(other("tailwind.config.ts"));
+    expect(read("src/components/ui/tooltip.tsx")).toBe(other("src/components/ui/tooltip.tsx"));
+  });
+
+  it.skipIf(!both)("application-specific styling stays out of the shared stylesheet, and in its own file it only uses the shared tokens", () => {
+    expect(css).not.toContain(".ix-qty"); // the Organization Portal's quantity selector
+    const own = other("src/components/ui/quantity-input.css");
+    expect(own).toContain(".ix-qty");
+    const used = Array.from(new Set(Array.from(own.matchAll(/var\((--ix-[a-z0-9-]+)/g), (m) => m[1])));
+    expect(used.length).toBeGreaterThan(0);
+    for (const token of used) expect(css, `${token} must be a shared token`).toMatch(new RegExp(`${token}\\s*:`));
   });
 });

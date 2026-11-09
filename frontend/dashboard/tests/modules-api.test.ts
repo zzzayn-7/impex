@@ -48,7 +48,7 @@ describe("the module registry of the portal", () => {
     expect(Object.keys(MODULE_PAGES)).toEqual(MODULE_KEYS);
     expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Products", "Stock", "Scan Product", "Movements"]);
     expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Goods Receipts"]);
-    expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Create Order", "Delivery Lists", "Dispatches", "Invoices"]);
+    expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Create Order", "Delivery Lists", "Invoices"]);
     expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Financial Overview", "Accounts", "Expenses", "Journal Entries"]);
     expect(MODULE_PAGES.finance.map((p) => p.href)).toEqual(["/finance", "/finance/accounts", "/finance/expenses", "/finance/journal"]);
     expect(NAV_MODULE.finance).toBe("finance");

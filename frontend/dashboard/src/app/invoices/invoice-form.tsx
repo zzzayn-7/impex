@@ -189,7 +189,7 @@ export default function InvoiceForm({
       <div className="space-y-4">
         {billable.length === 0 && (
           <p role="status" className="rounded-lg border border-dashed border-slate-800 px-4 py-8 text-center text-sm text-slate-500">
-            {client?.name ?? "This client"} has no confirmed dispatch to bill. Confirm a dispatch in <Link href="/dispatches" className="text-indigo-300 hover:text-indigo-200">Dispatches</Link> first.
+            {client?.name ?? "This client"} has no confirmed dispatch to bill. Dispatch an order in <Link href="/delivery-lists" className="text-indigo-300 hover:text-indigo-200">Delivery Lists</Link> first.
           </p>
         )}
         {Array.from(groups.entries()).map(([dispatchId, lines]) => (
