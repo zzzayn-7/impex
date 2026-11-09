@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import InvoicesHeader from "@/components/invoices/invoices-header";
+import { SUPPLIER_INVOICES_HREF } from "@/lib/invoices-nav";
 import { RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE } from "@/lib/purchasing-browser";
 import type { Paged, ReceiptFilters, ReceiptStatus, ReceiptSummary, Supplier } from "@/lib/purchasing";
 
@@ -24,7 +26,7 @@ export default function ReceiptIndex({ list, filters, suppliers }: { list: Paged
     if (merged.dateTo) params.set("to", merged.dateTo);
     if (merged.page > 1) params.set("page", String(merged.page));
     const query = params.toString();
-    startTransition(() => router.push(query ? `/goods-receipts?${query}` : "/goods-receipts"));
+    startTransition(() => router.push(query ? `${SUPPLIER_INVOICES_HREF}?${query}` : SUPPLIER_INVOICES_HREF));
   }
 
   const filtered = Boolean(filters.q || filters.status || filters.supplierId || filters.dateFrom || filters.dateTo);
@@ -34,10 +36,12 @@ export default function ReceiptIndex({ list, filters, suppliers }: { list: Paged
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-white">Goods Receipts</h2>
-        <p className="text-xs text-slate-400">Goods that arrived against your purchase orders. Start a receipt from an Ordered purchase order; stock is added only when a receipt is confirmed.</p>
-      </div>
+      <InvoicesHeader current="suppliers">
+        <p className="text-xs text-slate-400">
+          Each entry is a <span className="font-medium text-slate-300">Goods Receipt</span>: proof of the goods that arrived from a supplier against your purchase orders. Start one from an Ordered purchase order;
+          stock is added only when a receipt is confirmed. A supplier&apos;s own bill is not recorded here (no invoice numbers, totals or payments are made up).
+        </p>
+      </InvoicesHeader>
 
       <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
         <div className="flex flex-wrap items-end gap-3">
@@ -88,8 +92,8 @@ export default function ReceiptIndex({ list, filters, suppliers }: { list: Paged
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Receipt</th><th className="px-4 py-3 font-semibold">Purchase order</th><th className="px-4 py-3 font-semibold">Supplier</th>
-                    <th className="px-4 py-3 font-semibold">Received on</th><th className="px-4 py-3 font-semibold text-right">Lines</th><th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Goods receipt</th><th className="px-4 py-3 font-semibold">Purchase order</th><th className="px-4 py-3 font-semibold">Supplier</th>
+                    <th className="px-4 py-3 font-semibold">Supplier reference</th><th className="px-4 py-3 font-semibold">Received on</th><th className="px-4 py-3 font-semibold text-right">Lines</th><th className="px-4 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -97,10 +101,10 @@ export default function ReceiptIndex({ list, filters, suppliers }: { list: Paged
                     <tr key={r.id} className="hover:bg-slate-800/30">
                       <td className="px-4 py-3">
                         <Link href={`/goods-receipts/${r.id}`} className="font-mono text-sm font-semibold text-indigo-300 hover:text-indigo-200">{r.number}</Link>
-                        {r.supplier_reference && <div className="text-xs text-slate-500">{r.supplier_reference}</div>}
                       </td>
                       <td className="px-4 py-3"><Link href={`/purchase-orders/${r.purchase_order.id}`} className="font-mono text-xs text-slate-300 hover:text-white">{r.purchase_order.number}</Link></td>
                       <td className="px-4 py-3">{r.supplier.name}</td>
+                      <td className="px-4 py-3 text-xs">{r.supplier_reference ?? <span className="text-slate-600">—</span>}</td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">{r.received_date}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs">{r.line_count}</td>
                       <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${RECEIPT_STATUS_STYLE[r.status]}`}>{RECEIPT_STATUS_LABELS[r.status]}</span></td>

@@ -14,11 +14,11 @@ vi.mock("next/navigation", () => ({ usePathname: () => null,
   useRouter: () => ({ replace: () => undefined, refresh: () => undefined, push: () => undefined }),
 }));
 
-import InvoicesLayout from "@/app/invoices/layout";
-import InvoicesPage from "@/app/invoices/page";
-import InvoicePage from "@/app/invoices/[id]/page";
-import NewInvoicePage from "@/app/invoices/new/page";
-import EditInvoicePage from "@/app/invoices/[id]/edit/page";
+import InvoicesLayout from "@/app/invoices/(sales)/layout";
+import InvoicesPage from "@/app/invoices/(sales)/sales/page";
+import InvoicePage from "@/app/invoices/(sales)/[id]/page";
+import NewInvoicePage from "@/app/invoices/(sales)/new/page";
+import EditInvoicePage from "@/app/invoices/(sales)/[id]/edit/page";
 import ClientPage from "@/app/clients/[id]/page";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
@@ -137,8 +137,9 @@ describe("the Invoices layout", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await InvoicesLayout({ children: "x" }));
-    expect(html).toContain('href="/invoices"');
-    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/invoices"|<a[^>]*href="\/invoices"[^>]*aria-current="page"/);
+    expect(html).toContain('href="/invoices/sales"');
+    expect(html).toContain('href="/invoices/suppliers"'); // the same Invoices group also lists the Suppliers Invoice tab
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/invoices\/sales"|<a[^>]*href="\/invoices\/sales"[^>]*aria-current="page"/);
   });
   it("sends a visitor without a session to the login page", async () => {
     stubWorld();

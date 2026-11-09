@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { canUse, moduleForApi } from "@/lib/modules";
-import { setupNeed } from "@/lib/onboarding";
-import { orgServiceUrl } from "@/lib/organization";
+import { GateRefusal, decideGate, gateUnavailable } from "@/lib/api-gate";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
-import { authServiceUrl } from "@/lib/tenant-auth";
 
 // 1. PAGES - fast first gate: no tenant session cookie -> /login. Only the tenant cookie counts; a Super Admin cookie ("impex_session")
 //    does not open this portal. The real check (valid token + organization-admin role + active + organization, and first-time setup)
@@ -17,37 +14,38 @@ import { authServiceUrl } from "@/lib/tenant-auth";
 //    The services behind keep enforcing authentication, roles and tenant isolation on their own.
 const GATED_API = /^\/api\/(products|stock|scan|sales|purchasing|finance)(\/|$)/;
 
+//    The rules themselves live in lib/api-gate.ts. WHERE they run depends on the platform: locally and in Docker they run right here. On Vercel the Auth and
+//    Organization services are reached through service bindings, which resolve only inside functions and NEVER in middleware, so there the middleware sends the
+//    caller's session cookie and the path to the /api/gate route handler (same deployment, same rules) and relays its answer. Either way: fail closed.
 const NO_STORE = { "Cache-Control": "no-store" };
-const refuse = (status: number, error: string, code: string, extra: Record<string, unknown> = {}) => NextResponse.json({ error, code, ...extra }, { status, headers: NO_STORE });
+const respond = ({ status, body }: GateRefusal) => NextResponse.json(body, { status, headers: NO_STORE });
 
-async function get(url: string, token: string): Promise<{ status: number; data: any } | null> {
+/** True where service bindings are the only way to reach the services (they do not resolve in middleware). */
+const viaGateRoute = () => Boolean(process.env.VERCEL || process.env.IMPEX_GATE_VIA_ROUTE);
+
+async function askGateRoute(req: NextRequest, token: string): Promise<GateRefusal | null> {
   try {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(8000) });
-    return { status: res.status, data: res.ok ? await res.json().catch(() => null) : null };
+    const res = await fetch(`${req.nextUrl.origin}/api/gate`, {
+      method: "POST",
+      headers: { cookie: `${TENANT_SESSION_COOKIE}=${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ path: req.nextUrl.pathname }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = res.ok ? await res.json().catch(() => null) : null;
+    if (!data || !("refusal" in data)) return gateUnavailable();
+    const refusal = data.refusal;
+    return refusal && typeof refusal.status === "number" && refusal.body && typeof refusal.body === "object" ? (refusal as GateRefusal) : null;
   } catch {
-    return null;
+    return gateUnavailable();
   }
 }
 
 export async function gateApi(req: NextRequest): Promise<NextResponse> {
   const token = req.cookies.get(TENANT_SESSION_COOKIE)?.value;
   if (!token) return NextResponse.next(); // the route answers 401 itself
-  const me = await get(`${authServiceUrl()}/api/v1/auth/me`, token);
-  if (!me || (me.status !== 200 && me.status !== 401)) return refuse(503, "We could not check your account setup right now. Please try again in a moment.", "setup_check_unavailable");
-  if (me.status === 401 || !me.data || me.data.role !== "organization-admin") return NextResponse.next(); // the route and the services refuse them
-  const org = await get(`${orgServiceUrl()}/api/v1/tenant/organization`, token);
-  if (!org) return refuse(503, "We could not check your organization setup right now. Please try again in a moment.", "setup_check_unavailable");
-  if (org.status === 401 || org.status === 403) return NextResponse.next(); // an inactive organization is refused by the services
-  if (org.status !== 200 || !org.data) return refuse(503, "We could not check your organization setup right now. Please try again in a moment.", "setup_check_unavailable");
-  if (setupNeed(me.data, org.data).required) return refuse(403, "Finish the first-time setup before using this part of Impex.", "setup_required");
-  // MODULES: the route's module must be enabled for the organization (the Organization Service's list, read with the caller's own token).
-  // A list that is missing or malformed is an outage of that decision, not a "yes". The services behind enforce the same rule again.
-  const module = moduleForApi(req.nextUrl.pathname);
-  if (module) {
-    if (!Array.isArray(org.data.modules)) return refuse(503, "We could not check which modules your organization can use right now. Please try again in a moment.", "module_check_unavailable");
-    if (!canUse(org.data.modules, module)) return refuse(403, "This part of Impex is not enabled for your organization.", "module_disabled", { module });
-  }
-  return NextResponse.next();
+  const refusal = viaGateRoute() ? await askGateRoute(req, token) : await decideGate(token, req.nextUrl.pathname);
+  return refusal ? respond(refusal) : NextResponse.next();
 }
 
 export async function middleware(req: NextRequest) {

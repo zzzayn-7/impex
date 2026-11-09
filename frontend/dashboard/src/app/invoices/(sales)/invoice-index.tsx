@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import InvoicesHeader from "@/components/invoices/invoices-header";
+import { SALES_INVOICES_HREF } from "@/lib/invoices-nav";
 import { formatMoney, INVOICE_STATUS_LABELS, INVOICE_STATUS_STYLE, PAYMENT_STATUS_LABELS } from "@/lib/sales-browser";
 import type { Client, InvoiceFilters, InvoiceStatus, InvoiceSummary, Paged, PaymentStatusFilter } from "@/lib/sales";
 
@@ -25,7 +27,7 @@ export default function InvoiceIndex({ list, filters, clients }: { list: Paged<I
     if (merged.dateTo) params.set("to", merged.dateTo);
     if (merged.page > 1) params.set("page", String(merged.page));
     const query = params.toString();
-    startTransition(() => router.push(query ? `/invoices?${query}` : "/invoices"));
+    startTransition(() => router.push(query ? `${SALES_INVOICES_HREF}?${query}` : SALES_INVOICES_HREF));
   }
 
   const filtered = Boolean(filters.q || filters.status || filters.paymentStatus || filters.clientId || filters.dateFrom || filters.dateTo);
@@ -35,13 +37,12 @@ export default function InvoiceIndex({ list, filters, clients }: { list: Paged<I
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Invoices</h2>
-          <p className="text-xs text-slate-400">Bill your clients for goods you have dispatched, and record the payments you receive. Invoicing never changes your stock.</p>
-        </div>
-        <Link href="/invoices/new" className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500">New Invoice</Link>
-      </div>
+      <InvoicesHeader
+        current="sales"
+        actions={<Link href="/invoices/new" className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500">New Invoice</Link>}
+      >
+        <p className="text-xs text-slate-400">Bill your clients for goods you have dispatched, and record the payments you receive. Invoicing never changes your stock.</p>
+      </InvoicesHeader>
 
       <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
         <div className="flex flex-wrap items-end gap-3">

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 // Another organization's invoice answers "not found", exactly like an id that does not exist.
 export default async function InvoicePage({ params }: { params: { id: string } }) {
   await requireTenantAdmin();
-  const back = <Link href="/invoices" className="print:hidden text-xs text-indigo-300 hover:text-indigo-200">← All invoices</Link>;
+  const back = <Link href="/invoices/sales" className="print:hidden text-xs text-indigo-300 hover:text-indigo-200">← All sales invoices</Link>;
   if (!UUID_RE.test(params.id)) return <Missing back={back} />;
   const result = await getInvoice(getTenantToken() ?? "", params.id);
   if (!result.ok) {

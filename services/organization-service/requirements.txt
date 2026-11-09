@@ -8,3 +8,4 @@ psycopg[binary]>=3.1.18
 alembic>=1.13.0
 pillow>=10.3.0
 python-multipart>=0.0.9
+vercel-blob>=0.5.0

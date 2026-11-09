@@ -46,7 +46,7 @@ describe("the sidebar's structure", () => {
     render(<Shell modules={["inventory"]} />);
     const groups = screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
     expect(groups).toEqual(["Main", "Inventory", "Workspace"]);
-    expect(screen.queryByRole("link", { name: "Invoices" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sales Invoice" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Financial Overview" })).toBeNull();
     expect(screen.getByRole("link", { name: "Help & Support" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
@@ -142,7 +142,7 @@ describe("the mobile drawer (no hover involved)", () => {
     await user.click(backdrop);
     expect(aside().getAttribute("data-mobile-open")).toBe("false");
     await user.click(menu());
-    fireEvent.click(screen.getByRole("link", { name: "Invoices" }));
+    fireEvent.click(screen.getByRole("link", { name: "Sales Invoice" }));
     expect(aside().getAttribute("data-mobile-open")).toBe("false");
   });
 });

@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ro
 
 import SettingsView from "@/app/settings/settings-view";
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import InvoiceForm from "@/app/invoices/invoice-form";
+import InvoiceForm from "@/app/invoices/(sales)/invoice-form";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const ORG_ID = "6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";

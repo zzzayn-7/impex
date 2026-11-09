@@ -9,6 +9,7 @@ from app import api
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
 from app.outbox import run_worker
+from app.worker_api import router as worker_router
 
 
 @asynccontextmanager
@@ -18,7 +19,8 @@ async def lifespan(app: FastAPI):
     stop = asyncio.Event()
     worker = None
     # The email outbox worker (see app/outbox.py). Switched off in tests, which run passes explicitly.
-    if os.getenv("SUPPORT_OUTBOX_WORKER", "on").strip().lower() not in ("0", "off", "false", "no"):
+    # On Vercel there is no background task: a schedule calls /internal/v1/support/outbox-run instead (app/worker_api.py).
+    if not os.getenv("VERCEL") and os.getenv("SUPPORT_OUTBOX_WORKER", "on").strip().lower() not in ("0", "off", "false", "no"):
         # (the session factory can be replaced through app.state.session_factory: tests point the worker at their own database)
         worker = asyncio.create_task(run_worker(getattr(app.state, "session_factory", SessionLocal), stop))
     yield
@@ -41,6 +43,7 @@ app = FastAPI(
 # the Auth Service's record); platform routes on `require_super_admin`. See app/auth.py.
 app.include_router(api.router)
 app.include_router(api.admin)
+app.include_router(worker_router)  # one outbox pass for a scheduler (shared secret; not in the OpenAPI document)
 
 
 @app.get("/health", tags=["Health"])

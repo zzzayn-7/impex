@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 // Another organization's receipt answers "not found", exactly like an id that does not exist.
 export default async function GoodsReceiptPage({ params }: { params: { id: string } }) {
   await requireTenantAdmin();
-  const back = <Link href="/goods-receipts" className="text-xs text-indigo-300 hover:text-indigo-200">← All goods receipts</Link>;
+  const back = <Link href="/invoices/suppliers" className="text-xs text-indigo-300 hover:text-indigo-200">← All goods receipts (Suppliers Invoice)</Link>;
   if (!UUID_RE.test(params.id)) return <Missing back={back} />;
   const result = await getGoodsReceipt(getTenantToken() ?? "", params.id);
   if (!result.ok) {

@@ -7,7 +7,7 @@ const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
 vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import ReceiptDetailView from "@/app/goods-receipts/[id]/receipt-detail";
-import ReceiptIndex from "@/app/goods-receipts/receipt-index";
+import ReceiptIndex from "@/app/invoices/suppliers/receipt-index";
 import ReceiveForm from "@/app/purchase-orders/[id]/receive/receive-form";
 
 const now = "2026-11-07T10:00:00+00:00";
@@ -425,16 +425,16 @@ describe("the goods receipts list", () => {
     render(<ReceiptIndex list={list} filters={filters} suppliers={[{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any]} />);
     const u = user();
     await u.selectOptions(screen.getByLabelText("Status"), "confirmed");
-    expect(router.push).toHaveBeenLastCalledWith("/goods-receipts?status=confirmed");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?status=confirmed");
     expect(screen.queryByLabelText("Warehouse")).toBeNull();
     await u.type(screen.getByLabelText("Search"), "dn-7{enter}");
-    expect(router.push).toHaveBeenLastCalledWith("/goods-receipts?q=dn-7");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?q=dn-7");
   });
 
   it("clears filters and shows the right empty state", async () => {
     render(<ReceiptIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, status: "draft" }} suppliers={[]} />);
     expect(screen.getByText("No goods receipts match these filters.")).toBeTruthy();
     await user().click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(router.push).toHaveBeenLastCalledWith("/goods-receipts");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers");
   });
 });

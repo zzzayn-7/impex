@@ -275,7 +275,7 @@ export default function InvoiceForm({
 
       {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href={invoice ? `/invoices/${invoice.id}` : "/invoices"} className="text-sm text-indigo-300 hover:text-indigo-200">← {invoice ? "Back to the draft" : "All invoices"}</Link>
+        <Link href={invoice ? `/invoices/${invoice.id}` : "/invoices/sales"} className="text-sm text-indigo-300 hover:text-indigo-200">← {invoice ? "Back to the draft" : "All sales invoices"}</Link>
         <button type="button" onClick={save} disabled={busy || billable.length === 0} className="min-h-11 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">{busy ? "Saving the draft…" : "Save draft and review"}</button>
       </div>
     </div>

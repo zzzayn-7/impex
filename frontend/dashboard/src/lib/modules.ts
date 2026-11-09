@@ -12,7 +12,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory"
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Stock and product details, with scanning and a full movement history.",
-  purchasing: "Buying from suppliers and receiving the goods into stock.",
+  purchasing: "Buying from suppliers and receiving the goods into stock (the receipts are listed under Invoices, as Suppliers Invoice).",
   sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
   finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
 };
@@ -20,8 +20,11 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
 // The modules a module cannot work without (the Organization Service enforces the same rule when the Super Admin changes them).
 export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], purchasing: ["inventory"], sales: ["inventory"], finance: [] };
 
-// What each module contains, as pages in this portal.
-export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> = {
+// What each module contains, as pages in this portal. A page with `group: "invoices"` still BELONGS to its module (it is shown or hidden with it, and the
+// services behind it enforce the module), but the sidebar lists it under the dedicated Invoices group: Suppliers Invoice (the goods receipts) needs
+// Purchasing, Sales Invoice needs Sales, and the Invoices group appears when the organization has at least one of them.
+export type ModulePage = { label: string; href: string; group?: "invoices" };
+export const MODULE_PAGES: Record<ModuleKey, ModulePage[]> = {
   inventory: [
     { label: "Stock", href: "/stock" },
     { label: "Movements", href: "/movements" },
@@ -29,13 +32,13 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
   purchasing: [
     { label: "Suppliers", href: "/suppliers" },
     { label: "Purchase Orders", href: "/purchase-orders" },
-    { label: "Goods Receipts", href: "/goods-receipts" },
+    { label: "Suppliers Invoice", href: "/invoices/suppliers", group: "invoices" },
   ],
   sales: [
     { label: "Clients", href: "/clients" },
     { label: "Create Order", href: "/sales-orders/new" },
     { label: "Delivery Lists", href: "/delivery-lists" },
-    { label: "Invoices", href: "/invoices" },
+    { label: "Sales Invoice", href: "/invoices/sales", group: "invoices" },
   ],
   finance: [
     { label: "Financial Overview", href: "/finance" },
@@ -48,7 +51,7 @@ export const MODULE_PAGES: Record<ModuleKey, { label: string; href: string }[]> 
 // Header navigation keys -> module. A key that is not here (dashboard, support) is always available.
 export const NAV_MODULE: Record<string, ModuleKey> = {
   products: "inventory", stock: "inventory", movements: "inventory",
-  suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing",
+  suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing", supplierInvoices: "purchasing",
   deliveries: "sales", newOrder: "sales", invoices: "sales", clients: "sales",
   finance: "finance",
 };

@@ -77,7 +77,7 @@ describe("one shell for the whole portal", () => {
   it("every page key knows its title, route and section, and every module page key is in the module registry", () => {
     for (const [key, meta] of Object.entries(PAGE_META)) {
       expect(meta.title && meta.href.startsWith("/"), key).toBeTruthy();
-      if (key in NAV_MODULE) expect(["inventory", "purchasing", "sales", "finance"], key).toContain(meta.section);
+      if (key in NAV_MODULE) expect(["inventory", "purchasing", "sales", "invoices", "finance"], key).toContain(meta.section);
     }
   });
 
@@ -99,7 +99,7 @@ describe("one shell for the whole portal", () => {
 describe("the current page is highlighted, nested routes included", () => {
   const groups = navGroups(["inventory", "purchasing", "sales", "finance"]);
   it.each([
-    ["/", "/"], ["/invoices", "/invoices"], ["/invoices/123/edit", "/invoices"], ["/invoices/new", "/invoices"], ["/stock/abc", "/stock"],
+    ["/", "/"], ["/invoices/sales", "/invoices/sales"], ["/invoices/suppliers", "/invoices/suppliers"], ["/stock/abc", "/stock"],
     ["/finance", "/finance"], ["/finance/accounts", "/finance/accounts"], ["/finance/journal/new", "/finance/journal"], ["/finance/expenses/9", "/finance/expenses"],
     ["/purchase-orders/7", "/purchase-orders"], ["/support/new", "/support"], ["/settings", "/settings"],
   ])("%s -> %s", (path, expected) => {
@@ -109,6 +109,9 @@ describe("the current page is highlighted, nested routes included", () => {
     expect(activeHref("/nowhere", groups, "/stock")).toBe("/stock");
     expect(activeHref(null, groups, "/stock")).toBe("/stock");
     expect(activeHref("/invoicesX", groups, "/stock")).toBe("/stock"); // a prefix must end at a path boundary
+    // an invoice's own pages and a receipt's page are not tabs: they fall back to their page's entry (PAGE_META), which IS a tab
+    for (const path of ["/invoices/6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6", "/invoices/new", "/invoices/6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6/edit"]) expect(activeHref(path, groups, PAGE_META.invoices.href)).toBe("/invoices/sales");
+    expect(activeHref("/goods-receipts/6f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6", groups, PAGE_META.receipts.href)).toBe("/invoices/suppliers");
     expect(groups.flatMap((g) => g.items).map((i) => i.href)).not.toContain("/products"); // the compatibility route is reachable but not in the menu
   });
   it("the sidebar marks exactly that entry (and only one)", () => {

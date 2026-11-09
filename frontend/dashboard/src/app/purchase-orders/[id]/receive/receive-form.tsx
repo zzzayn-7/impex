@@ -215,7 +215,7 @@ export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDeta
         <h3 className="text-lg font-semibold text-sky-200">{receipt.number} is being added to stock</h3>
         <p className="text-sm text-sky-100">
           The inventory service has not confirmed the posting yet{receipt.posting.last_error ? ` (${receipt.posting.last_error})` : ""}. Nothing is lost and nothing will be added twice:
-          the receipt is saved and its quantities are reserved. Try again in a moment; you can also come back to it later from Goods Receipts.
+          the receipt is saved and its quantities are reserved. Try again in a moment; you can also come back to it later from Invoices (the Suppliers Invoice tab).
         </p>
         {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
         <div className="flex flex-wrap gap-2">

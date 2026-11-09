@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 // Only a DRAFT can be edited; an issued, paid or void invoice is frozen and is shown on its own page instead.
 export default async function EditInvoicePage({ params }: { params: { id: string } }) {
   await requireTenantAdmin();
-  const back = <Link href={UUID_RE.test(params.id) ? `/invoices/${params.id}` : "/invoices"} className="text-xs text-indigo-300 hover:text-indigo-200">← Back to the invoice</Link>;
+  const back = <Link href={UUID_RE.test(params.id) ? `/invoices/${params.id}` : "/invoices/sales"} className="text-xs text-indigo-300 hover:text-indigo-200">← Back to the invoice</Link>;
   const message = (text: string) => (
     <div className="space-y-4">
       {back}

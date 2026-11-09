@@ -403,7 +403,7 @@ def main() -> int:
         check("Request access opens a Change Request, pre-filled with fixed wording", s == 200 and "Request to activate the Sales module" in html and "change_request" in html)
         s, html, _ = page("a1", "/support/new?change=tax_id")
         check("Request change opens one for the registered fact", s == 200 and "Request to change our tax registration number" in html)
-        s, body = api("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
+        s, body = api("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "category": "change_request", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"sc-{uuid.uuid4()}"})
         ticket = (body or {}).get("ticket", {})
         created.add("tickets", ticket.get("id"))
         check("submitting the request opens a ticket (201)", s == 201 and ticket.get("ticket_number"), (s, body))

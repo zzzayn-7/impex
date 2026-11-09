@@ -7,9 +7,9 @@ const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
 vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import ClientAccountView from "@/app/clients/[id]/client-account";
-import InvoiceDetailView from "@/app/invoices/[id]/invoice-detail";
-import InvoiceForm from "@/app/invoices/invoice-form";
-import InvoiceIndex from "@/app/invoices/invoice-index";
+import InvoiceDetailView from "@/app/invoices/(sales)/[id]/invoice-detail";
+import InvoiceForm from "@/app/invoices/(sales)/invoice-form";
+import InvoiceIndex from "@/app/invoices/(sales)/invoice-index";
 import PortalShell from "@/components/dashboard/frame";
 import DispatchDetailView from "@/app/dispatches/[id]/dispatch-detail";
 
@@ -116,14 +116,14 @@ describe("Invoices index", () => {
     mount(page([summary()], { total: 80 }), { page: 3 });
     const u = user();
     await u.selectOptions(screen.getByLabelText("Status"), "issued");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices?status=issued");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?status=issued");
     await u.selectOptions(screen.getByLabelText("Payment"), "overdue");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices?payment=overdue&page=3".replace("&page=3", ""));
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?payment=overdue&page=3".replace("&page=3", ""));
     await u.selectOptions(screen.getByLabelText("Client"), CLIENT);
-    expect(router.push).toHaveBeenLastCalledWith(`/invoices?client=${CLIENT}`);
+    expect(router.push).toHaveBeenLastCalledWith(`/invoices/sales?client=${CLIENT}`);
     await u.type(screen.getByRole("searchbox"), "acme");
     await u.click(screen.getByRole("button", { name: "Search" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices?q=acme");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=acme");
   });
 
   it("lists every status, payment status and client (inactive ones marked)", () => {
@@ -137,9 +137,9 @@ describe("Invoices index", () => {
     mount(page([summary()], { total: 80 }), { page: 2, status: "paid", q: "x" });
     const u = user();
     await u.click(screen.getByRole("button", { name: "Next" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices?q=x&status=paid&page=3");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=x&status=paid&page=3");
     await u.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales");
   });
 
   it("says what to do when there are none, and when a search finds none", () => {
@@ -157,10 +157,11 @@ describe("Invoices index", () => {
 });
 
 describe("navigation", () => {
-  it("has an Invoices link in the shared sidebar (the current page is highlighted from the address)", () => {
+  it("has a Sales Invoice link in the Invoices group of the shared sidebar (the current page is highlighted from the address)", () => {
     render(<PortalShell admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }}>{null}</PortalShell>);
-    const link = screen.getByRole("link", { name: "Invoices" });
-    expect(link.getAttribute("href")).toBe("/invoices");
+    const link = screen.getByRole("link", { name: "Sales Invoice" });
+    expect(link.getAttribute("href")).toBe("/invoices/sales");
+    expect(screen.queryByRole("link", { name: "Suppliers Invoice" })).toBeNull(); // no Purchasing in this organization
     expect(screen.queryByRole("link", { name: "Dispatches" })).toBeNull(); // dispatching happens inside Delivery Lists
     expect(screen.getByRole("link", { name: "Delivery Lists" }).getAttribute("href")).toBe("/delivery-lists");
   });

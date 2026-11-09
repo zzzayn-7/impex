@@ -327,9 +327,9 @@ def main() -> int:
         s, html, loc = tpage("a1", "/")
         check("the dashboard lists the Inventory module and no other", s == 200 and 'data-module="inventory"' in html and 'data-module="sales"' not in html and 'data-module="purchasing"' not in html, s)
         check("the menu has Inventory's pages, Dashboard and Help & Support; no Purchasing or Sales page is listed",
-              all(f'href="{h}"' in html for h in ("/products", "/stock", "/scan", "/movements", "/support")) and not any(f'href="{h}"' in html for h in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices")))
+              all(f'href="{h}"' in html for h in ("/stock", "/movements", "/support")) and not any(f'href="{h}"' in html for h in ("/products", "/scan", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices/suppliers", "/invoices/sales")) and 'data-nav-group="invoices"' not in html)
         check("an Inventory page opens normally", tpage("a1", "/products")[0] == 200 and denied_marker not in tpage("a1", "/products")[1])
-        for path in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
+        for path in ("/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/dispatches", "/invoices/sales", "/invoices/suppliers", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
             s, html, loc = tpage("a1", path)
             check(f"typing {path} shows 'access denied' (and not the page)", s == 200 and denied_marker in html and "data-module-denied" in html, (s, loc))
         s, html, _ = tpage("a1", "/clients")
@@ -358,7 +358,7 @@ def main() -> int:
         check("the module request form is pre-filled with fixed wording as a Change Request", s == 200 and "Request to activate the Sales module" in html and "change_request" in html, s)
         s, html, loc = tpage("a1", "/support/new?module=%3Cscript%3Ealert(1)%3C/script%3E")
         check("nothing in the address is used as text: no live markup, no pre-filled request", s == 200 and "<script>alert(1)" not in html and "Request to activate" not in html)
-        s, body = tapi("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
+        s, body = tapi("a1", "POST", "/api/support/tickets", {"subject": "Request to activate the Sales module", "category": "change_request", "priority": "normal", "message": "Please enable the Sales module for our organization."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         ticket = (body or {}).get("ticket", {})
         check("A1 opens that request as a ticket (201)", s == 201 and ticket.get("ticket_number"), (s, body))
         check("the ticket changed NOTHING: modules, revision and history are exactly as they were", enabled("a") == {"inventory": True, "purchasing": False, "sales": False, "finance": False} and revision("a") == rev_before and len(history("a")) == hist_before)
@@ -378,7 +378,7 @@ def main() -> int:
         items = [h for h in history("a") if h["action"] == "enabled"]
         check("the history shows who (the Super Admin, by name and e-mail), what, when and why", {h["module"] for h in items} == {"purchasing", "sales"} and all(h["changed_by_name"] == "MODcheck SA" and h["changed_by_email"] == sa_email and h["created_at"] and (h["reason"] or "").startswith("Approved in") for h in items), items)
         check("the change reached A1 at once: the menu, the dashboard and the pages",
-              all(f'href="{h}"' in tpage("a1", "/")[1] for h in ("/suppliers", "/clients", "/invoices")) and 'data-module="sales"' in tpage("a1", "/")[1] and tpage("a1", "/clients")[0] == 200 and denied_marker not in tpage("a1", "/clients")[1])
+              all(f'href="{h}"' in tpage("a1", "/")[1] for h in ("/suppliers", "/clients", "/invoices/sales", "/invoices/suppliers")) and 'data-module="sales"' in tpage("a1", "/")[1] and tpage("a1", "/clients")[0] == 200 and denied_marker not in tpage("a1", "/clients")[1])
         check("...and the Sales and Purchasing Services now serve A1 directly", svc("a1", SALES, "GET", "/api/v1/sales/clients")[0] == 200 and svc("a1", PURCHASING, "GET", "/api/v1/purchasing/suppliers")[0] == 200)
         page_status, page_data, _, _ = sa_portal("GET", f"/organizations/{org_ids['a']}/modules")
         html = text_of(page_data)
@@ -540,7 +540,7 @@ def main() -> int:
         apply("c", {"sales": True})
         s, body = tapi("c1", "GET", "/api/sales/clients")
         check("enabling Sales for C does not skip its setup (still setup_required)", s == 403 and body.get("code") == "setup_required", (s, body))
-        s, body = tapi("c1", "POST", "/api/support/tickets", {"subject": "Setup help", "message": "I am stuck on the logo step."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
+        s, body = tapi("c1", "POST", "/api/support/tickets", {"subject": "Setup help", "category": "general_inquiry", "message": "I am stuck on the logo step."}, {"Idempotency-Key": f"mc-{uuid.uuid4()}"})
         check("C1 can still open a support ticket during setup", s == 201, (s, body))
         apply("c", {"sales": False})
 

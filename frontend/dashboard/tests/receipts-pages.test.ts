@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => null,
 }));
 
 import GoodsReceiptsLayout from "@/app/goods-receipts/layout";
-import GoodsReceiptsPage from "@/app/goods-receipts/page";
+import GoodsReceiptsPage from "@/app/invoices/suppliers/page";
 import GoodsReceiptPage from "@/app/goods-receipts/[id]/page";
 import ReceiveGoodsPage from "@/app/purchase-orders/[id]/receive/page";
 import PurchaseOrderPage from "@/app/purchase-orders/[id]/page";
@@ -124,7 +124,7 @@ describe("Goods Receipts page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(GoodsReceiptsPage({ searchParams: {} }));
-    for (const expected of ["Goods Receipts", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All statuses", "All suppliers", "Showing 1–2 of 2", "stock is added only when a receipt is confirmed"]) {
+    for (const expected of ["Invoices", "Goods receipt", "Suppliers Invoice", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All statuses", "All suppliers", "Showing 1–2 of 2", "stock is added only when a receipt is confirmed"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/goods-receipts/${A_RECEIPT}"`);
@@ -319,7 +319,7 @@ describe("navigation", () => {
     await expect((GoodsReceiptsLayout as any)({ children: null })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (GoodsReceiptsLayout as any)({ children: "PAGE" }));
-    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Goods Receipts");
-    for (const href of ["/", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).toContain(`href="${href}"`);
+    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Suppliers Invoice"); // a receipt belongs to that tab
+    for (const href of ["/", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/invoices/suppliers"]) expect(html).toContain(`href="${href}"`);
   });
 });

@@ -18,7 +18,8 @@ import ClientsLayout from "@/app/clients/layout";
 import DeliveryListsLayout from "@/app/delivery-lists/layout";
 import DispatchesLayout from "@/app/dispatches/layout";
 import GoodsReceiptsLayout from "@/app/goods-receipts/layout";
-import InvoicesLayout from "@/app/invoices/layout";
+import InvoicesLayout from "@/app/invoices/(sales)/layout";
+import SupplierInvoicesLayout from "@/app/invoices/suppliers/layout";
 import MovementsLayout from "@/app/movements/layout";
 import DashboardLayout from "@/app/(dashboard)/layout";
 import DashboardPage from "@/app/(dashboard)/page";
@@ -75,10 +76,11 @@ const layouts: [string, string, (p: any) => any, string[]][] = [
   ["purchasing", "Suppliers", SuppliersLayout, ["inventory", "purchasing"]],
   ["purchasing", "Purchase Orders", PurchaseOrdersLayout, ["inventory", "purchasing"]],
   ["purchasing", "Goods Receipts", GoodsReceiptsLayout, ["inventory", "purchasing"]],
+  ["purchasing", "Suppliers Invoice", SupplierInvoicesLayout, ["inventory", "purchasing"]],
   ["sales", "Clients", ClientsLayout, ["inventory", "sales"]],
   ["sales", "Delivery Lists", DeliveryListsLayout, ["inventory", "sales"]],
   ["sales", "Dispatches", DispatchesLayout, ["inventory", "sales"]],
-  ["sales", "Invoices", InvoicesLayout, ["inventory", "sales"]],
+  ["sales", "Invoices (Sales Invoice)", InvoicesLayout, ["inventory", "sales"]],
 ];
 const draw = async (layout: (p: any) => any) => renderToStaticMarkup(await layout({ children: <Probe /> }));
 
@@ -144,7 +146,7 @@ describe("the navigation lists only what is enabled", () => {
 
   it("everything enabled: the whole menu", () => {
     same(labels(nav(["inventory", "purchasing", "sales"])),
-      ["Dashboard", "Stock", "Movements", "Create Order", "Delivery Lists", "Invoices", "Clients", "Suppliers", "Purchase Orders", "Goods Receipts", "Help & Support", "Settings"],
+      ["Dashboard", "Stock", "Movements", "Create Order", "Delivery Lists", "Sales Invoice", "Clients", "Suppliers", "Purchase Orders", "Suppliers Invoice", "Help & Support", "Settings"],
     );
   });
   it("only Inventory: no Purchasing or Sales entries", () => {
@@ -152,8 +154,9 @@ describe("the navigation lists only what is enabled", () => {
   });
   it("Inventory and Sales", () => {
     const shown = labels(nav(["inventory", "sales"]));
-    expect(shown).toContain("Invoices");
+    expect(shown).toContain("Sales Invoice");
     expect(shown).not.toContain("Suppliers");
+    expect(shown).not.toContain("Suppliers Invoice"); // Purchasing-only tab: not offered without Purchasing
     expect(shown).not.toContain("Goods Receipts");
   });
   it("nothing enabled, an unknown list or no organization: only Dashboard and Help & Support", () => {
@@ -165,7 +168,7 @@ describe("the navigation lists only what is enabled", () => {
   it("Help & Support is always in the menu, and a disabled module's links are not in the page at all", () => {
     const html = nav([]);
     expect(html).toContain('href="/support"');
-    for (const href of ["/products", "/suppliers", "/clients", "/invoices", "/dispatches"]) expect(html).not.toContain(`href="${href}"`);
+    for (const href of ["/products", "/suppliers", "/clients", "/invoices", "/invoices/sales", "/invoices/suppliers", "/dispatches"]) expect(html).not.toContain(`href="${href}"`);
   });
 });
 
@@ -178,9 +181,9 @@ describe("the dashboard", () => {
     expect(html).toContain('data-module="inventory"');
     expect(html).toContain('data-module="sales"');
     expect(html).not.toContain('data-module="purchasing"');
-    for (const href of ["/stock", "/movements", "/clients", "/invoices"]) expect(html).toContain(`href="${href}"`);
+    for (const href of ["/stock", "/movements", "/clients", "/invoices/sales"]) expect(html).toContain(`href="${href}"`);
     expect(html).not.toContain('href="/products"'); // Products is no longer a menu entry
-    for (const href of ["/suppliers", "/purchase-orders", "/goods-receipts"]) expect(html).not.toContain(`href="${href}"`);
+    for (const href of ["/suppliers", "/purchase-orders", "/invoices/suppliers", "/goods-receipts"]) expect(html).not.toContain(`href="${href}"`);
     expect(html).toContain('href="/support/new?module=other"');
   });
 

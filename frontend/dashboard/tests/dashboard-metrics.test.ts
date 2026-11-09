@@ -110,11 +110,26 @@ describe("the sidebar lists exactly what the organization can use", () => {
     expect(labels(["finance", "sales", "inventory", "purchasing"])).toEqual([
       ["main", ["Dashboard"]],
       ["inventory", ["Stock", "Movements"]],
-      ["purchasing", ["Suppliers", "Purchase Orders", "Goods Receipts"]],
-      ["sales", ["Clients", "Create Order", "Delivery Lists", "Invoices"]],
+      ["purchasing", ["Suppliers", "Purchase Orders"]],
+      ["sales", ["Clients", "Create Order", "Delivery Lists"]],
+      ["invoices", ["Suppliers Invoice", "Sales Invoice"]],
       ["finance", ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]],
       ["workspace", ["Help & Support", "Settings"]],
     ]);
+  });
+  it("the Invoices group has exactly the tabs the organization may use: Suppliers Invoice needs Purchasing, Sales Invoice needs Sales", () => {
+    const tabs = (modules: string[]) => navGroups(modules).filter((g) => g.id === "invoices").flatMap((g) => g.items.map((i) => [i.label, i.href]));
+    expect(tabs(["inventory", "purchasing", "sales"])).toEqual([["Suppliers Invoice", "/invoices/suppliers"], ["Sales Invoice", "/invoices/sales"]]);
+    expect(tabs(["inventory", "purchasing"])).toEqual([["Suppliers Invoice", "/invoices/suppliers"]]);
+    expect(tabs(["inventory", "sales"])).toEqual([["Sales Invoice", "/invoices/sales"]]);
+    expect(tabs(["inventory"])).toEqual([]); // no Invoices group at all
+    expect(tabs(["finance"])).toEqual([]); // Finance alone gives no invoice pages
+    expect(navGroups(["inventory", "purchasing", "sales", "finance"]).map((g) => g.id)).toEqual(["main", "inventory", "purchasing", "sales", "invoices", "finance", "workspace"]);
+  });
+  it("Goods Receipts and Invoices are not entries of Purchasing and Sales any more", () => {
+    const entries = (id: string) => navGroups(["inventory", "purchasing", "sales"]).find((g) => g.id === id)!.items.map((i) => i.label);
+    expect(entries("purchasing")).toEqual(["Suppliers", "Purchase Orders"]);
+    expect(entries("sales")).toEqual(["Clients", "Create Order", "Delivery Lists"]);
   });
   it("Finance shows only when enabled; Sales and Purchasing need Inventory", () => {
     expect(labels(["inventory"]).map(([id]) => id)).toEqual(["main", "inventory", "workspace"]);

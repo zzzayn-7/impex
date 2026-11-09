@@ -22,7 +22,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: S
   const token = getTenantToken() ?? "";
   const requested = (first(searchParams?.client) ?? "").trim();
   const [clients, preferences] = await Promise.all([listClientChoices(token, "all"), loadPreferences(token)]);
-  const back = <Link href="/invoices" className="text-xs text-indigo-300 hover:text-indigo-200">← All invoices</Link>;
+  const back = <Link href="/invoices/sales" className="text-xs text-indigo-300 hover:text-indigo-200">← All sales invoices</Link>;
   const heading = (
     <div>
       <h2 className="text-xl font-semibold text-white">New invoice</h2>

@@ -23,7 +23,7 @@ const OrganizationDashboard = async () => DashboardLayout({ children: await Dash
 import SetupPage from "@/app/setup/page";
 import SetupLayout from "@/app/setup/layout";
 import ProductsLayout from "@/app/products/layout";
-import InvoicesLayout from "@/app/invoices/layout";
+import InvoicesLayout from "@/app/invoices/(sales)/layout";
 import PortalFrame from "@/components/portal-frame";
 import { TENANT_SESSION_COOKIE } from "@/lib/session";
 
@@ -138,7 +138,7 @@ describe("the dashboard waits for setup", () => {
 // =====================================================================================================
 // every other page (manual navigation before completion)
 // =====================================================================================================
-const LAYOUTS = ["(dashboard)", "clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices", "movements", "products", "purchase-orders", "sales-orders", "scan", "settings", "stock", "suppliers"];
+const LAYOUTS = ["(dashboard)", "clients", "delivery-lists", "dispatches", "finance", "goods-receipts", "invoices/(sales)", "invoices/suppliers", "movements", "products", "purchase-orders", "sales-orders", "scan", "settings", "stock", "suppliers"];
 
 describe("typing a page's address cannot skip the wizard", () => {
   it.each(LAYOUTS)("%s: an incomplete setup is redirected to /setup", async (name) => {
@@ -153,7 +153,10 @@ describe("typing a page's address cannot skip the wizard", () => {
 
   it("every page layout goes through the gate (this fails if a new layout skips it)", () => {
     const root = join(process.cwd(), "src", "app");
-    const layouts = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(root, d.name, "layout.tsx"))).map((d) => d.name);
+    // every folder under src/app that has a layout.tsx (the Invoices module has two: its Sales pages and its Suppliers tab, each with its own module gate)
+    const find = (dir: string, prefix = ""): string[] => readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name !== "api").flatMap((d) => [
+      ...(existsSync(join(dir, d.name, "layout.tsx")) ? [prefix + d.name] : []), ...find(join(dir, d.name), `${prefix}${d.name}/`)]);
+    const layouts = find(root);
     // "setup" is the wizard itself; "support" deliberately does NOT redirect (a new administrator with an onboarding problem must be able to
     // ask for help): it is covered by its own tests below, but it still checks the session and loads the workspace.
     expect(layouts.sort()).toEqual([...LAYOUTS, "setup", "support"].sort());

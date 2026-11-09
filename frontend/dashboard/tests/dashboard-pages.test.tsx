@@ -235,7 +235,7 @@ describe("modules that are not enabled", () => {
     expect(urls.every((u) => u.includes("/api/v1/inventory/"))).toBe(true);
     const t = text(html);
     for (const hidden of ["Open purchase orders", "Invoiced this month", "Outstanding receivables", "Recent invoices", "Collections", "Finance snapshot", "Sales & purchasing trend"]) expect(t, hidden).not.toContain(hidden);
-    for (const href of ["/invoices", "/clients", "/suppliers", "/purchase-orders", "/finance", "/finance/expenses/new", "/invoices/new"]) expect(html, href).not.toContain(`href="${href}"`);
+    for (const href of ["/invoices/sales", "/invoices/suppliers", "/clients", "/suppliers", "/purchase-orders", "/finance", "/finance/expenses/new", "/invoices/new"]) expect(html, href).not.toContain(`href="${href}"`);
     for (const shown of ["Active products", "Inventory activity", "Recent stock movements"]) expect(t, shown).toContain(shown);
     expect(html).toContain('data-nav-group="inventory"');
     expect(html).not.toContain('data-nav-group="sales"');
@@ -268,9 +268,9 @@ describe("modules that are not enabled", () => {
 
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
-    for (const href of ["/", "/stock", "/movements", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients", "/delivery-lists", "/invoices",
+    for (const href of ["/", "/stock", "/movements", "/suppliers", "/purchase-orders", "/invoices/suppliers", "/clients", "/delivery-lists", "/invoices/sales",
       "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
-    for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
+    for (const group of ["main", "inventory", "purchasing", "sales", "invoices", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
   });
 
   it("Scan Product is not a menu entry or a dashboard shortcut: scanning happens inside the workflows", async () => {

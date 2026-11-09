@@ -14,7 +14,7 @@ import Icon from "./icons";
 // (group-hover / group-focus-within), so there is no flicker, no layout shift and no hydration difference; the only state is "pinned" and "drawer open".
 // There are no per-item tooltips on purpose: hovering or focusing any icon expands the rail, which shows the labels themselves (a tooltip would repeat them).
 
-type NavState = { mobileOpen: boolean; setMobileOpen: (open: boolean) => void; pinned: boolean; setPinned: (pinned: boolean) => void };
+type NavState = { mobileOpen: boolean; setMobileOpen: (open: boolean) => void; pinned: boolean; setPinned: (pinned: boolean) => void; groups: NavGroup[] | null };
 const NavContext = createContext<NavState | null>(null);
 
 function useNav(): NavState {
@@ -23,11 +23,18 @@ function useNav(): NavState {
   return value;
 }
 
-export function NavProvider({ children }: { children: React.ReactNode }) {
+/** `groups` are the sidebar's groups for this organization: pages that need to know what the administrator may use (the Invoices tabs) read them from here,
+ *  so the menu and the tabs can never disagree about permissions. */
+export function NavProvider({ children, groups = null }: { children: React.ReactNode; groups?: NavGroup[] | null }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const value = useMemo(() => ({ mobileOpen, setMobileOpen, pinned, setPinned }), [mobileOpen, pinned]);
+  const value = useMemo(() => ({ mobileOpen, setMobileOpen, pinned, setPinned, groups }), [mobileOpen, pinned, groups]);
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>;
+}
+
+/** The sidebar's groups, or null where no shell is around (a component shown on its own). */
+export function useNavGroups(): NavGroup[] | null {
+  return useContext(NavContext)?.groups ?? null;
 }
 
 /** The header's menu button: opens the drawer on small screens only. */

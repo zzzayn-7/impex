@@ -427,8 +427,8 @@ describe("the portal shell shows the company identity", () => {
     render(<PortalShell admin={admin} current="invoices" organization={{ name: "Acme", has_logo: false, modules: ["inventory", "purchasing", "sales"] }}>{null}</PortalShell>);
     const links = screen.getAllByRole("link").map((l) => [l.textContent, l.getAttribute("href")]);
     expect(links).toContainEqual(["Dashboard", "/"]);
-    expect(links).toContainEqual(["Invoices", "/invoices"]);
-    expect(links).toContainEqual(["Goods Receipts", "/goods-receipts"]);
+    expect(links).toContainEqual(["Sales Invoice", "/invoices/sales"]);
+    expect(links).toContainEqual(["Suppliers Invoice", "/invoices/suppliers"]);
     expect(links).toContainEqual(["Help & Support", "/support"]);
   });
 });

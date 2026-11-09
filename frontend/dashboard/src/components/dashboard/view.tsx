@@ -173,7 +173,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (sales) {
     operations.push(
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
-        <CardHeader title="Recent invoices" action={<Link href="/invoices" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent invoices" action={<Link href="/invoices/sales" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {sales.data.recent.map((i) => row(i.id,

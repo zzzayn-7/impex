@@ -208,6 +208,8 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8000
       - ORG_SERVICE_URL=http://organization-service:8001
+      # Lets a scheduler trigger one outbox pass (POST /internal/v1/support/outbox-run); the in-process worker below does the same every few seconds.
+      - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}
       - SUPPORT_NOTIFICATION_EMAIL=${SUPPORT_NOTIFICATION_EMAIL:-}
       - SUPER_ADMIN_PORTAL_URL=${SUPER_ADMIN_PORTAL_URL:-http://localhost:3000}
       - TENANT_PORTAL_URL=${TENANT_PORTAL_URL:-http://localhost:3001}

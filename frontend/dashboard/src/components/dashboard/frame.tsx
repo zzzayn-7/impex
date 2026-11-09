@@ -45,7 +45,7 @@ export default function PortalShell({
   return (
     <div className="ix-dash">
       <ThemeProvider saved={themeFrom(admin.theme_background, admin.theme_accent)} cookieName={THEME_COOKIE} userId={admin.id}>
-      <NavProvider>
+      <NavProvider groups={groups}>
         <Sidebar groups={groups} currentHref={page.href} />
         <div className="min-w-0 lg:pl-[104px] print:pl-0">
           <header className="relative z-30 print:hidden px-4 pt-4 sm:px-6 lg:px-8">

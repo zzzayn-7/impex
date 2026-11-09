@@ -42,14 +42,6 @@ export default async function SuperAdminDashboard() {
               <h2 className="text-base font-semibold text-white">Microservice Registry</h2>
               <p className="text-xs text-slate-400">Overview of configured backend microservices and health endpoints</p>
             </div>
-            <a
-              href="/api/v1/auth/health"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium underline"
-            >
-              Test Gateway Auth Route →
-            </a>
           </div>
 
           <div className="overflow-x-auto">

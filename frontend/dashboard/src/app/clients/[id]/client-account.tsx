@@ -18,7 +18,7 @@ export default function ClientAccountView({ account }: { account: ClientAccount 
         </div>
         <div className="flex flex-wrap gap-2">
           {client.is_active && <Link href={`/invoices/new?client=${client.id}`} className="inline-flex min-h-10 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">New invoice</Link>}
-          <Link href={`/invoices?client=${client.id}`} className="inline-flex min-h-10 items-center rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">All their invoices</Link>
+          <Link href={`/invoices/sales?client=${client.id}`} className="inline-flex min-h-10 items-center rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">All their invoices</Link>
           <Link href={`/delivery-lists?client=${client.id}`} className="inline-flex min-h-10 items-center rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">Delivery lists</Link>
         </div>
       </div>
