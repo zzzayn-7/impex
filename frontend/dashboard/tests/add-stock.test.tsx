@@ -76,11 +76,11 @@ describe("the buttons on the Stock page", () => {
     expect(top).toEqual(["Add Stock", "Remove Stock", "Opening Balance"]);
   });
 
-  it("Stock In and Stock Out belong to the product's own row, labelled so they cannot be confused with Add Stock", () => {
+  it("a product's row has no Stock In / Stock Out buttons any more: its Actions are only the Edit and Delete icons", () => {
     mount();
     const rowOf = within(screen.getAllByRole("row")[1]);
-    expect(rowOf.getByRole("button", { name: "Stock In: Steel bolt" }).textContent).toBe("Stock In");
-    expect(rowOf.getByRole("button", { name: "Stock Out: Steel bolt" }).textContent).toBe("Stock Out");
+    expect(rowOf.queryByRole("button", { name: /Stock In|Stock Out/ })).toBeNull();
+    expect(rowOf.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit Steel bolt", "Delete Steel bolt"]);
   });
 });
 
@@ -349,27 +349,13 @@ describe("Opening Balance and the existing-product actions stay separate", () =>
     expect(form.textContent).toContain("Only possible before any other movement");
   });
 
-  it("Stock In on a row opens the existing-product form with that product chosen, explains when to use it, and posts to the existing endpoint", async () => {
+  it("Remove Stock (the button above the table) takes available stock out of an existing product the administrator selects, and posts to the existing endpoint", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Stock In: Steel bolt" }));
-    const form = await screen.findByRole("form", { name: "Stock In" });
-    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Stock In", "Remove Stock"]);
-    expect((within(form).getByRole("combobox", { name: "Product" }) as HTMLSelectElement).value).toBe(P1);
-    expect(form.textContent).toContain("Goods you bought are added by confirming their goods receipt, not here.");
-    await user.type(within(form).getByLabelText(/^Quantity/), "5");
-    await user.click(within(form).getByRole("button", { name: "Record stock in" }));
-    await screen.findByText(/Stock added\./);
-    expect(writes()).toHaveLength(1);
-    expect(writes()[0]).toMatchObject({ url: "/api/stock/in", method: "POST", body: { product_id: P1, quantity: "5" } });
-  });
-
-  it("Stock Out on a row opens the removal form (the service still protects reserved stock)", async () => {
-    const user = userEvent.setup();
-    mount();
-    await user.click(screen.getByRole("button", { name: "Stock Out: Steel bolt" }));
+    await user.click(screen.getByRole("button", { name: "Remove Stock" }));
     const form = await screen.findByRole("form", { name: "Remove Stock" });
     expect(form.textContent).toContain("stock reserved for customer orders cannot be taken");
+    await user.selectOptions(within(form).getByRole("combobox", { name: "Product" }), P1);
     await user.type(within(form).getByLabelText(/^Quantity/), "5");
     await user.click(within(form).getByRole("button", { name: "Remove stock" }));
     await screen.findByText(/Stock removed\./);

@@ -135,6 +135,21 @@ export function formatMoney(value: string, currency: string): string {
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${decimals} ${currency}`;
 }
 
+/** quantity x unit price, exactly (no floating point), rounded half up to 4 decimals: "500.0000" x "2.5000" -> "1250.0000". null when either is not a plain decimal. */
+export function lineTotal(quantity: string, unitPrice: string): string | null {
+  const scaled = (value: string): bigint | null => {
+    const m = /^(\d+)(?:\.(\d+))?$/.exec(value.trim());
+    return m ? BigInt(m[1] + (m[2] ?? "").padEnd(4, "0").slice(0, 4)) : null; // 4 decimals; both inputs have at most 4
+  };
+  const q = scaled(quantity);
+  const p = scaled(unitPrice);
+  if (q === null || p === null) return null;
+  const product = q * p; // 8 decimals
+  const rounded = (product + BigInt(5000)) / BigInt(10000); // half up to 4 decimals
+  const digits = rounded.toString().padStart(5, "0");
+  return `${digits.slice(0, -4)}.${digits.slice(-4)}`;
+}
+
 // For editing: "10.5000" -> "10.50" (no separators, still a string).
 export function plainDecimal(value: string): string {
   const [whole, fraction = ""] = value.split(".");

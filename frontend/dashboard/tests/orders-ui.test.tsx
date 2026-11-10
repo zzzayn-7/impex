@@ -543,11 +543,11 @@ describe("Delivery Lists board", () => {
     expect(screen.getByRole("status").textContent).toContain("SO-000009 was saved");
   });
 
-  it("Delivered History lists finished orders with their expiry and only a View List action, and says what the 24 hours mean", () => {
+  it("Delivered History lists finished orders with their expiry, View List at the top and Generate Invoice at the bottom, and says what the 24 hours mean", () => {
     const done = { ok: true as const, items: [summary(O1, "SO-000001", L1, "DL-000001", { status: "delivered", reservation_status: "consumed", delivery_list: { id: L1, number: "DL-000001", status: "dispatched" }, completed_at: "2026-11-09T12:00:00+00:00", history_expires_at: "2026-11-10T12:00:00+00:00" })], total: 1, limit: 100, offset: 0 };
     board({ view: "history", orders: done as any, others: null });
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
-    expect(within(card).getAllByRole("button").map((b) => b.textContent)).toEqual(["View List"]);
+    expect(within(card).getAllByRole("button").map((b) => b.textContent)).toEqual(["View List", "Generate Invoice"]);
     expect(card.textContent).toContain("2026-11-10 12:00 UTC");
     expect(card.textContent).toContain("Dispatched on 2026-11-09");
     expect(screen.getByText(/stay here for 24 hours/)).toBeTruthy();
@@ -639,6 +639,114 @@ describe("Delivery Lists board", () => {
       expect((await screen.findByRole("status")).textContent).toContain("SO-000001 was dispatched on 2026-11-09. Its items were taken out of your inventory.");
       // the other order is untouched
       expect(within(cardOf("SO-000002")).getByRole("button", { name: "Dispatch SO-000002" })).toBeTruthy();
+    });
+
+    describe("after the dispatch: View List moves to the top and the one button at the bottom is Generate Invoice", () => {
+      const dispatched = () => {
+        handlers["POST " + dispatchUrl] = () => json(200, { dispatch: { status: "confirmed" }, confirmed: true, dispatchedOn: "2026-11-09" });
+      };
+      const afterDispatch = async (user: ReturnType<typeof userEvent.setup>) => {
+        dispatched();
+        board();
+        await user.click(screen.getByRole("button", { name: "Dispatch SO-000001" }));
+        const card = cardOf();
+        await waitFor(() => expect(card.textContent).toContain("Dispatched on 2026-11-09"));
+        return card;
+      };
+      const invoiceUrl = `/api/sales/orders/${O1}/invoice`;
+      const INV = "9f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
+
+      it("View List is in the top corner where Edit and Remove were; they are gone; the bottom has exactly one button", async () => {
+        const card = await afterDispatch(userEvent.setup());
+        const header = card.firstElementChild as HTMLElement;
+        const top = within(header).getAllByRole("button").map((b) => b.textContent);
+        expect(top).toEqual(["View List"]);
+        for (const gone of ["Edit SO-000001", "Remove SO-000001", "Dispatch SO-000001"]) expect(within(card).queryByRole("button", { name: gone })).toBeNull();
+        const footer = card.lastElementChild as HTMLElement;
+        expect(within(footer).getAllByRole("button").map((b) => b.textContent)).toEqual(["Generate Invoice"]);
+        expect(within(card).getAllByRole("button")).toHaveLength(2); // nothing else on the card
+        expect(footer.querySelector("button")!.className).toContain("bg-ix-butter");
+      });
+
+      it("a card that was not dispatched keeps Edit, Remove, View List and Dispatch, and has no Generate Invoice", () => {
+        board();
+        const card = cardOf();
+        expect(within(card).queryByRole("button", { name: /generate invoice/i })).toBeNull();
+        for (const name of ["Edit SO-000001", "Remove SO-000001", "View list SO-000001", "Dispatch SO-000001"]) expect(within(card).getByRole("button", { name })).toBeTruthy();
+      });
+
+      it("the moved View List still opens the list", async () => {
+        const user = userEvent.setup();
+        const card = await afterDispatch(user);
+        await user.click(within(card).getByRole("button", { name: "View list SO-000001" }));
+        expect(await screen.findByRole("dialog")).toBeTruthy();
+      });
+
+      it("Generate Invoice asks the Sales Service to make the invoice from the order, then goes to the Sales Invoice page that shows it", async () => {
+        const user = userEvent.setup();
+        handlers["POST " + invoiceUrl] = () => json(201, { invoice: { id: INV, number: null, status: "draft" }, created: true });
+        const card = await afterDispatch(user);
+        await user.click(within(card).getByRole("button", { name: "Generate invoice for SO-000001" }));
+        await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/invoices/sales?generated=${INV}`));
+        const calls_ = calls.filter((c) => c.url === invoiceUrl);
+        expect(calls_).toHaveLength(1);
+        expect(calls_[0].method).toBe("POST");
+        expect(calls_[0].body).toBeUndefined(); // the browser sends nothing but the order in the address
+      });
+
+      it("an order that already has an invoice is sent to that invoice, marked as existing", async () => {
+        const user = userEvent.setup();
+        handlers["POST " + invoiceUrl] = () => json(200, { invoice: { id: INV, number: "INV-000004", status: "issued" }, created: false });
+        const card = await afterDispatch(user);
+        await user.click(within(card).getByRole("button", { name: "Generate invoice for SO-000001" }));
+        await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/invoices/sales?generated=${INV}&existing=1`));
+      });
+
+      it("a double click makes one request, and the button stays disabled while the browser moves on", async () => {
+        const user = userEvent.setup();
+        let release: (r: Response) => void = () => undefined;
+        handlers["POST " + invoiceUrl] = () => new Promise<Response>((resolve) => { release = resolve; });
+        const card = await afterDispatch(user);
+        const button = within(card).getByRole("button", { name: "Generate invoice for SO-000001" });
+        await user.dblClick(button);
+        expect(calls.filter((c) => c.url === invoiceUrl)).toHaveLength(1);
+        expect((within(card).getByRole("button", { name: "Generate invoice for SO-000001" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(within(card).getByRole("button", { name: "Generate invoice for SO-000001" }).textContent).toBe("Generating…");
+        release(json(201, { invoice: { id: INV, number: null, status: "draft" }, created: true }));
+        await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+        expect((within(card).getByRole("button", { name: "Generate invoice for SO-000001" }) as HTMLButtonElement).disabled).toBe(true); // still disabled: we are leaving
+      });
+
+      it.each([
+        ["no price", 422, "No selling price is set for Water bottle. Set it in Stock, or create this invoice by hand on the Sales Invoice page."],
+        ["mixed currencies", 422, "The products of this order are priced in different currencies (EUR, USD), and nothing is converted. Create the invoice by hand on the Sales Invoice page."],
+        ["the service is down", 503, "The product prices could not be read just now, so the invoice was not made. Please try again in a moment."],
+      ])("when it cannot be made (%s) the reason is shown, the page stays, and the button works again", async (_name, status, error) => {
+        const user = userEvent.setup();
+        handlers["POST " + invoiceUrl] = () => json(status, { error });
+        const card = await afterDispatch(user);
+        await user.click(within(card).getByRole("button", { name: "Generate invoice for SO-000001" }));
+        expect((await screen.findAllByRole("alert")).some((a) => a.textContent === error)).toBe(true);
+        expect(router.push).not.toHaveBeenCalled();
+        const again = within(card).getByRole("button", { name: "Generate invoice for SO-000001" }) as HTMLButtonElement;
+        expect(again.disabled).toBe(false);
+        expect(again.textContent).toBe("Generate Invoice");
+      });
+
+      it("an expired session goes to the login page", async () => {
+        const user = userEvent.setup();
+        handlers["POST " + invoiceUrl] = () => json(401, { error: "Your session has expired. Please sign in again." });
+        const card = await afterDispatch(user);
+        await user.click(within(card).getByRole("button", { name: "Generate invoice for SO-000001" }));
+        await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login"));
+      });
+
+      it("the other order on the page is untouched", async () => {
+        const card = await afterDispatch(userEvent.setup());
+        expect(card).toBeTruthy();
+        expect(within(cardOf("SO-000002")).queryByRole("button", { name: /generate invoice/i })).toBeNull();
+        expect(within(cardOf("SO-000002")).getByRole("button", { name: "Dispatch SO-000002" })).toBeTruthy();
+      });
     });
 
     it("an order that was only partly delivered is dispatched too (what is left)", async () => {

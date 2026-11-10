@@ -75,6 +75,16 @@ The scanner and "New draft list" remain draft-entry tools: a draft reserves noth
   **available** stock and can never eat booked stock.
 * Partly dispatched → *Needs reconciliation*; never booked silently (what is still undelivered cannot be told from what was never booked).
 
+## Generate Invoice (Delivery Lists card, after a dispatch)
+
+Once an order is dispatched (the Dispatch confirmation was granted) its card changes: **View List** moves to the top, where Edit and Remove were (they are gone: a dispatched order can no longer be changed), and the one button at the bottom is **Generate Invoice**. It calls `POST /api/sales/orders/{id}/invoice` (portal) -> `POST /api/v1/sales/orders/{order_id}/invoice` (Sales Service, `app/order_invoice.py`) and then goes to the **Sales Invoice** page (`/invoices/sales?generated=<invoice id>`), which shows a banner and the new draft.
+
+* The invoice is a **draft** (saved, no number yet): the client, and the CONFIRMED dispatch lines of the order's delivery list (product, SKU, name, unit and dispatched quantity are the dispatch's own, each line backed by its dispatch line). Discount and tax are zero; both can be set on the draft before it is issued. Issuing stays a deliberate step on the invoice.
+* The unit price is the product's **current catalog selling price** (the same price the order's Cost shows), read from the Inventory Service with the caller's own token; the currency is the products'. A product without a price, or products in different currencies, make nothing and say why (no price is guessed, nothing is converted); the invoice can still be made by hand. This is the only place invoicing reads the catalog.
+* It changes no stock and posts nothing to Finance. Repeating it (or six simultaneous clicks, serialized by a row lock on the order) never makes a second invoice: while a non-voided invoice already covers the order's dispatched goods, THAT invoice is returned (200, banner "already had an invoice"). Voiding it lets the order be invoiced again.
+* Refused: an order nothing was dispatched from (409), another organization's order (404), an inactive client (409), an Inventory outage (503, nothing made).
+* Verify: `python scripts/verify_generate_invoice.py` (31 checks), Sales tests `tests/test_order_invoice.py`, portal tests `orders-ui`, `order-invoice-api`, `invoice-ui`, `invoice-pages`.
+
 ## Delivered History
 
 When the last line of an order is confirmed, the same transaction marks it **Delivered** and stamps `completed_at` (server UTC). `view=delivered`

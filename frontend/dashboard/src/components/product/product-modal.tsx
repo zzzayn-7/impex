@@ -21,8 +21,10 @@ import ProductForm from "./product-form";
 type Loaded = { product: Product; identifiers: Identifier[]; label: Label | null };
 type Tab = "details" | "barcodes";
 
-export default function ProductModal({ productId, onClose, onChanged }: {
+export default function ProductModal({ productId, onClose, onChanged, startEditing = false }: {
   productId: string;
+  /** Open straight on the edit form (the Stock table's edit icon). */
+  startEditing?: boolean;
   onClose: () => void;
   /** Something was saved (details, status or barcodes): the page behind re-reads its figures. */
   onChanged: (message: string) => void;
@@ -31,7 +33,7 @@ export default function ProductModal({ productId, onClose, onChanged }: {
   const [data, setData] = useState<Loaded | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("details");
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);

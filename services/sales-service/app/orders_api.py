@@ -10,11 +10,11 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app import delivery, orders
+from app import delivery, order_invoice, orders
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
 from app.inventory import InventoryGateway, get_gateway
-from app.schemas import DeliveryListDetail, OrderCancel, OrderCreate, OrderDetail, OrderPage, OrderUpdate
+from app.schemas import DeliveryListDetail, GeneratedInvoice, OrderCancel, OrderCreate, OrderDetail, OrderPage, OrderUpdate
 
 router = APIRouter(prefix="/api/v1/sales")
 Tenant = Depends(require_active_tenant)
@@ -129,6 +129,15 @@ def reconcile_order(order_id: uuid.UUID, response: Response, tenant: TenantConte
     orders.get_order_or_404(db, tenant, order_id)
     outcome = orders.reconcile(db, tenant, gateway, order_id)
     return _answer(db, tenant, gateway, order_id, outcome, response)
+
+
+@router.post("/orders/{order_id}/invoice", response_model=GeneratedInvoice, status_code=status.HTTP_201_CREATED, tags=["Sales orders"])
+def generate_order_invoice(order_id: uuid.UUID, response: Response, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
+    """Generate Invoice for a dispatched order: a DRAFT invoice for its client from the goods that were dispatched, priced with the products' current
+    selling price (see app/order_invoice.py). Changes no stock. Repeating it returns the invoice the order already has (200) instead of a second one."""
+    invoice, created = order_invoice.generate(db, tenant, gateway, order_id)
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return GeneratedInvoice(invoice=invoice, created=created)
 
 
 @router.get("/orders/{order_id}/delivery-list", response_model=DeliveryListDetail, tags=["Sales orders"])

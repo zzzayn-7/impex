@@ -4,9 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import AddStockModal from "@/components/product/add-stock-modal";
+import { useConfirm } from "@/components/ui/confirm";
+import { Tooltip } from "@/components/ui/tooltip";
 import ProductModal from "@/components/product/product-modal";
 import type { PagedResult, StockFilters } from "@/lib/inventory";
-import { formatMoney, type Product } from "@/lib/product-validation";
+import { formatMoney, lineTotal, type Product } from "@/lib/product-validation";
 import { StockAction, StockProduct, formatQuantity } from "@/lib/stock-validation";
 import StockForm from "./stock-form";
 
@@ -17,9 +19,11 @@ import StockForm from "./stock-form";
 //   Add Stock         REGISTER A NEW PRODUCT (the dialog "Add Product to Stock"), optionally with the quantity the organization already owns;
 //   Remove Stock      take available stock out of an existing product;
 //   Opening Balance   the starting quantity of an already registered product that has no stock history yet.
-// Changing the quantity of ONE existing product happens in its row (Stock In / Stock Out), so the two can never be confused. Goods bought from now on are not
-// added here at all: they arrive through Purchase Order -> confirmed Goods Receipt. A product can also be registered while buying (a purchase order's
-// "Add New Product"). Registering a product never adds stock by itself.
+// A row's Actions are exactly two icons: Edit (opens the product dialog on its edit form) and Delete (always asks first). Delete takes the product out of the
+// Stock list and out of everything new (orders, purchases) but ERASES NOTHING: it is the product's archive, so its movements, orders, receipts and invoices
+// keep their history and it can be restored (Products: Archived -> Edit). Goods bought from now on are not added here at all: they arrive through Purchase
+// Order -> confirmed Goods Receipt. A product can also be registered while buying (a purchase order's "Add New Product"). Registering a product never adds
+// stock by itself. The Total column is what the pieces on hand are worth at the selling price (on hand x price, in the product's currency).
 
 type Props = {
   list: PagedResult<StockProduct>;
@@ -27,11 +31,10 @@ type Props = {
   products: Product[]; // active products, for the form
 };
 
-/** `top`: opened from a button above the table (Remove Stock / Opening Balance, pick the product); `row`: Stock In / Stock Out of one existing product. */
-type Panel = { action: StockAction; productId?: string; scope: "top" | "row" } | null;
+/** Opened from a button above the table (Remove Stock / Opening Balance: pick the product). */
+type Panel = { action: StockAction; productId?: string; scope: "top" } | null;
 
 const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "out", label: "Remove Stock" }, { action: "opening", label: "Opening Balance" }];
-const ROW_LABELS: Record<"in" | "out", string> = { in: "Stock In", out: "Stock Out" };
 
 /** A price with its currency, or a dash when the service did not send one. */
 const money = (amount?: string | null, currency?: string | null) => (amount && currency ? formatMoney(amount, currency) : "—");
@@ -42,7 +45,10 @@ export default function StockOverview({ list, filters, products }: Props) {
   const [panel, setPanel] = useState<Panel>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(filters.q);
-  const [detailsId, setDetailsId] = useState<string | null>(null); // the product whose dialog is open
+  const [editingId, setEditingId] = useState<string | null>(null); // the product whose edit dialog is open
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
   const [adding, setAdding] = useState(false); // the "Add Product to Stock" dialog
 
   function navigate(next: Partial<StockFilters>) {
@@ -66,7 +72,32 @@ export default function StockOverview({ list, filters, products }: Props) {
   const total = list.ok ? list.total : 0;
   const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
   const last = list.ok ? list.offset + list.items.length : 0;
-  const open = (action: StockAction, scope: "top" | "row", productId?: string) => { setMessage(null); setPanel({ action, productId, scope }); };
+  const open = (action: StockAction, productId?: string) => { setMessage(null); setProblem(null); setPanel({ action, productId, scope: "top" }); };
+
+  // DELETE: always asks first, then archives the product (see the note at the top). Nothing is erased.
+  async function remove(item: StockProduct) {
+    const ok = await confirm({
+      title: `Delete ${item.name}?`,
+      message: "It is taken out of your Stock list and can no longer be ordered, bought or counted. Nothing is erased: its stock movements, orders, receipts and invoices keep their history, and you can bring it back under Products: Archived.",
+      confirmLabel: "Delete product",
+    });
+    if (!ok) return;
+    setBusyId(item.product_id);
+    setMessage(null);
+    setProblem(null);
+    try {
+      const res = await fetch(`/api/products/${item.product_id}/archive`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (res.status === 401) return router.replace("/login");
+      if (!res.ok) return setProblem(body?.error ?? "The product could not be deleted. Please try again.");
+      setMessage(`${item.name} was deleted. It can be restored from Products: Archived.`);
+      startTransition(() => router.refresh());
+    } catch {
+      setProblem("Unable to reach the server. Please try again.");
+    } finally {
+      setBusyId(null);
+    }
+  }
   const noSetup = products.length === 0;
 
   return (
@@ -90,7 +121,7 @@ export default function StockOverview({ list, filters, products }: Props) {
               key={action}
               type="button"
               disabled={noSetup}
-              onClick={() => open(action, "top")}
+              onClick={() => open(action)}
               className="rounded-lg border border-slate-700 px-3.5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-40"
             >
               {label}
@@ -112,6 +143,8 @@ export default function StockOverview({ list, filters, products }: Props) {
         </div>
       )}
 
+      {problem && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">{problem}</p>}
+
       {adding && (
         <AddStockModal
           onClose={() => setAdding(false)}
@@ -120,10 +153,11 @@ export default function StockOverview({ list, filters, products }: Props) {
         />
       )}
 
-      {detailsId && (
+      {editingId && (
         <ProductModal
-          productId={detailsId}
-          onClose={() => setDetailsId(null)}
+          productId={editingId}
+          startEditing
+          onClose={() => setEditingId(null)}
           onChanged={(text) => { setMessage(text); startTransition(() => router.refresh()); }}
         />
       )}
@@ -133,7 +167,7 @@ export default function StockOverview({ list, filters, products }: Props) {
           key={`${panel.scope}-${panel.action}-${panel.productId ?? ""}`}
           initialAction={panel.action}
           initialProductId={panel.productId}
-          actions={panel.scope === "row" ? ["in", "out"] : ["out", "opening"]}
+          actions={["out", "opening"]}
           products={products}
           onDone={done}
           onCancel={() => setPanel(null)}
@@ -199,11 +233,11 @@ export default function StockOverview({ list, filters, products }: Props) {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Product</th>
                     <th className="px-4 py-3 font-semibold">Unit</th>
-                    <th className="px-4 py-3 font-semibold text-right">On hand</th>
                     <th className="px-4 py-3 font-semibold text-right">Reserved</th>
                     <th className="px-4 py-3 font-semibold text-right">Available</th>
                     <th className="px-4 py-3 font-semibold text-right">Cost</th>
                     <th className="px-4 py-3 font-semibold text-right">Price</th>
+                    <th className="px-4 py-3 font-semibold text-right">Total</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
@@ -216,30 +250,32 @@ export default function StockOverview({ list, filters, products }: Props) {
                         <div className="font-mono text-xs text-indigo-300">{item.sku}</div>
                       </td>
                       <td className="px-4 py-3 text-xs">{item.unit}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
-                        <span className="text-sm font-semibold text-white" data-testid={`onhand-${item.sku}`}>{formatQuantity(item.total_quantity)}</span>
-                      </td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300" data-testid={`reserved-${item.sku}`}>{formatQuantity(item.reserved_quantity ?? "0")}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
                         <span className="text-sm font-semibold text-white" data-testid={`available-${item.sku}`}>{formatQuantity(item.available_quantity ?? item.total_quantity)}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300">{money(item.cost_price, item.currency_code)}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{money(item.selling_price, item.currency_code)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
+                        <span className="text-sm font-semibold text-white" data-testid={`total-${item.sku}`}>{money(item.selling_price ? lineTotal(item.total_quantity, item.selling_price) : null, item.currency_code)}</span>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${item.is_active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-600/40 bg-slate-700/30 text-slate-400"}`}>
                           {item.is_active ? "Active" : "Archived"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {item.is_active && !noSetup && (["in", "out"] as const).map((action) => (
-                            <button key={action} type="button" onClick={() => open(action, "row", item.product_id)} aria-label={`${ROW_LABELS[action]}: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
-                              {ROW_LABELS[action]}
+                        <div className="flex items-center gap-0.5">
+                          <Tooltip label="Edit">
+                            <button type="button" onClick={() => { setMessage(null); setProblem(null); setEditingId(item.product_id); }} aria-haspopup="dialog" aria-label={`Edit ${item.name}`} className="p-1.5 text-slate-400 transition-colors hover:text-white focus-visible:text-white focus-visible:outline-none">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
                             </button>
-                          ))}
-                          <button type="button" onClick={() => { setMessage(null); setDetailsId(item.product_id); }} aria-haspopup="dialog" aria-label={`Details: ${item.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">
-                            Details
-                          </button>
+                          </Tooltip>
+                          <Tooltip label={item.is_active ? "Delete" : "Already deleted"}>
+                            <button type="button" onClick={() => remove(item)} disabled={!item.is_active || busyId === item.product_id} aria-label={`Delete ${item.name}`} className="p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:text-red-300 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-red-400">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
@@ -260,6 +296,7 @@ export default function StockOverview({ list, filters, products }: Props) {
           </div>
         )}
       </section>
+      {confirmDialog}
     </div>
   );
 }

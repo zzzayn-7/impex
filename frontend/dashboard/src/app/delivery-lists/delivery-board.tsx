@@ -18,8 +18,11 @@ import { EditOrderModal, ViewListModal, orderTone, stamp } from "./order-modals"
 type Modal = { kind: "view" | "edit"; id: string } | null;
 
 // DELIVERY LISTS: every sales order is a delivery list. An ACTIVE order shows as a card with exactly three actions - Edit, Remove, View List. View
-// List opens a centered dialog (never a separate page). A fully delivered order moves to Delivered History for 24 hours (the Sales Service applies
-// the cutoff on its own clock) and is then no longer listed; nothing is deleted.
+// List opens a centered dialog (never a separate page). Once the order is DISPATCHED (confirmed) the card changes: View List moves to the top, where
+// Edit and Remove were (they are gone: a dispatched order can no longer be changed), and the one button at the bottom is Generate Invoice, which makes a
+// draft invoice from the dispatched goods and takes you to the Sales Invoice page, where it is saved (see POST /api/sales/orders/[id]/invoice).
+// A fully delivered order moves to Delivered History for 24 hours (the Sales Service applies the cutoff on its own clock) and is then no longer
+// listed; nothing is deleted.
 export default function DeliveryBoard({ view, orders, others, clients, created }: {
   view: "active" | "history";
   orders: Paged<OrderSummary>;
@@ -93,6 +96,21 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
     setMessage({ ok: true, text: `${order.number} was dispatched on ${date}. Its items were taken out of your inventory.` });
   }
 
+  // GENERATE INVOICE: the Sales Service builds a DRAFT invoice from what was dispatched and saves it (or returns the one the order already has); then the
+  // Sales Invoice page shows it. The button stays disabled while the browser moves on, so it cannot be pressed twice.
+  async function generateInvoice(order: OrderSummary) {
+    if (busyId) return;
+    setBusyId(order.id);
+    setMessage(null);
+    const r = await api(`/api/sales/orders/${order.id}/invoice`, { method: "POST" });
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok || !r.data?.invoice?.id) {
+      setBusyId(null);
+      return setMessage({ ok: false, text: r.ok ? "The invoice could not be opened. Please try again." : r.error });
+    }
+    router.push(`/invoices/sales?generated=${encodeURIComponent(r.data.invoice.id)}${r.data.created ? "" : "&existing=1"}`);
+  }
+
   async function retry(order: OrderSummary) {
     setBusyId(order.id);
     const r = await api(`/api/sales/orders/${order.id}/reconcile`, { method: "POST" });
@@ -156,7 +174,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     <p className="mt-0.5 font-mono text-xs text-ix-accent-text">{order.number} <span className="text-ix-muted">· {order.delivery_list.number}</span></p>
                   </div>
                   {finishedOn ? (
-                    <StatusBadge tone={orderTone("delivered")}>Dispatched on {finishedOn}</StatusBadge>
+                    <button type="button" onClick={() => setModal({ kind: "view", id: order.id })} aria-label={`View list ${order.number}`} className={`${buttonClass.secondary} -mr-1 -mt-1 shrink-0`}>View List</button>
                   ) : view === "active" ? (
                     <div className="-mr-1 -mt-1 flex shrink-0 items-center gap-0.5">
                       <Tooltip label="Edit">
@@ -174,6 +192,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     <StatusBadge tone={orderTone(order.status)}>{ORDER_STATUS_LABELS[order.status]}</StatusBadge>
                   )}
                 </div>
+                {finishedOn && <div><StatusBadge tone={orderTone("delivered")}>Dispatched on {finishedOn}</StatusBadge></div>}
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <div><dt className="text-ix-muted">{view === "history" ? "Delivered" : "Created"}</dt><dd className="mt-0.5 text-ix-text">{stamp(view === "history" ? order.completed_at : order.created_at)}</dd></div>
                   <div><dt className="text-ix-muted">No. of items</dt><dd className="mt-0.5 text-ix-text">{order.product_count}</dd></div>
@@ -186,9 +205,22 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     <button type="button" onClick={() => retry(order)} disabled={busyId === order.id} className="ml-2 font-semibold underline underline-offset-2">Retry booking</button>
                   </p>
                 )}
+                {finishedOn ? (
+                  <div className="mt-auto pt-1">
+                    <button
+                      type="button"
+                      onClick={() => generateInvoice(order)}
+                      disabled={busyId !== null}
+                      aria-label={`Generate invoice for ${order.number}`}
+                      className={`${buttonClass.primary} w-full`}
+                    >
+                      {busyId === order.id ? "Generating…" : "Generate Invoice"}
+                    </button>
+                  </div>
+                ) : (
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
                   <button type="button" onClick={() => setModal({ kind: "view", id: order.id })} aria-label={`View list ${order.number}`} className={buttonClass.secondary}>View List</button>
-                  {view === "active" && !finishedOn && (
+                  {view === "active" && (
                     <button
                       type="button"
                       onClick={() => dispatchNow(order)}
@@ -200,6 +232,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                     </button>
                   )}
                 </div>
+                )}
               </GlassCard>
             </li>
             );

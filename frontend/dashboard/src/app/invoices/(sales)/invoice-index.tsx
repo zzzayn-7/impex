@@ -11,7 +11,7 @@ import type { Client, InvoiceFilters, InvoiceStatus, InvoiceSummary, Paged, Paym
 
 const selectClass = "mt-1.5 block max-w-[14rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
 
-export default function InvoiceIndex({ list, filters, clients }: { list: Paged<InvoiceSummary>; filters: InvoiceFilters; clients: Client[] }) {
+export default function InvoiceIndex({ list, filters, clients, generated = null }: { list: Paged<InvoiceSummary>; filters: InvoiceFilters; clients: Client[]; generated?: { id: string; existing: boolean } | null }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);
@@ -43,6 +43,17 @@ export default function InvoiceIndex({ list, filters, clients }: { list: Paged<I
       >
         <p className="text-xs text-slate-400">Bill your clients for goods you have dispatched, and record the payments you receive. Invoicing never changes your stock.</p>
       </InvoicesHeader>
+
+      {generated && (
+        <div role="status" data-generated-banner className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">
+          <p>
+            {generated.existing
+              ? "This order already had an invoice. Here it is."
+              : "The invoice was generated from the dispatched order and saved as a draft. Check it, then issue it when it is right."}
+          </p>
+          <Link href={`/invoices/${generated.id}`} className="font-semibold text-white underline underline-offset-2 hover:text-indigo-100">Open the invoice</Link>
+        </div>
+      )}
 
       <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-4 sm:p-5">
         <div className="flex flex-wrap items-end gap-3">
@@ -107,7 +118,7 @@ export default function InvoiceIndex({ list, filters, clients }: { list: Paged<I
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {list.items.map((i) => (
-                    <tr key={i.id} className="hover:bg-slate-800/30">
+                    <tr key={i.id} data-generated={generated?.id === i.id ? "true" : undefined} className={generated?.id === i.id ? "bg-indigo-500/10 hover:bg-indigo-500/15" : "hover:bg-slate-800/30"}>
                       <td className="px-4 py-3">
                         <Link href={`/invoices/${i.id}`} className="font-mono text-sm font-semibold text-indigo-300 hover:text-indigo-200">{i.number ?? "Draft"}</Link>
                         {i.delivery_list && <div className="font-mono text-xs text-slate-500">{i.delivery_list.number}</div>}

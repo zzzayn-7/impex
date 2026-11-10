@@ -99,6 +99,30 @@ describe("Invoices index", () => {
   const page = (items: any[], extra: Record<string, unknown> = {}) => ({ ok: true as const, items, total: items.length, limit: 25, offset: 0, ...extra });
   const mount = (list: any, f: Record<string, unknown> = {}) => render(<InvoiceIndex list={list} filters={{ ...filters, ...f } as any} clients={clients as any} />);
 
+  it("arriving from Generate Invoice: says the invoice was generated and saved as a draft, links to it, and marks its row", () => {
+    const made = "9f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
+    render(<InvoiceIndex list={page([summary({ id: made, number: null, status: "draft" }), summary()]) as any} filters={filters as any} clients={clients as any} generated={{ id: made, existing: false }} />);
+    const banner = screen.getByRole("status");
+    expect(banner.textContent).toContain("generated from the dispatched order and saved as a draft");
+    expect(within(banner).getByRole("link", { name: "Open the invoice" }).getAttribute("href")).toBe(`/invoices/${made}`);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0].getAttribute("data-generated")).toBe("true");
+    expect(rows[0].textContent).toContain("Draft");
+    expect(rows[1].getAttribute("data-generated")).toBeNull();
+  });
+
+  it("arriving for an order that already had an invoice: says so, and points at it", () => {
+    const made = "9f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
+    render(<InvoiceIndex list={page([summary({ id: made })]) as any} filters={filters as any} clients={clients as any} generated={{ id: made, existing: true }} />);
+    expect(screen.getByRole("status").textContent).toContain("This order already had an invoice");
+  });
+
+  it("without a generated invoice there is no banner", () => {
+    mount(page([summary()]));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.querySelector("[data-generated-banner]")).toBeNull();
+  });
+
   it("shows each invoice with amounts, a draft without a number and an overdue date", () => {
     mount(page([summary(), summary({ id: "x2", number: null, status: "draft", delivery_list: null }), summary({ id: "x3", number: "INV-000003", overdue: true, due_date: "2025-01-31", paid_total: "5.0000", outstanding: "20.0000", status: "partially_paid" })]));
     const rows = screen.getAllByRole("row").slice(1);

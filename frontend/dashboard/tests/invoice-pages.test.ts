@@ -159,6 +159,22 @@ describe("Invoices page", () => {
     expect(html).toContain('href="/invoices/new"');
   });
 
+  it("arriving from Generate Invoice (?generated=<id>) shows the banner and marks that row; a malformed id is ignored", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await render(InvoicesPage({ searchParams: { generated: A_ISSUED } }));
+    expect(html).toContain("generated from the dispatched order and saved as a draft");
+    expect(html).toContain(`href="/invoices/${A_ISSUED}"`);
+    expect(html).toContain('data-generated="true"');
+    const existing = await render(InvoicesPage({ searchParams: { generated: A_ISSUED, existing: "1" } }));
+    expect(existing).toContain("This order already had an invoice");
+    for (const bad of ["not-a-uuid", "<script>alert(1)</script>", "' OR 1=1"]) {
+      const page = await render(InvoicesPage({ searchParams: { generated: bad } }));
+      expect(page).not.toContain("data-generated-banner");
+      expect(page).not.toContain("generated from the dispatched order");
+    }
+  });
+
   it("two organizations: each sees only their own invoices", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";

@@ -169,7 +169,7 @@ def main() -> int:
         check("the product is registered (201), SKU in capitals, and has no category", s == 201 and cisco.get("sku") == "CISCO-001" and "category" not in cisco, (s, text[:200]))
         check("physical 0 / reserved 0 / available 0 and NO stock movement at all (no artificial ledger entry)", figures(cisco["id"]) == (Decimal("0"), Decimal("0"), Decimal("0")) and movements(cisco["id"]) == 0)
         s, html = page("a", "/stock")
-        check("it shows in the Stock table straight away with 0 on hand and 0 available", 'data-testid="onhand-CISCO-001">0<' in html and 'data-testid="available-CISCO-001">0<' in html, s)
+        check("it shows in the Stock table straight away with 0 available and a Total column (there is no On hand column)", 'data-testid="available-CISCO-001">0<' in html and 'data-testid="total-CISCO-001"' in html and 'data-testid="onhand-' not in html, s)
         s, text = portal("a", "POST", "/api/products", {"sku": "Cisco-001", "name": "Duplicate router", "unit": "pcs", "costPrice": "1", "sellingPrice": "2", "currencyCode": "USD"})
         check("a duplicate SKU is refused (409, on the SKU) and creates nothing", s == 409 and "sku" in (jbody(text).get("fieldErrors") or {}) and psql("impex_inventory", f"SELECT count(*) FROM products WHERE organization_id = '{org_ids['a']}'") == "1", (s, text[:160]))
 
@@ -181,7 +181,7 @@ def main() -> int:
               and psql("impex_inventory", f"SELECT quantity::text FROM stock_movements WHERE product_id = '{dell['id']}'") == "35.0000")
         check("35 on hand, 0 reserved, 35 available", figures(dell["id"]) == (Decimal("35"), Decimal("0"), Decimal("35")), figures(dell["id"]))
         s, html = page("a", "/stock?q=dell")
-        check("the Stock page shows 35 on hand and 35 available", 'data-testid="onhand-DELL-001">35<' in html and 'data-testid="available-DELL-001">35<' in html, s)
+        check("the Stock page shows 35 available and a Total of 35 x 799.00 = 27,965.00 USD", 'data-testid="available-DELL-001">35<' in html and 'data-testid="total-DELL-001">27,965.00 USD<' in html, s)
         s, text = portal("a", "POST", "/api/stock/opening", {"product_id": dell["id"], "quantity": "35"}, {"Idempotency-Key": key_b})
         check("retrying the SAME request (the dialog's 'Record opening quantity') is replayed (200) and counts nothing twice", s == 200 and jbody(text).get("operation", {}).get("replayed") is True and figures(dell["id"])[0] == Decimal("35") and movements(dell["id"]) == 1, (s, text[:160]))
         s, body = stock_call("a", "opening", dell["id"], "35")

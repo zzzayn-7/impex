@@ -54,16 +54,41 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const filters = { q: "", inStockOnly: false, status: "active" as const, page: 1 };
 const mount = (items = [row()]) => render(<StockOverview list={{ ok: true, items, total: items.length, limit: 25, offset: 0 } as any} filters={filters} products={[product()] as any} />);
 const writes = () => calls.filter((c) => c.method !== "GET");
+/** The row's Edit icon opens the product dialog on its edit form; Cancel there shows the product's details (barcodes, archive, restore). */
+const openEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByRole("button", { name: "Edit Steel bolt" }));
+  return screen.findByRole("dialog", { name: "Steel bolt" });
+};
+const openDetails = async (user: ReturnType<typeof userEvent.setup>) => {
+  const dialog = await openEdit(user);
+  await user.click(await within(dialog).findByRole("button", { name: "Cancel" }));
+  return dialog;
+};
 
 describe("the Stock page shows the product inventory", () => {
-  it("lists name, SKU, unit, on hand, reserved, available, cost, price and status for each product", () => {
+  it("lists name, SKU, unit, reserved, available, cost, price, the Total (on hand x price) and status for each product; there is no On hand column", () => {
     mount([row(), row({ product_id: P2, sku: "NUT-1", name: "Steel nut", is_active: false, total_quantity: "0.0000", reserved_quantity: "0.0000", available_quantity: "0.0000", cost_price: "0.1000", selling_price: "0.2000" })]);
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Unit", "On hand", "Reserved", "Available", "Cost", "Price", "Status", "Actions"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Unit", "Reserved", "Available", "Cost", "Price", "Total", "Status", "Actions"]);
     const [bolt, nut] = within(table).getAllByRole("row").slice(1);
-    expect(within(bolt).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Steel boltBOLT-1", "pcs", "500", "400", "100", "1.25 USD", "2.50 USD", "Active", expect.stringContaining("Details")]);
+    expect(within(bolt).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Steel boltBOLT-1", "pcs", "400", "100", "1.25 USD", "2.50 USD", "1,250.00 USD", "Active", ""]);
     expect(within(nut).getByText("Archived")).toBeTruthy();
-    expect(within(nut).getAllByRole("cell")[5].textContent).toBe("0.10 USD");
+    expect(within(nut).getAllByRole("cell")[4].textContent).toBe("0.10 USD");
+    expect(within(nut).getAllByRole("cell")[6].textContent).toBe("0.00 USD"); // nothing on hand: nothing is worth anything
+  });
+
+  it("the Total is the quantity on hand times the selling price, exactly, and a dash when there is no price", () => {
+    mount([
+      row({ product_id: P1, sku: "A", total_quantity: "500.0000", selling_price: "2.5000" }),
+      row({ product_id: P2, sku: "B", total_quantity: "0.3333", selling_price: "10.0000", currency_code: "EUR" }),
+      row({ product_id: "b0000000-0000-4000-8000-000000000003", sku: "C", total_quantity: "12.5000", selling_price: null, currency_code: null }),
+      row({ product_id: "b0000000-0000-4000-8000-000000000004", sku: "D", total_quantity: "1234567.0000", selling_price: "1999.9999" }),
+    ]);
+    expect(screen.getByTestId("total-A").textContent).toBe("1,250.00 USD");
+    expect(screen.getByTestId("total-B").textContent).toBe("3.333 EUR"); // 0.3333 x 10.00 = 3.333: never rounded away
+    expect(screen.getByTestId("total-C").textContent).toBe("—");
+    expect(screen.getByTestId("total-D").textContent).toBe("2,469,133,876.5433 USD"); // exact, no floating point
+    expect(screen.queryByTestId("onhand-A")).toBeNull();
   });
 
   it("has exactly three actions at the top (Add Stock, Remove Stock, Opening Balance); no standalone Products link or category", () => {
@@ -76,11 +101,13 @@ describe("the Stock page shows the product inventory", () => {
 });
 
 describe("the product dialog (view and edit a product without leaving Stock)", () => {
-  it("opens from Details with the product's information, and has no quantity field: stock is changed only by the stock forms", async () => {
+  it("the Edit icon opens the dialog on the edit form; Cancel shows the product's information, and there is no quantity field: stock is changed only by the stock forms", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
-    const dialog = await screen.findByRole("dialog", { name: "Steel bolt" });
+    const dialog = await openEdit(user);
+    expect(await within(dialog).findByRole("form", { name: "Edit product" })).toBeTruthy();
+    expect(within(dialog).queryByLabelText(/quantity/i)).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await within(dialog).findByText("M10 hex bolt");
     for (const text of ["BOLT-1", "pcs", "1.25 USD", "2.50 USD", "7318.15", "Active"]) expect(dialog.textContent, text).toContain(text);
     expect(within(dialog).queryByLabelText(/quantity/i)).toBeNull();
@@ -93,10 +120,8 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
   it("edits the name and description and sends only what changed; the page behind re-reads its figures", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
-    const dialog = await screen.findByRole("dialog", { name: "Steel bolt" });
-    await user.click(await within(dialog).findByRole("button", { name: "Edit product" }));
-    const form = within(dialog).getByRole("form", { name: "Edit product" });
+    const dialog = await openEdit(user);
+    const form = await within(dialog).findByRole("form", { name: "Edit product" });
     const name = within(form).getByLabelText("Product name");
     await user.clear(name);
     await user.type(name, "Steel bolt M10");
@@ -111,18 +136,15 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
     current = product({ unit_locked: true });
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
-    const dialog = await screen.findByRole("dialog", { name: "Steel bolt" });
+    const dialog = await openEdit(user);
     expect(await within(dialog).findByText(/Locked: this product already has stock movements/)).toBeTruthy();
-    await user.click(within(dialog).getByRole("button", { name: "Edit product" }));
     expect((within(dialog).getByLabelText("Unit of measurement") as HTMLInputElement).disabled).toBe(true);
   });
 
   it("archives (after a confirmation) and restores a product; nothing is erased", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
-    const dialog = await screen.findByRole("dialog", { name: "Steel bolt" });
+    const dialog = await openDetails(user);
     await user.click(await within(dialog).findByRole("button", { name: "Archive" }));
     expect(writes()).toEqual([]); // asked first
     await user.click(within(dialog).getByRole("button", { name: "Yes, archive" }));
@@ -136,8 +158,7 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
   it("shows the registered barcodes and registers an additional one", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
-    const dialog = await screen.findByRole("dialog", { name: "Steel bolt" });
+    const dialog = await openDetails(user);
     await user.click(await within(dialog).findByRole("tab", { name: "Barcodes & labels" }));
     expect(within(dialog).getByText("5901234123457")).toBeTruthy();
     await user.type(within(dialog).getByLabelText(/^Barcode \(type it/), "4006381333931");
@@ -151,7 +172,57 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
     vi.stubGlobal("fetch", vi.fn(async () => json(404, { error: "Product not found." })));
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Details: Steel bolt" }));
+    await user.click(screen.getByRole("button", { name: "Edit Steel bolt" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Product not found.");
+  });
+});
+
+describe("the Delete icon (always asks first)", () => {
+  // jsdom has no <dialog>.showModal, so the confirmation falls back to window.confirm (the same question, asked the same way)
+  const answer = (yes: boolean) => { const confirm = vi.fn(() => yes); vi.stubGlobal("confirm", confirm); return confirm; };
+
+  it("asks before anything happens, and saying no changes nothing", async () => {
+    const confirm = answer(false);
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(String((confirm.mock.calls[0] as unknown[])[0])).toContain("Nothing is erased");
+    expect(writes()).toEqual([]);
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("after the confirmation the product is archived (nothing is erased), the page re-reads its figures and says so", async () => {
+    answer(true);
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
+    await waitFor(() => expect(writes()).toEqual([{ url: `/api/products/${P1}/archive`, method: "POST", body: undefined }]));
+    expect((await screen.findByRole("status")).textContent).toContain("Steel bolt was deleted");
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("a refusal from the service is shown and the row stays", async () => {
+    answer(true);
+    vi.stubGlobal("fetch", vi.fn(async () => json(409, { error: "This product still has stock reserved for customer orders." })));
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("This product still has stock reserved for customer orders.");
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Delete Steel bolt" })).toBeTruthy();
+  });
+
+  it("an archived (already deleted) product cannot be deleted again, but can still be edited and restored", () => {
+    mount([row({ is_active: false })]);
+    expect((screen.getByRole("button", { name: "Delete Steel bolt" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Edit Steel bolt" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("has a tooltip on each icon", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.hover(screen.getByRole("button", { name: "Edit Steel bolt" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Edit");
   });
 });

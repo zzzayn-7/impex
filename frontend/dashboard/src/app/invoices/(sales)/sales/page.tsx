@@ -34,11 +34,18 @@ function parseFilters(searchParams: SearchParams): InvoiceFilters {
   };
 }
 
+// Arriving from Delivery Lists' Generate Invoice: which invoice was just made (or already existed) for the order. Only a well-formed id is read; whose invoice it is
+// is decided by the list itself (it only contains this organization's invoices).
+function parseGenerated(searchParams: SearchParams): { id: string; existing: boolean } | null {
+  const id = (first(searchParams.generated) ?? "").trim();
+  return UUID_RE.test(id) ? { id, existing: first(searchParams.existing) === "1" } : null;
+}
+
 export default async function InvoicesPage({ searchParams }: { searchParams: SearchParams }) {
   await requireTenantAdmin();
   const token = getTenantToken() ?? "";
   const filters = parseFilters(searchParams ?? {});
   const [list, clients] = await Promise.all([listInvoices(token, filters), listClientChoices(token, "all")]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
-  return <InvoiceIndex list={list} filters={filters} clients={clients} />;
+  return <InvoiceIndex list={list} filters={filters} clients={clients} generated={parseGenerated(searchParams ?? {})} />;
 }

@@ -766,6 +766,13 @@ class OrderSummary(BaseModel):
     notes: Optional[str] = None
 
 
+class GeneratedInvoice(BaseModel):
+    """The answer to Generate Invoice: the draft invoice, and whether it was made by this request (False: the order already had one)."""
+
+    invoice: "InvoiceDetail"
+    created: bool
+
+
 class OrderDetail(OrderSummary):
     lines: List[OrderLineResponse]
     stock_status: Literal["ok", "unavailable"]
