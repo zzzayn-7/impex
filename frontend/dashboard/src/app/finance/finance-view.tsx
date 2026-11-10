@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { GlassCard } from "@/components/dashboard/glass";
 import { buttonClass } from "@/components/ui/controls";
-import { PageHeader, SectionHeader, StatusBadge } from "@/components/ui/page";
+import { PageHeader, SectionHeader } from "@/components/ui/page";
 import type { Account, CurrencyBlock, FinanceHistory, FinanceSummary, HistoryCategory, HistoryRow, PeriodKey, PnlTrend } from "@/lib/finance";
 import { api } from "@/lib/finance-browser";
 import { FINANCE_PAGE_NOTE, PERIODS, RECONCILIATION_HELP, SUBTITLE, TITLE } from "@/lib/finance-view";
@@ -109,7 +109,7 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
 
       {summary.setup_required && (
         <GlassCard className="flex flex-wrap items-center justify-between gap-3 p-4" role="status" data-testid="setup-banner">
-          <p className="min-w-0 flex-1 text-sm text-amber-100">{summary.setup_message}</p>
+          <p className="min-w-0 flex-1 text-sm text-ix-accent">{summary.setup_message}</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "opening" })}>Set opening position</button>
             <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "investment" })}>Record contribution</button>
@@ -119,8 +119,8 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
 
       {summary.reconciliation.total > 0 && (
         <GlassCard className="flex flex-wrap items-center justify-between gap-3 p-4" role="status" data-testid="reconciliation-banner">
-          <div className="min-w-0 flex-1 text-sm text-amber-100">
-            <p><StatusBadge tone="warning">{summary.reconciliation.total} {summary.reconciliation.total === 1 ? "delivery needs" : "deliveries need"} reconciliation</StatusBadge></p>
+          <div className="min-w-0 flex-1 text-sm text-ix-accent">
+            <p><span className="inline-flex items-center rounded-full border border-ix-accent/30 bg-ix-accent/10 px-2.5 py-0.5 text-xs font-medium text-ix-accent">{summary.reconciliation.total} {summary.reconciliation.total === 1 ? "delivery needs" : "deliveries need"} reconciliation</span></p>
             <p className="mt-1 text-xs text-ix-muted">{RECONCILIATION_HELP}</p>
           </div>
           <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "reconcile", focus: null })}>Reconcile</button>

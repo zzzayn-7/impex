@@ -37,7 +37,7 @@ export function signed(value: string): string {
   return `${isNegative(value) ? "" : "+"}${formatMoney(value)}`;
 }
 
-export const TONE_UP = "text-emerald-300";
+export const TONE_UP = "text-[rgb(var(--ix-profit-rgb))]"; // a gain or profit is green (a darker green on the light backgrounds), a loss is red
 export const TONE_DOWN = "text-red-300";
 export const TONE_FLAT = "text-ix-muted";
 export const toneOfDirection = (direction: ChangeFigure["direction"]) => (direction === "up" ? TONE_UP : direction === "down" ? TONE_DOWN : TONE_FLAT);

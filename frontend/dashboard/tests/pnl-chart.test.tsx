@@ -251,3 +251,12 @@ describe("the date filter drives the chart", () => {
     expect(screen.getByTestId("pnl-total").textContent!.replace("+PKR ", "")).toBe(screen.getByTestId("pnl-value").textContent!.replace("PKR +", "")); // the chart total is the Profit & Loss card's net
   });
 });
+
+describe("one accent colour", () => {
+  it("the Finance page never uses the yellow warning colour: highlighted text takes the theme accent", () => {
+    for (const file of ["finance-view.tsx", "summary-cards.tsx", "history-panel.tsx", "pnl-chart.tsx"]) {
+      const source = readFileSync(join(__dirname, "..", "src", "app", "finance", file), "utf8");
+      expect(source, file).not.toMatch(/amber-/);
+    }
+  });
+});

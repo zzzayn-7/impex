@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { CardNote } from "@/components/dashboard/glass";
 import { GlassPanel } from "@/components/ui/glass";
-import { SectionHeader, StatusBadge } from "@/components/ui/page";
+import { SectionHeader } from "@/components/ui/page";
 import { DataTable, Pagination, TableHead, Th } from "@/components/ui/table";
 import type { FinanceHistory, HistoryCategory, HistoryRow } from "@/lib/finance";
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatDay, isZero, signed, sourceHref, toneOfAmount } from "@/lib/finance-view";
@@ -20,7 +20,7 @@ function AmountCell({ row }: { row: HistoryRow }) {
 }
 
 function ProfitCell({ row }: { row: HistoryRow }) {
-  if (row.status === "needs_cost" || row.status === "needs_price") return <span className="text-amber-100/80">Pending</span>;
+  if (row.status === "needs_cost" || row.status === "needs_price") return <span className="text-ix-accent">Pending</span>;
   if (row.profit_loss === null) return <span className="text-ix-muted">—</span>;
   return <span className={`font-medium ${toneOfAmount(row.profit_loss)}`}>{isZero(row.profit_loss) ? formatMoney("0") : signed(row.profit_loss)}</span>;
 }
@@ -74,7 +74,7 @@ export default function HistoryPanel({ history, category, busy, timeZone, onCate
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs">
-                    {needs ? <StatusBadge tone="warning">{row.status === "needs_cost" ? "Needs cost reconciliation" : "Needs price reconciliation"}</StatusBadge> : <span className="text-ix-text">{row.transaction}</span>}
+                    {needs ? <span className="inline-flex items-center rounded-full border border-ix-accent/30 bg-ix-accent/10 px-2.5 py-0.5 text-xs font-medium text-ix-accent">{row.status === "needs_cost" ? "Needs cost reconciliation" : "Needs price reconciliation"}</span> : <span className="text-ix-text">{row.transaction}</span>}
                     {row.kind === "inventory_purchase" && <div className="mt-0.5 text-[11px] text-ix-muted">Not new capital</div>}
                     <div className="mt-1 flex flex-wrap gap-2">
                       {needs && row.delivery_id && <button type="button" onClick={() => onReconcile(row)} className="text-ix-accent underline-offset-2 hover:underline">Reconcile</button>}

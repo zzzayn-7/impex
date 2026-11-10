@@ -59,7 +59,7 @@ export default function PnlChart({ state, currency, onRetry }: { state: PnlState
     return (
       <GlassCard className="p-5" aria-label="Profit and Loss Trend" data-testid="pnl-chart">
         {header}
-        <div role="alert" data-testid="pnl-error" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/25 bg-amber-100/10 px-4 py-4 text-sm text-amber-100">
+        <div role="alert" data-testid="pnl-error" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ix-accent/25 bg-ix-accent/10 px-4 py-4 text-sm text-ix-accent">
           <span>We couldn&apos;t load the profit and loss chart just now. Nothing was lost.</span>
           <button type="button" onClick={onRetry} className={buttonClass.secondary}>Try again</button>
         </div>
@@ -70,7 +70,7 @@ export default function PnlChart({ state, currency, onRetry }: { state: PnlState
   const incomplete = trend ? trend.incomplete.needs_cost + trend.incomplete.needs_price : 0;
   const hasActivity = Boolean(chart?.totals.has_activity);
   const notice = incomplete > 0 && (
-    <p role="note" data-testid="pnl-incomplete" className="mb-3 rounded-xl border border-amber-200/25 bg-amber-100/10 px-3 py-2 text-xs text-amber-100">
+    <p role="note" data-testid="pnl-incomplete" className="mb-3 rounded-xl border border-ix-accent/25 bg-ix-accent/10 px-3 py-2 text-xs text-ix-accent">
       {incomplete} {incomplete === 1 ? "delivery has" : "deliveries have"} no reliable {trend!.incomplete.needs_price > 0 && trend!.incomplete.needs_cost === 0 ? "price" : "cost"} yet, so {incomplete === 1 ? "its" : "their"} profit is not in this chart. Reconcile {incomplete === 1 ? "it" : "them"} to include it.
     </p>
   );

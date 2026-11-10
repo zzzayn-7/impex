@@ -22,7 +22,7 @@ function Change({ view, testId }: { view: ChangeView; testId: string }) {
 function SetupNeeded({ message, onSetup }: { message: string | null; onSetup: () => void }) {
   return (
     <div data-testid="capital-setup" className="space-y-3">
-      <p className="text-base font-semibold text-amber-100">Setup required</p>
+      <p className="text-base font-semibold text-ix-accent">Setup required</p>
       <p className="text-xs leading-relaxed text-ix-muted">{message ?? "Set your opening position or record an owner contribution."}</p>
       <button type="button" onClick={onSetup} className={`${buttonClass.secondary} !min-h-9 !px-3 !py-1.5 text-xs`}>Set opening position</button>
     </div>
@@ -63,7 +63,7 @@ export function SummaryCards({ summary, block, currency, onSetup, onInventoryAct
         <p data-testid="investment-value" className="text-2xl font-semibold tracking-tight text-ix-text">{withCurrency(investment.closing, currency)}</p>
         <Change view={changeView(investment.change, currency)} testId="investment-change" />
         <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-ix-muted">
-          <div><dt>Contributions</dt><dd data-testid="investment-contributions" className="font-medium text-emerald-300">{signed(investment.contributions)}</dd></div>
+          <div><dt>Contributions</dt><dd data-testid="investment-contributions" className="font-medium text-[rgb(var(--ix-profit-rgb))]">{signed(investment.contributions)}</dd></div>
           <div><dt>Withdrawals</dt><dd data-testid="investment-withdrawals" className={`font-medium ${isZero(investment.withdrawals) ? "text-ix-muted" : "text-red-300"}`}>{isZero(investment.withdrawals) ? formatMoney("0") : `-${formatMoney(investment.withdrawals)}`}</dd></div>
         </dl>
         {purchases && (
@@ -82,7 +82,7 @@ export function SummaryCards({ summary, block, currency, onSetup, onInventoryAct
           {!isZero(pnl.adjustments) && <div className="flex justify-between gap-3"><dt>Invoice adjustments</dt><dd className={`font-medium ${toneOfAmount(pnl.adjustments)}`}>{signed(pnl.adjustments)}</dd></div>}
         </dl>
         {pnl.needs_cost_count > 0 && (
-          <p className="mt-3 text-xs text-amber-100/90">{pnl.needs_cost_count} {pnl.needs_cost_count === 1 ? "delivery needs" : "deliveries need"} cost reconciliation and {pnl.needs_cost_count === 1 ? "is" : "are"} not included.</p>
+          <p className="mt-3 text-xs text-ix-accent">{pnl.needs_cost_count} {pnl.needs_cost_count === 1 ? "delivery needs" : "deliveries need"} cost reconciliation and {pnl.needs_cost_count === 1 ? "is" : "are"} not included.</p>
         )}
       </GlassCard>
     </div>

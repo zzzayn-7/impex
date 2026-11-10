@@ -155,7 +155,7 @@ describe("the Finance Overview", () => {
     expect(view(up("5000000.0000", null, "new"))).toMatchObject({ arrow: "▲", label: "New", absolute: "+5,000,000.00 PKR" });
     expect(view(up("5", null, "new")).label).not.toMatch(/Infinity|NaN|%/);
     expect(view(down("-1", "-0.1")).tone).toContain("red");
-    expect(view(up("1", "0.1")).tone).toContain("emerald");
+    expect(view(up("1", "0.1")).tone).toContain("--ix-profit-rgb"); // a gain is green
   });
 
   it("renders those changes on the cards, with the arrow, the colour class and the absolute amount", () => {
