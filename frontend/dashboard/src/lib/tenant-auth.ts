@@ -16,6 +16,8 @@ export type AuthUser = {
   // The administrator's own colour theme (identifiers of the approved palettes), or null when they never chose one.
   theme_background?: string | null;
   theme_accent?: string | null;
+  // The administrator's own home-page widget arrangement ({ version, revision, order, hidden }), or null when they never changed it.
+  dashboard_layout?: unknown;
 };
 
 export type TenantAdmin = AuthUser & { role: "organization-admin"; organization_id: string; is_active: true };

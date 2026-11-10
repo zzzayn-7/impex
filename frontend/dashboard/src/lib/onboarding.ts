@@ -42,10 +42,10 @@ async function call(base: string, method: string, path: string, token: string, b
 
 export const org = {
   status: (token: string) => call(orgServiceUrl(), "GET", "/api/v1/tenant/onboarding", token),
-  saveCompany: (token: string, name: string) => call(orgServiceUrl(), "PUT", "/api/v1/tenant/onboarding/company", token, { name }),
+  saveCompany: (token: string, name: string, currency?: string) => call(orgServiceUrl(), "PUT", "/api/v1/tenant/onboarding/company", token, { name, ...(currency ? { default_currency: currency } : {}) }),
   uploadLogo: (token: string, form: FormData) => call(orgServiceUrl(), "PUT", "/api/v1/tenant/onboarding/logo", token, undefined, form),
   removeLogo: (token: string) => call(orgServiceUrl(), "DELETE", "/api/v1/tenant/onboarding/logo", token),
-  complete: (token: string, companyName: string) => call(orgServiceUrl(), "POST", "/api/v1/tenant/onboarding/complete", token, { company_name: companyName }),
+  complete: (token: string, companyName: string, currency?: string) => call(orgServiceUrl(), "POST", "/api/v1/tenant/onboarding/complete", token, { company_name: companyName, ...(currency ? { default_currency: currency } : {}) }),
 };
 
 export const auth = {

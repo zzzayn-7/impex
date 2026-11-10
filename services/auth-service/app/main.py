@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.dashboard_layout import layout_of, set_layout
 from app.database import get_db
 from app.models import User
 from app.organization_admins import (
@@ -83,6 +84,8 @@ class UserProfile(BaseModel):
     # The person's own colour theme (ids of the approved palettes), or None when they never chose one.
     theme_background: Optional[str] = None
     theme_accent: Optional[str] = None
+    # The person's own home-page widget arrangement ({version, revision, order, hidden}), or None when they never customised it.
+    dashboard_layout: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +109,7 @@ def to_profile(user: User) -> UserProfile:
         profile_setup_completed_at=user.profile_setup_completed_at.isoformat() if user.profile_setup_completed_at else None,
         theme_background=theme_background,
         theme_accent=theme_accent,
+        dashboard_layout=layout_of(user),
     )
 
 
@@ -221,6 +225,21 @@ class ThemeUpdate(BaseModel):
 def update_my_theme(payload: ThemeUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Save YOUR colour theme (any signed-in person: an organization administrator or a Super Admin, each their own). Safe to repeat."""
     return to_profile(set_theme(db, current_user, payload.background, payload.accent))
+
+
+class DashboardLayoutUpdate(BaseModel):
+    """Widget identifiers only. Nothing else is accepted (unknown fields are refused with 422): no HTML, no CSS, no user id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order: list
+    hidden: list
+
+
+@app.put("/api/v1/auth/me/dashboard-layout", response_model=UserProfile, tags=["Auth"])
+def update_my_dashboard_layout(payload: DashboardLayoutUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Save YOUR home-page widget arrangement (an organization administrator or a Super Admin, each their own, each in their own namespace)."""
+    return to_profile(set_layout(db, current_user, payload.order, payload.hidden))
 
 
 # ---------------------------------------------------------------------------

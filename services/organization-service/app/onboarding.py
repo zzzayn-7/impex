@@ -13,6 +13,11 @@ This module owns the COMPANY side of onboarding (the administrator's own profile
 
 Setup states: pending -> in_progress (something was saved) -> completed. Completing requires a stored, readable logo and a valid
 company name, and records when and by whom.
+
+The wizard also asks for the company's DEFAULT CURRENCY (an ISO 4217 code from the same list Settings uses). It is optional on the wire (an
+older client that does not send it leaves the organization's current default untouched); the portal's wizard always sends it. Setting it here
+is the organization's first choice, not a Settings change: no settings version is bumped and no history row is written. Like everything
+else in the wizard it can only be set while setup is open.
 """
 import logging
 import unicodedata
@@ -27,6 +32,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, require_tenant_admin
+from app.currencies import ISO_4217
 from app.database import get_db
 from app.images import LogoRejected, STORED_CONTENT_TYPE, max_bytes, normalize_logo
 from app.models import Organization
@@ -59,6 +65,16 @@ def clean_company_name(value: object) -> str:
     return name
 
 
+def clean_default_currency(value: object) -> Optional[str]:
+    """None means "not sent" (leave the current default alone). Anything sent must be a real ISO 4217 code (letters in any case, no padding games)."""
+    if value is None:
+        return None
+    code = value.strip().upper() if isinstance(value, str) else ""
+    if code not in ISO_4217 or value != value.strip():
+        raise fail(422, "invalid_currency", "Choose a valid currency from the list.")
+    return code
+
+
 # --- schemas ------------------------------------------------------------------------------------------------------
 class CompanyUpdate(BaseModel):
     """Only the name. Slug, id, country, tax id, contact e-mail and ownership are not accepted (422)."""
@@ -66,12 +82,14 @@ class CompanyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
+    default_currency: Optional[str] = None  # an ISO 4217 code; omitted = leave the organization's current default as it is
 
 
 class CompleteSetup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     company_name: str  # the name the administrator confirmed; saved in the same transaction as the completion
+    default_currency: Optional[str] = None  # the currency the administrator confirmed (same rules as above); saved in the same transaction
 
 
 class OnboardingStatus(BaseModel):
@@ -80,6 +98,7 @@ class OnboardingStatus(BaseModel):
     company_name: str
     has_logo: bool
     logo_version: Optional[str] = None  # changes whenever the logo does (cache-busting for the image URL)
+    default_currency: str  # what the organization's default currency is right now (the wizard starts from it)
     can_edit: bool  # False once setup is completed: the first-time wizard is closed
 
 
@@ -94,6 +113,7 @@ def to_status(org: Organization) -> OnboardingStatus:
         company_name=org.name,
         has_logo=bool(org.logo_storage_key),
         logo_version=logo_version(org),
+        default_currency=org.default_currency,
         can_edit=org.setup_status != "completed",
     )
 
@@ -131,10 +151,13 @@ def get_onboarding(tenant: TenantContext = Depends(require_tenant_admin), db: Se
 @router.put("/onboarding/company", response_model=OnboardingStatus)
 def save_company(payload: CompanyUpdate, tenant: TenantContext = Depends(require_tenant_admin), db: Session = Depends(get_db)):
     name = clean_company_name(payload.name)
+    currency = clean_default_currency(payload.default_currency)
     org = get_org(db, tenant, lock=True)
     try:
         require_open(org)
         org.name = name
+        if currency is not None:
+            org.default_currency = currency
         begin(org)
         db.commit()
     except HTTPException:
@@ -239,6 +262,7 @@ def complete_setup(
     """Finish company setup: the confirmed name and a stored logo are required. One transaction; repeating it (a retry, or a second
     administrator arriving at the same moment) changes nothing and answers with the completed state."""
     name = clean_company_name(payload.company_name)
+    currency = clean_default_currency(payload.default_currency)
     org = get_org(db, tenant, lock=True)
     try:
         if org.setup_status == "completed":
@@ -253,6 +277,8 @@ def complete_setup(
         if not durable:
             raise fail(409, "logo_required", "Your logo could not be found. Please upload it again.")
         org.name = name
+        if currency is not None:
+            org.default_currency = currency
         org.setup_status = "completed"
         org.setup_completed_at = datetime.now(timezone.utc)
         org.setup_completed_by = uuid.UUID(tenant.user_id)

@@ -249,7 +249,7 @@ def main() -> int:
         files_before = volume_files()
         s, html, loc = page("a1", "/")
         check("the dashboard redirects to /setup (a real HTTP redirect, before anything is shown)", is_redirect(s) and loc.endswith("/setup"), (s, loc))
-        for path in ("/products", "/stock", "/scan", "/movements", "/clients", "/delivery-lists", "/dispatches", "/invoices", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
+        for path in ("/products", "/stock", "/scan", "/movements", "/clients", "/delivery-lists", "/dispatches", "/invoices/sales", "/suppliers", "/purchase-orders", "/goods-receipts", "/clients/" + str(uuid.uuid4()), "/invoices/new"):
             s, html, loc = page("a1", path)
             check(f"typing {path} in the address bar is redirected to /setup, not shown", is_redirect(s) and loc.endswith("/setup"), (s, loc))
         s, html, loc = page("a1", "/login")
@@ -317,6 +317,19 @@ def main() -> int:
         check("the company name is saved, cleaned (200); slug, country, id and status are not touched however they are asked", s == 200 and row[4] == "Onboarding Check Alpha GmbH" and row[0] == "in_progress" and not row[5].startswith("hijacked")
               and psql("impex_organizations", f"SELECT country_code || '|' || is_active::text FROM organizations WHERE id = '{org_ids['a']}'") == "DE|true", (s, row))
         check("the same request could not reach organization B", org_row("b")[0] == "pending" and org_row("b")[4] == "Onboarding Check Beta")
+
+        print("\n== 5b. the default currency chosen in setup")
+        def currency_of(key):
+            return psql("impex_organizations", f"SELECT default_currency FROM organizations WHERE id = '{org_ids[key]}'")
+        check("the default currency starts as USD until somebody chooses", currency_of("a") == "USD")
+        for bad in ("usd", "US", "XXX", "", "USDX", "<b>"):
+            s, body = api("a1", "PUT", "/api/setup/company", {"companyName": "Onboarding Check Alpha GmbH", "defaultCurrency": bad})
+            check(f"currency {bad!r} is refused (400) and nothing changes", s == 400 and currency_of("a") == "USD", (s, body))
+        s, body = api("a1", "PUT", "/api/setup/company", {"companyName": "Onboarding Check Alpha GmbH", "defaultCurrency": "JPY"})
+        check("a listed currency is saved with the company step (200)", s == 200 and currency_of("a") == "JPY" and body.get("setup", {}).get("default_currency") == "JPY", (s, body))
+        check("organization B's currency is untouched", currency_of("b") == "USD")
+        s, body = api("a1", "PUT", "/api/setup/company", {"companyName": "Onboarding Check Alpha GmbH", "defaultCurrency": "USD"})
+        check("an American company picks USD (200)", s == 200 and currency_of("a") == "USD", (s, body))
         for bad in ("", "A", "<b>x</b>", "Jane 3rd", "x" * 101):
             s, body = api("a1", "PUT", "/api/setup/profile", {"fullName": bad})
             check(f"administrator name {bad[:25]!r} is refused (400)", s == 400, (s, body))
@@ -342,17 +355,21 @@ def main() -> int:
         print("\n== 7. completing: one click, two services, then the dashboard")
         s, body = api("a1", "POST", "/api/setup/complete", {"fullName": "<b>", "companyName": "Onboarding Check Alpha GmbH"})
         check("completing with an invalid name is refused and completes nothing", s == 400 and org_row("a")[0] == "in_progress" and user_profile("a1")[0] == "")
-        s, body = api("a1", "POST", "/api/setup/complete", {"fullName": "Olivia Owner-Smith", "companyName": "Onboarding Check Alpha GmbH"})
+        s, body = api("a1", "POST", "/api/setup/complete", {"fullName": "Olivia Owner-Smith", "companyName": "Onboarding Check Alpha GmbH", "defaultCurrency": "ABC"})
+        check("completing with an unknown currency is refused and completes nothing", s == 400 and org_row("a")[0] == "in_progress" and currency_of("a") == "USD", (s, body))
+        s, body = api("a1", "POST", "/api/setup/complete", {"fullName": "Olivia Owner-Smith", "companyName": "Onboarding Check Alpha GmbH", "defaultCurrency": "USD"})
         check("Complete Setup succeeds (200) and tells the browser to go to the dashboard", s == 200 and body.get("done") is True and body.get("redirectTo") == "/", (s, body))
         row, profile = org_row("a"), user_profile("a1")
         check("the Organization Service now says completed, with the time and the administrator who completed it", row[0] == "completed" and row[1] != "" and row[2] == user_ids["a1"] and row[4] == "Onboarding Check Alpha GmbH", row)
         check("the Auth Service now says the profile is confirmed, with the saved name", profile[0] != "" and profile[1] == "Olivia Owner-Smith", profile)
+        settings_html = page("a1", "/settings")[1]
+        check("the confirmed currency is the organization's default, and Settings offers every currency with its name", currency_of("a") == "USD" and "Default currency" in settings_html and settings_html.count("<option") > 140 and "Japanese Yen" in settings_html)
         first_time, first_profile_time = row[1], profile[0]
         s, html, loc = page("a1", "/")
         check("the dashboard now opens (200): no further redirect", s == 200 and "Welcome, Olivia Owner-Smith" in html, (s, loc))
-        check("the header shows the company logo, the company name, the Admin Portal subtitle and the administrator's updated name",
-              "/api/organization/logo?v=" in html and "Onboarding Check Alpha GmbH" in html and "Admin Portal" in html and html.count("Olivia Owner-Smith") >= 2, "")
-        for path in ("/products", "/stock", "/invoices", "/clients"):
+        check("the header shows the company logo, the company name and the administrator's updated name",
+              "/api/organization/logo?v=" in html and "Onboarding Check Alpha GmbH" in html and html.count("Olivia Owner-Smith") >= 2, "")
+        for path in ("/products", "/stock", "/invoices/sales", "/clients"):
             s, html, loc = page("a1", path)
             check(f"{path} opens now, with the company branding in its header", s == 200 and "/api/organization/logo?v=" in html, (s, loc))
         s, html, loc = page("a1", "/setup")
@@ -458,7 +475,7 @@ def main() -> int:
         check("the Super Admin's organization list still works and shows the organizations", status == 200 and any(o["id"] == org_ids["a"] for o in jbody(data)), status)
         status, data, _, _, _h = call(3000, "GET", "/login")
         check("the Super Admin portal login page still loads (unchanged)", status == 200)
-        check("the other organizations' pages still work for configured administrators (products, stock, invoices, clients)", all(page("a1", p)[0] == 200 for p in ("/products", "/stock", "/invoices", "/clients", "/delivery-lists", "/dispatches")))
+        check("the other organizations' pages still work for configured administrators (products, stock, invoices, clients)", all(page("a1", p)[0] == 200 for p in ("/products", "/stock", "/invoices/sales", "/clients", "/delivery-lists", "/dispatches")))
 
         if args.with_outage:
             print("\n== 15. a service outage is recoverable and never read as 'setup complete'")

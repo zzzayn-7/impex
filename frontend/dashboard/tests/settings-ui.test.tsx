@@ -316,7 +316,8 @@ describe("Business preferences", () => {
     expect((screen.getByLabelText("Date format") as HTMLSelectElement).value).toBe("DD/MM/YYYY");
     expect((screen.getByLabelText("Number format") as HTMLSelectElement).value).toBe("indian");
     const currencies = within(screen.getByLabelText("Default currency")).getAllByRole("option").map((o) => o.textContent);
-    for (const c of ["PKR", "USD", "EUR", "GBP", "AED"]) expect(currencies).toContain(c);
+    for (const c of ["PKR — Pakistani Rupee", "USD — US Dollar", "EUR — Euro", "GBP — British Pound Sterling", "AED — UAE Dirham"]) expect(currencies).toContain(c);
+    expect(currencies.length).toBeGreaterThan(140); // every currency, not a short list
     expect(within(screen.getByLabelText("Date format")).getAllByRole("option").map((o) => o.textContent)).toEqual(["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"]);
     expect(within(screen.getByLabelText("Number format")).getAllByRole("option").map((o) => o.textContent)).toEqual(["1,234,567.89", "1.234.567,89", "1 234 567,89", "12,34,567.89"]);
   });

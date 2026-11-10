@@ -166,7 +166,7 @@ describe("the header", () => {
     expect(within(header).queryByRole("searchbox")).toBeNull(); // no decorative search or notification bell
     expect(within(header).queryByRole("button", { name: /search|notification/i })).toBeNull();
     // the only controls: the phone menu button (hidden on large screens), the avatar and Sign out
-    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Customize Theme", "Account: Olivia Owner", "Sign out"]);
+    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", "Sign out"]);
   });
 
   it("every page's name is preceded by its own icon, in yellow, the same drawing its sidebar entry uses", () => {

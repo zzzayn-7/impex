@@ -52,9 +52,10 @@ def test_bootstrap_script_uses_the_shared_password_policy():
 
 def test_migrations_are_at_head_and_match_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
         columns = {r.column_name: r.is_nullable for r in conn.execute(text(
             "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'users'"))}
     assert columns["organization_id"] == "YES"
+    assert columns["dashboard_layout"] == "YES"
     with targeting_test_database():
         command.check(alembic_config())

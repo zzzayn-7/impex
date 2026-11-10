@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { checkCurrency } from "@/lib/currencies";
 import { auth, describeSetupFailure, org } from "@/lib/onboarding";
 import { fail, isResponse, NO_STORE, readObject, sessionToken } from "@/lib/sales-routes";
 import { checkCompanyName, checkFullName } from "@/lib/setup-validation";
@@ -32,10 +33,16 @@ export async function POST(req: NextRequest) {
   if (!companyAlreadyDone) {
     const company = checkCompanyName(body.companyName);
     if (!company.ok) return fail(company.message, 400, { fieldErrors: { companyName: company.message } });
-    const done = await org.complete(token, company.value);
+    let currency: string | undefined;
+    if (body.defaultCurrency !== undefined) {
+      const checked = checkCurrency(body.defaultCurrency);
+      if (!checked.ok) return fail(checked.message, 400, { fieldErrors: { defaultCurrency: checked.message } });
+      currency = checked.value;
+    }
+    const done = await org.complete(token, company.value, currency);
     if (!done || done.status !== 200) {
       const f = describeSetupFailure(done);
-      return fail(f.message, f.status, { code: f.code, ...(f.code === "invalid_company_name" ? { fieldErrors: { companyName: f.message } } : {}) });
+      return fail(f.message, f.status, { code: f.code, ...(f.code === "invalid_company_name" ? { fieldErrors: { companyName: f.message } } : f.code === "invalid_currency" ? { fieldErrors: { defaultCurrency: f.message } } : {}) });
     }
   }
 

@@ -1,7 +1,7 @@
 # First-time organization onboarding
 
 A newly invited organization administrator signs in with the existing login, and is then taken to a setup wizard instead of the
-dashboard. The wizard sets the **company logo**, the **company name** and the **administrator's full name**, and sends them to the
+dashboard. The wizard sets the **company logo**, the **company name**, the company's **default currency** and the **administrator's full name**, and sends them to the
 dashboard when everything is saved. It is database-backed, not a front-end walkthrough.
 
 ## Who owns what
@@ -21,6 +21,7 @@ no second identity, no new service, no second login.
    records. Company not completed → `/setup` (full wizard). Company completed but this administrator not confirmed → `/setup` (short
    "confirm your name" screen: **a new administrator of a configured company never repeats the company setup**). Both done → the page.
 2. **Step 1 - Company**: logo (drag and drop or browse; PNG, JPEG or WebP) and company name (prefilled). The logo is uploaded and stored
+   Step 1 also asks for the **Default currency**: a dropdown of every ISO 4217 currency (code and name, e.g. `USD — US Dollar`; the same complete list Settings offers), starting from the organization's current default (`USD` until somebody chooses). It is saved with the company name, shown on the review step (with Edit) and confirmed again on completion. An American company whose finances are all in dollars keeps `USD`; any other company picks theirs. A code that is not in the list is refused by the portal and by the Organization Service (`invalid_currency`). It is the organization's first choice, not a Settings change (no settings version, no history row); afterwards it is changed in Settings, and nothing already recorded is ever converted. Administrators who join a company that is already set up are not asked.
    immediately; the name is saved on *Continue*. **Step 2 - You**: full name (prefilled), saved on *Continue*. **Step 3 - Review**: summary,
    a preview of the dashboard branding, *Complete Setup & Enter Dashboard*.
 3. *Complete* is a small, repeatable saga (`POST /api/setup/complete`): (1) the Organization Service completes the company (it needs a

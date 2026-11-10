@@ -3,6 +3,7 @@
 import { DragEvent, KeyboardEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { CURRENCIES, checkCurrency, currencyLabel } from "@/lib/currencies";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { LOGO_ACCEPT, checkCompanyName, checkFullName, checkLogoFile, monogram } from "@/lib/setup-validation";
 
@@ -10,6 +11,7 @@ type Props = {
   mode: "full" | "profile"; // full: company + you + review.  profile: only "you" (the company was already set up)
   setupStatus: string;
   initialCompanyName: string;
+  initialCurrency: string; // the organization's default currency right now (the database default until somebody chooses)
   hasLogo: boolean;
   logoVersion: string | null;
   initialFullName: string;
@@ -28,7 +30,7 @@ const errorText = "mt-2 text-sm text-red-300";
 
 const STEPS = ["Company", "You", "Review"];
 
-/** First-time setup. The company name and the logo are saved to the Organization Service as you go, your name to the Auth Service,
+/** First-time setup. The company name, the default currency and the logo are saved to the Organization Service as you go, your name to the Auth Service,
  *  so a refresh or a return visit resumes with everything already entered. Nothing is "complete" until the final button succeeds and
  *  both services say so. The browser never names an organization or a user: the session decides whose setup this is. */
 export default function SetupWizard(props: Props) {
@@ -42,12 +44,14 @@ export default function SetupWizard(props: Props) {
   const [dragging, setDragging] = useState(false);
   const [logo, setLogo] = useState({ has: props.hasLogo, version: props.logoVersion });
   const [companyName, setCompanyName] = useState(props.initialCompanyName);
+  const [currency, setCurrency] = useState(props.initialCurrency);
   const [fullName, setFullName] = useState(props.initialFullName);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
   const logoUrl = logo.has ? `/api/organization/logo?v=${encodeURIComponent(logo.version ?? "")}` : null;
   const cleanCompany = checkCompanyName(companyName);
+  const cleanCurrency = checkCurrency(currency);
   const cleanName = checkFullName(fullName);
 
   function expired() {
@@ -109,12 +113,13 @@ export default function SetupWizard(props: Props) {
     const problems: Record<string, string> = {};
     if (!logo.has) problems.logo = "Upload your company logo to continue.";
     if (!cleanCompany.ok) problems.companyName = cleanCompany.message;
+    if (!cleanCurrency.ok) problems.defaultCurrency = cleanCurrency.message;
     setErrors(problems);
-    if (Object.keys(problems).length > 0 || !cleanCompany.ok) return;
+    if (Object.keys(problems).length > 0 || !cleanCompany.ok || !cleanCurrency.ok) return;
     busyRef.current = true;
     setBusy(true);
     setFormError(null);
-    const r = await api("/api/setup/company", { method: "PUT", ...jsonBody({ companyName: cleanCompany.value }) });
+    const r = await api("/api/setup/company", { method: "PUT", ...jsonBody({ companyName: cleanCompany.value, defaultCurrency: cleanCurrency.value }) });
     busyRef.current = false;
     setBusy(false);
     if (r.status === 401) return expired();
@@ -150,10 +155,11 @@ export default function SetupWizard(props: Props) {
     const problems: Record<string, string> = {};
     if (fullFlow && !logo.has) problems.logo = "Upload your company logo to finish.";
     if (fullFlow && !cleanCompany.ok) problems.companyName = cleanCompany.message;
+    if (fullFlow && !cleanCurrency.ok) problems.defaultCurrency = cleanCurrency.message;
     if (!cleanName.ok) problems.fullName = cleanName.message;
     setErrors(problems);
     if (Object.keys(problems).length > 0 || !cleanName.ok) {
-      if (fullFlow) setStep(problems.logo || problems.companyName ? 1 : 2);
+      if (fullFlow) setStep(problems.logo || problems.companyName || problems.defaultCurrency ? 1 : 2);
       return;
     }
     busyRef.current = true;
@@ -161,7 +167,7 @@ export default function SetupWizard(props: Props) {
     setFormError(null);
     const r = await api("/api/setup/complete", {
       method: "POST",
-      ...jsonBody({ fullName: cleanName.value, ...(fullFlow && cleanCompany.ok ? { companyName: cleanCompany.value } : {}) }),
+      ...jsonBody({ fullName: cleanName.value, ...(fullFlow && cleanCompany.ok ? { companyName: cleanCompany.value } : {}), ...(fullFlow && cleanCurrency.ok ? { defaultCurrency: cleanCurrency.value } : {}) }),
     });
     if (r.status === 401) {
       busyRef.current = false;
@@ -294,6 +300,27 @@ export default function SetupWizard(props: Props) {
               {errors.companyName && <p role="alert" className={errorText}>{errors.companyName}</p>}
             </div>
 
+            <div className="mt-6">
+              <label htmlFor="default-currency" className={label}>Default currency</label>
+              <select
+                id="default-currency"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                aria-describedby="currency-help"
+                aria-invalid={Boolean(errors.defaultCurrency) || undefined}
+                autoComplete="off"
+                className={input}
+              >
+                {!cleanCurrency.ok && <option value={currency}>{currency || "Choose a currency"}</option>}
+                {CURRENCIES.map(([code]) => <option key={code} value={code}>{currencyLabel(code)}</option>)}
+              </select>
+              <p id="currency-help" className="mt-2 text-sm text-ix-muted">
+                The currency your business mainly deals in, for example USD if you are based in the United States and all your finances are in dollars. New invoices and
+                purchase orders start with it; you can still pick another currency on any document, and change this later in Settings.
+              </p>
+              {errors.defaultCurrency && <p role="alert" className={errorText}>{errors.defaultCurrency}</p>}
+            </div>
+
             {formError && <p role="alert" className={`${errorText} mt-4`}>{formError}</p>}
             <div className="mt-8 flex justify-end">
               <button type="button" onClick={saveCompanyAndContinue} disabled={busy || uploading} className={primary}>{busy ? "Saving…" : "Continue"}</button>
@@ -331,6 +358,13 @@ export default function SetupWizard(props: Props) {
                     <dt className="text-xs uppercase tracking-wide text-ix-muted">Company</dt>
                     <dd className="text-[15px] font-medium">{companyName}</dd>
                   </div>
+                </div>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+              </div>
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-ix-muted">Default currency</dt>
+                  <dd className="text-[15px] font-medium">{currencyLabel(currency)}</dd>
                 </div>
                 <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
               </div>

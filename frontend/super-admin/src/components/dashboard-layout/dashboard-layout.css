@@ -1,0 +1,116 @@
+/* The customizable home page: the grid, a card's wrapper, the three-dot and drag handles, the editing state (dimmed page, lifted jiggling cards), the
+   floating menus and the editor's control bar. Everything here uses the shared theme tokens (--ix-*), so every background and accent works, and the Ice
+   background keeps its dark text. This stylesheet is an identical copy in both portals and sits next to the components, not in globals.css. */
+
+/* ---- the grid: 12 columns; a card takes 3 (small), 4 (medium), 6 (half) or all 12 (full), fewer columns as the screen narrows ----------------------- */
+.ix-widget-grid { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; align-items: stretch; }
+.ix-widget { position: relative; min-width: 0; grid-column: span 12; }
+@media (min-width: 640px) { .ix-widget[data-size="small"] { grid-column: span 6; } }
+@media (min-width: 768px) { .ix-widget[data-size="medium"], .ix-widget[data-size="half"] { grid-column: span 6; } }
+@media (min-width: 1200px) { .ix-widget[data-size="small"] { grid-column: span 3; } }
+@media (min-width: 1480px) { .ix-widget[data-size="medium"] { grid-column: span 4; } }
+
+.ix-widget-inner { height: 100%; border-radius: var(--ix-radius-lg); transition: transform 160ms ease, box-shadow 200ms ease; }
+.ix-widget-inner > * { height: 100%; }
+
+/* ---- coming and going ------------------------------------------------------------------------------------------------------------------------- */
+@keyframes ix-widget-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes ix-widget-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.92); } }
+.ix-widget[data-entering="true"] .ix-widget-inner { animation: ix-widget-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ix-widget[data-leaving="true"] { pointer-events: none; }
+.ix-widget[data-leaving="true"] .ix-widget-inner { animation: ix-widget-out 220ms ease-in both; }
+
+/* ---- the three-dot button: the only way to remove a card or start editing. Shown on hover and focus; always shown where there is no hover (touch). ---- */
+.ix-widget-dots, .ix-widget-handle {
+  position: absolute; z-index: 3; display: grid; place-items: center; height: 1.875rem; width: 1.875rem; border-radius: 999px;
+  border: 1px solid var(--ix-menu-border); background: var(--ix-surface-menu); color: var(--ix-muted); cursor: pointer;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 6px 14px -8px rgba(3, 10, 13, 0.6);
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+.ix-widget-dots { top: -0.5rem; right: -0.375rem; opacity: 0; }
+.ix-widget:hover .ix-widget-dots, .ix-widget:focus-within .ix-widget-dots, .ix-widget-dots[aria-expanded="true"], .ix-widget-dots:focus-visible { opacity: 1; }
+.ix-widget-dots:hover, .ix-widget-handle:hover { color: var(--ix-accent-text); background: rgb(var(--ix-accent-text-rgb) / 0.14); }
+@media (hover: none) { .ix-widget-dots { opacity: 1; } }
+@media (pointer: coarse) { .ix-widget-dots { height: 2.25rem; width: 2.25rem; top: -0.75rem; right: -0.5rem; } }
+.ix-widget-dots:focus-visible, .ix-widget-handle:focus-visible { outline: 2px solid var(--ix-focus); outline-offset: 2px; }
+
+/* ---- editing: the page behind dims and blurs; the cards stay sharp, lifted a little, and wiggle gently --------------------------------------------- */
+.ix-edit-backdrop {
+  position: fixed; inset: 0; z-index: 45;
+  background: rgb(var(--ix-deep-rgb) / 0.58); -webkit-backdrop-filter: blur(7px) saturate(90%); backdrop-filter: blur(7px) saturate(90%);
+  animation: ix-fade 220ms ease both;
+}
+@keyframes ix-fade { from { opacity: 0; } to { opacity: 1; } }
+.ix-widget-grid[data-editing="true"] { z-index: 46; padding-bottom: 6.5rem; } /* room to scroll the last cards above the control bar */
+.ix-widget[data-editing="true"] { z-index: 46; }
+
+@keyframes ix-jiggle {
+  0% { transform: rotate(-0.32deg) scale(1.012); }
+  50% { transform: rotate(0.32deg) scale(1.012); }
+  100% { transform: rotate(-0.32deg) scale(1.012); }
+}
+.ix-widget[data-editing="true"] .ix-widget-inner {
+  box-shadow: 0 26px 46px -22px rgba(3, 10, 13, 0.75), 0 0 0 1px rgb(var(--ix-accent-text-rgb) / 0.28);
+  animation: ix-jiggle 0.46s ease-in-out infinite; animation-delay: var(--ix-jiggle-delay, 0s);
+}
+.ix-widget[data-editing="true"][data-dragging="true"] .ix-widget-inner { animation: none; visibility: hidden; }
+/* the empty slot where the dragged card will land */
+.ix-widget[data-editing="true"][data-dragging="true"]::before {
+  content: ""; position: absolute; inset: 0; border-radius: var(--ix-radius-lg); border: 2px dashed rgb(var(--ix-accent-text-rgb) / 0.55);
+  background: rgb(var(--ix-accent-text-rgb) / 0.08);
+}
+.ix-widget-handle { top: -0.5rem; right: -0.375rem; touch-action: none; cursor: grab; color: var(--ix-accent-text); }
+.ix-widget-handle:active { cursor: grabbing; }
+@media (pointer: coarse) { .ix-widget-handle { height: 2.5rem; width: 2.5rem; top: -0.75rem; right: -0.5rem; } }
+.ix-widget-overlay { cursor: grabbing; border-radius: var(--ix-radius-lg); transform: scale(1.035) rotate(0.6deg); box-shadow: 0 34px 60px -24px rgba(3, 10, 13, 0.85), 0 0 0 1px rgb(var(--ix-accent-text-rgb) / 0.4); }
+.ix-widget-overlay > * { height: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-widget[data-editing="true"] .ix-widget-inner { animation: none; transform: scale(1.006); }
+  .ix-widget[data-entering="true"] .ix-widget-inner, .ix-widget[data-leaving="true"] .ix-widget-inner, .ix-edit-backdrop { animation: none; }
+  .ix-widget-inner, .ix-widget-dots, .ix-widget-handle { transition: none; }
+  .ix-widget-overlay { transform: none; }
+}
+
+/* ---- floating menus and the control bar ------------------------------------------------------------------------------------------------------- */
+.ix-widget-menu { position: fixed; z-index: 70; min-width: 12.5rem; }
+
+.ix-edit-bar {
+  position: fixed; z-index: 60; left: 50%; bottom: max(1.25rem, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.6rem 0.9rem; width: max-content; max-width: calc(100vw - 1.5rem);
+  padding: 0.65rem 0.75rem 0.65rem 1.1rem; border-radius: 20px;
+  border: 1px solid var(--ix-menu-border); background: var(--ix-surface-menu); box-shadow: var(--ix-menu-shadow);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--ix-text);
+  animation: ix-bar-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes ix-bar-in { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .ix-edit-bar { animation: none; } }
+.ix-edit-bar-hint { font-size: 0.8125rem; color: var(--ix-muted); }
+.ix-edit-bar-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 639px) { .ix-edit-bar { left: 0.75rem; right: 0.75rem; width: auto; max-width: none; transform: none; animation-name: ix-bar-in-mobile; } .ix-edit-bar-actions { width: 100%; } .ix-edit-bar-actions > * { flex: 1 1 auto; } }
+@keyframes ix-bar-in-mobile { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.ix-bar-button {
+  display: inline-flex; min-height: 2.5rem; align-items: center; justify-content: center; gap: 0.45rem; border-radius: 13px; padding: 0.45rem 1rem;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer; border: 1px solid var(--ix-menu-border); background: rgb(var(--ix-mist-rgb) / 0.08); color: var(--ix-text);
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.ix-bar-button:hover { background: rgb(var(--ix-mist-rgb) / 0.16); }
+.ix-bar-button[data-primary="true"] { background: var(--ix-accent); border-color: transparent; color: var(--ix-on-accent); }
+.ix-bar-button[data-primary="true"]:hover { background: rgb(var(--ix-accent-hover-rgb)); }
+.ix-bar-button:focus-visible { outline: 2px solid var(--ix-focus); outline-offset: 2px; }
+.ix-bar-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ---- Add Widgets panel rows ---------------------------------------------------------------------------------------------------------------------- */
+.ix-widget-row { display: flex; align-items: center; gap: 0.75rem; border-radius: 16px; padding: 0.7rem; border: 1px solid rgb(var(--ix-mist-rgb) / 0.1); background: rgb(var(--ix-deep-rgb) / 0.22); }
+.ix-widget-row + .ix-widget-row { margin-top: 0.5rem; }
+.ix-widget-well { display: grid; height: 2.25rem; width: 2.25rem; flex: none; place-items: center; border-radius: 12px; background: rgb(var(--ix-accent-rgb) / 0.15); color: var(--ix-accent-text); }
+
+/* ---- the notice that follows a change, and the empty state -------------------------------------------------------------------------------------- */
+.ix-layout-toast {
+  position: fixed; z-index: 65; left: 50%; bottom: max(1.25rem, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 1.5rem);
+  border-radius: 14px; padding: 0.6rem 1rem; font-size: 0.8125rem; border: 1px solid var(--ix-menu-border); background: var(--ix-surface-menu); box-shadow: var(--ix-menu-shadow); color: var(--ix-text);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.ix-layout-toast[data-tone="error"] { border-color: rgba(251, 191, 36, 0.4); }
+@media print { .ix-widget-dots, .ix-widget-handle, .ix-edit-bar, .ix-edit-backdrop, .ix-layout-toast { display: none !important; } .ix-widget-grid { display: block; } .ix-widget { margin-bottom: 1rem; break-inside: avoid; } }

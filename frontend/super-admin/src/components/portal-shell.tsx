@@ -1,12 +1,15 @@
 import LogoutButton from "@/components/logout-button";
 import type { AuthUser } from "@/lib/auth";
 import { NAV_ITEMS, type NavKey } from "@/lib/portal-nav";
+import AddWidgetsButton from "./dashboard-layout/add-widgets-panel";
+import { DashboardLayoutProvider } from "./dashboard-layout/layout-provider";
 import Icon from "./icons";
 import { MenuButton, NavProvider, Sidebar } from "./portal-sidebar";
 import ProfileMenu from "./profile-menu";
 import ThemeButton from "./theme/theme-button";
 import { ThemeProvider } from "./theme/theme-provider";
 import { THEME_COOKIE } from "@/lib/session";
+import { ADMIN_WIDGETS } from "@/lib/dashboard-widgets";
 import { themeFrom } from "@/lib/theme";
 
 const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "SA";
@@ -28,10 +31,13 @@ export default function PortalShell({
   width?: keyof typeof WIDTH;
 }) {
   const page = NAV_ITEMS.find((item) => item.key === current) ?? NAV_ITEMS[0];
+  // Only the home page can be customised: the provider holds which cards are shown and in what order, for the header's Add Widgets button and the cards alike.
+  const home = current === "dashboard";
   return (
     <div className="ix-dash">
       <ThemeProvider saved={themeFrom(user.theme_background, user.theme_accent)} cookieName={THEME_COOKIE} userId={user.id}>
       <NavProvider>
+      <Customizable on={home} saved={user.dashboard_layout} storageKey={`super-admin:${user.id}`}>
         <Sidebar current={current} supportUnread={supportUnread} />
         <div className="min-w-0 lg:pl-[104px] print:pl-0">
           <header className="relative z-30 px-4 pt-4 sm:px-6 lg:px-8 print:hidden">
@@ -47,6 +53,7 @@ export default function PortalShell({
                   <span className="h-1.5 w-1.5 rounded-full bg-ix-butter motion-safe:animate-pulse" />
                   Gateway Online
                 </span>
+                {home && <AddWidgetsButton />}
                 <ThemeButton />
                 <ProfileMenu name={user.full_name} email={user.email} userId={user.id} role="Super Admin" initials={initialsOf(user.full_name)} appearance />
                 <LogoutButton variant="icon" />
@@ -55,8 +62,13 @@ export default function PortalShell({
           </header>
           <main className={`mx-auto w-full ${WIDTH[width]} space-y-8 px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
         </div>
+      </Customizable>
       </NavProvider>
       </ThemeProvider>
     </div>
   );
+}
+
+function Customizable({ on, saved, storageKey, children }: { on: boolean; saved: unknown; storageKey: string; children: React.ReactNode }) {
+  return on ? <DashboardLayoutProvider widgets={[...ADMIN_WIDGETS]} saved={saved} storageKey={storageKey} endpoint="/api/dashboard-layout">{children}</DashboardLayoutProvider> : <>{children}</>;
 }

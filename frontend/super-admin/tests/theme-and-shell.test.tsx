@@ -213,6 +213,15 @@ describe("the Super Admin Portal uses the shared theme: ONE pale butter yellow a
     expect(other("src/lib/session.ts")).toContain('THEME_COOKIE = "impex_tenant_theme"'); // never shared: cookies ignore ports
   });
 
+  it.skipIf(!both)("the home-page customization (rules, components and stylesheet) is an identical copy in both portals; each portal keeps only its own widget registry and route", () => {
+    const files = ["src/lib/dashboard-layout.ts", ...["add-widgets-panel.tsx", "dashboard-layout.css", "dashboard-widget.tsx", "layout-editor.tsx", "layout-provider.tsx", "layout-storage.ts", "widget-context-menu.tsx", "widget-icons.tsx"].map((f) => `src/components/dashboard-layout/${f}`)];
+    for (const file of files) expect(read(file), file).toBe(other(file));
+    expect(read("src/lib/dashboard-widgets.ts")).toContain("admin.kpi.active-tenants");
+    expect(other("src/lib/dashboard-widgets.ts")).toContain("org.overview"); // never shared: each portal has its own widgets
+    expect(read("src/lib/dashboard-widgets.ts")).not.toContain("org.overview");
+    expect(other("src/lib/dashboard-widgets.ts")).not.toContain("admin.kpi");
+  });
+
   it.skipIf(!both)("application-specific styling stays out of the shared stylesheet, and in its own file it only uses the shared tokens", () => {
     expect(css).not.toContain(".ix-qty"); // the Organization Portal's quantity selector
     const own = other("src/components/ui/quantity-input.css");

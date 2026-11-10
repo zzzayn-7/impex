@@ -401,3 +401,66 @@ describe("POST /api/setup/complete", () => {
     expect(urls().filter((u) => u.includes("onboarding/complete"))).toEqual([]);
   });
 });
+
+// =====================================================================================================
+// the default currency chosen in the wizard
+// =====================================================================================================
+describe("the default currency in setup", () => {
+  const completeWorld = (orgComplete?: () => Response) =>
+    stub((url) => {
+      if (url === `${ORG}/api/v1/tenant/onboarding`) return json(200, STATUS);
+      if (url === `${ORG}/api/v1/tenant/onboarding/complete`) return orgComplete ? orgComplete() : json(200, COMPLETED);
+      if (url === `${AUTH}/api/v1/auth/me/profile/complete`) return json(200, { full_name: "Ada Lovelace", profile_setup_completed_at: "2026-11-07T10:00:00+00:00" });
+      return json(404, {});
+    });
+
+  it("PUT /api/setup/company forwards the chosen currency with the name, and nothing else", async () => {
+    stub(() => json(200, STATUS));
+    const res = await saveCompany(request("PUT", { companyName: "Alpha Trading", defaultCurrency: "USD", country_code: "US", slug: "x" }));
+    expect(res.status).toBe(200);
+    expect(bodyOf()).toEqual({ name: "Alpha Trading", default_currency: "USD" });
+  });
+
+  it("PUT /api/setup/company without a currency sends none (an older page keeps working)", async () => {
+    stub(() => json(200, STATUS));
+    await saveCompany(request("PUT", { companyName: "Alpha Trading" }));
+    expect(bodyOf()).toEqual({ name: "Alpha Trading" });
+  });
+
+  it.each(["usd", "US", "USDX", "XXX", "", " USD", 1, null, ["USD"], { code: "USD" }])("PUT /api/setup/company refuses %j before anything is sent", async (bad) => {
+    const res = await saveCompany(request("PUT", { companyName: "Alpha Trading", defaultCurrency: bad }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).fieldErrors.defaultCurrency).toBe("Choose your currency from the list.");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("PUT /api/setup/company shows the service's refusal next to the field", async () => {
+    stub(() => json(422, { detail: { code: "invalid_currency", message: "Choose a valid currency from the list." } }));
+    const res = await saveCompany(request("PUT", { companyName: "Alpha Trading", defaultCurrency: "EUR" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).fieldErrors.defaultCurrency).toBe("Choose a valid currency from the list.");
+  });
+
+  it("POST /api/setup/complete confirms the currency in the company step of the saga", async () => {
+    completeWorld();
+    const res = await completeSetup(request("POST", { companyName: "Alpha Trading", fullName: "Ada Lovelace", defaultCurrency: "GBP" }));
+    expect(res.status).toBe(200);
+    const complete = calls.find((c) => c.url === `${ORG}/api/v1/tenant/onboarding/complete`)!;
+    expect(JSON.parse(complete.body)).toEqual({ company_name: "Alpha Trading", default_currency: "GBP" });
+  });
+
+  it("POST /api/setup/complete refuses a bad currency before the company is touched", async () => {
+    completeWorld();
+    const res = await completeSetup(request("POST", { companyName: "Alpha Trading", fullName: "Ada Lovelace", defaultCurrency: "ABC" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).fieldErrors.defaultCurrency).toBeTruthy();
+    expect(calls.some((c) => c.url.endsWith("/onboarding/complete") || c.url.endsWith("/profile/complete"))).toBe(false);
+  });
+
+  it("POST /api/setup/complete maps the service's refusal of the currency", async () => {
+    completeWorld(() => json(422, { detail: { code: "invalid_currency", message: "Choose a valid currency from the list." } }));
+    const res = await completeSetup(request("POST", { companyName: "Alpha Trading", fullName: "Ada Lovelace", defaultCurrency: "EUR" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).fieldErrors.defaultCurrency).toBe("Choose a valid currency from the list.");
+  });
+});

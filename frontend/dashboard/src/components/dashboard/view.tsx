@@ -9,9 +9,11 @@ import type { TenantAdmin } from "@/lib/tenant-auth";
 import { AreaChart, ColumnChart, BarList, Legend, SERIES_COLORS, StackedBar, type Series } from "./charts";
 import { CardHeader, CardNote, Footnote, GlassCard, Pill } from "./glass";
 import { Tooltip } from "@/components/ui/tooltip";
+import DashboardLayoutEditor from "@/components/dashboard-layout/layout-editor";
 import Icon, { type IconKey } from "./icons";
 
-// The dashboard's content. Every number is computed from the records in `data` (see lib/dashboard-data.ts); a module that is not enabled has no
+// The dashboard's content, one WIDGET per card (the registry is lib/dashboard-widgets.ts; each card is built here under its widget id and handed to the layout
+// editor, which shows, hides and orders them for the signed-in person). Every number is computed from the records in `data` (see lib/dashboard-data.ts); a module that is not enabled has no
 // entry in `data` and therefore no card, and the remaining cards share the row. An empty organization shows calm empty states, never zeros
 // dressed up as results, and a service that could not answer says so in its own cards only.
 
@@ -22,8 +24,6 @@ type Tone = "yellow" | "neutral";
 const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-accent-text", neutral: "bg-ix-mist/10 text-ix-mist" };
 
 const unavailable = "Could not be loaded just now. Please refresh in a moment.";
-const grid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]";
-const wideGrid = "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]";
 
 function Kpi({ icon, label, value, unit, context, tone, accent = "neutral" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: Tone }) {
   return (
@@ -72,15 +72,15 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   const otherPurchaseCurrencies = Array.from(new Set(purchaseRows.map((r) => r.currency))).filter((c) => c !== headline);
 
   // ---- KPI cards ----------------------------------------------------------------------------------------------------------
-  const kpis: React.ReactNode[] = [];
+  const nodes: Record<string, React.ReactNode> = {};
   if (inventory) {
-    kpis.push(inventory.status === "ok" ? (
+    nodes["org.kpi.active-products"] = (inventory.status === "ok" ? (
       <Kpi key="products" icon="products" accent="neutral" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
         context={inventory.data.products === 0 ? "No products yet" : "In your product catalog"} />
     ) : <KpiUnavailable key="products" icon="products" accent="neutral" label="Active products" />);
   }
   if (purchasing) {
-    kpis.push(purchasing.status === "ok" ? (
+    nodes["org.kpi.open-purchase-orders"] = (purchasing.status === "ok" ? (
       <Kpi key="orders" icon="orders" accent="neutral" label="Open purchase orders" value={String(purchasing.data.open.count)}
         context={purchasing.data.open.count === 0 ? "Nothing waiting to be received" : (
           <>
@@ -91,11 +91,11 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     ) : <KpiUnavailable key="orders" icon="orders" accent="neutral" label="Open purchase orders" />);
   }
   if (sales) {
-    kpis.push(sales.status === "ok" ? (
+    nodes["org.kpi.invoiced-this-month"] = (sales.status === "ok" ? (
       <Kpi key="invoiced" icon="invoices" accent="yellow" label="Invoiced this month" value={formatAmount(salesThisMonth, prefs)} unit={headline}
         context={salesRows.length === 0 ? "No invoices issued yet" : <>Issued invoices, {monthLabel(month)}<Others totals={Array.from(new Set(salesRows.map((r) => r.currency))).filter((c) => c !== headline).map((c) => ({ currency: c, amount: monthlyTotals(salesRows, [month], c)[0] }))} shown={headline} prefs={prefs} /></>} />
     ) : <KpiUnavailable key="invoiced" icon="invoices" accent="yellow" label="Invoiced this month" />);
-    kpis.push(sales.status === "ok" ? (
+    nodes["org.kpi.outstanding-receivables"] = (sales.status === "ok" ? (
       <Kpi key="receivables" icon="clients" accent="yellow" label="Outstanding receivables" value={formatAmount(amountOf(outstanding, headline), prefs)} unit={headline}
         tone={/[1-9]/.test(amountOf(sales.data.receivables.overdue, headline)) ? "warn" : undefined}
         context={sales.data.receivables.count === 0 ? "No unpaid invoices" : (
@@ -109,8 +109,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   }
 
   // ---- analytics ----------------------------------------------------------------------------------------------------------
-  const analytics: React.ReactNode[] = [];
-  if ((sales || purchasing) && (sales?.status === "ok" || purchasing?.status === "ok")) {
+  if (sales || purchasing) {
+    const anyOk = sales?.status === "ok" || purchasing?.status === "ok";
     const series: Series[] = [];
     const toSeries = (name: string, color: string, values: string[]): Series => ({ name, color, points: values.map((v, i) => ({ label: monthLabel(data.months[i]), value: v, text: money(v) })) });
     if (sales?.status === "ok") series.push(toSeries("Invoiced", SERIES_COLORS.butter, salesByMonth));
@@ -118,10 +118,10 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     const empty = series.every((s) => s.points.every((p) => !/[1-9]/.test(p.value)));
     const truncated = (sales?.status === "ok" && sales.data.trend.truncated) || (purchasing?.status === "ok" && purchasing.data.trend.truncated);
     const others = [...otherSalesCurrencies, ...otherPurchaseCurrencies.filter((c) => !otherSalesCurrencies.includes(c))];
-    analytics.push(
+    nodes["org.chart.sales-purchasing-trend"] = (
       <GlassCard key="trend" className="p-5 sm:p-6" aria-label="Sales and purchasing trend">
         <CardHeader title="Sales & purchasing trend" subtitle={`Last ${TREND_MONTHS} months, in ${headline}`} action={<Legend items={series.map((s) => ({ name: s.name, color: s.color }))} />} />
-        {empty ? <CardNote>No invoices or purchase orders in the last {TREND_MONTHS} months yet.</CardNote> : <AreaChart id="trend" series={series} label={`${series.map((s) => s.name).join(" and ")} per month in ${headline}, last ${TREND_MONTHS} months`} />}
+        {!anyOk ? <CardNote tone="error">{unavailable}</CardNote> : empty ? <CardNote>No invoices or purchase orders in the last {TREND_MONTHS} months yet.</CardNote> : <AreaChart id="trend" series={series} label={`${series.map((s) => s.name).join(" and ")} per month in ${headline}, last ${TREND_MONTHS} months`} />}
         {others.length > 0 && <Footnote>Also in {others.join(", ")}: shown in its own currency elsewhere, never added to {headline}.</Footnote>}
         {truncated && <Footnote>Based on the latest records in this period (the list limit was reached).</Footnote>}
         {(sales?.status === "unavailable" || purchasing?.status === "unavailable") && <Footnote>{sales?.status === "unavailable" ? "Sales" : "Purchasing"} data could not be loaded, so its line is missing.</Footnote>}
@@ -129,7 +129,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
   if (sales) {
-    analytics.push(
+    nodes["org.chart.collections"] = (
       <GlassCard key="collections" className="p-5 sm:p-6" aria-label="Collections">
         <CardHeader title="Collections" subtitle={`Open invoices in ${headline}: paid so far, still due, overdue`} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.receivables.count === 0 ? <CardNote>No open invoices. Issued invoices appear here until they are paid.</CardNote> : (() => {
@@ -156,7 +156,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     const anyActivity = activity.some((d) => d.added + d.removed > 0);
     const dayLabel = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
     const mk = (name: string, color: string, pick: (d: (typeof activity)[number]) => number): Series => ({ name, color, points: activity.map((d) => ({ label: dayLabel(d.day), value: String(pick(d)), text: `${pick(d)} ${pick(d) === 1 ? "movement" : "movements"}` })) });
-    analytics.push(
+    nodes["org.chart.inventory-activity"] = (
       <GlassCard key="activity" className="p-5 sm:p-6" aria-label="Inventory movement activity">
         <CardHeader title="Inventory activity" subtitle={`Stock movements per day, last ${ACTIVITY_DAYS} days`} action={<Legend items={[{ name: "Added", color: SERIES_COLORS.butter }, { name: "Removed", color: SERIES_COLORS.slate }]} />} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : !anyActivity ? <CardNote>No stock movements in the last {ACTIVITY_DAYS} days.</CardNote> : (
@@ -168,10 +168,9 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   }
 
   // ---- operations ---------------------------------------------------------------------------------------------------------
-  const operations: React.ReactNode[] = [];
   const row = (key: string, left: React.ReactNode, right: React.ReactNode) => <li key={key} className="flex items-center justify-between gap-3 py-2.5">{left}{right}</li>;
   if (sales) {
-    operations.push(
+    nodes["org.list.recent-invoices"] = (
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
         <CardHeader title="Recent invoices" action={<Link href="/invoices/sales" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
@@ -185,7 +184,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
   if (purchasing) {
-    operations.push(
+    nodes["org.list.open-purchase-orders"] = (
       <GlassCard key="pos" className="p-5 sm:p-6" aria-label="Open purchase orders">
         <CardHeader title="Open purchase orders" action={<Link href="/purchase-orders" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {purchasing.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : purchasing.data.recentOpen.length === 0 ? <CardNote>No purchase orders waiting to be received.</CardNote> : (
@@ -199,7 +198,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
   if (inventory) {
-    operations.push(
+    nodes["org.list.recent-stock-movements"] = (
       <GlassCard key="movements" className="p-5 sm:p-6" aria-label="Recent stock movements">
         <CardHeader title="Recent stock movements" action={<Link href="/movements" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {inventory.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : inventory.data.movements.length === 0 ? <CardNote>No stock movements yet.</CardNote> : (
@@ -213,7 +212,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
     );
   }
   if (finance) {
-    operations.push(
+    nodes["org.finance.snapshot"] = (
       <GlassCard key="finance" className="p-5 sm:p-6" aria-label="Finance snapshot">
         <CardHeader title="Finance snapshot" action={<Link href="/finance" className="text-xs font-medium text-ix-muted hover:text-ix-text">Open Finance</Link>} />
         {finance.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : (
@@ -242,8 +241,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "neutral" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "neutral" });
   actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "neutral" });
 
-  return (
-    <div className="space-y-5">
+  nodes["org.overview"] = (
       <GlassCard className="overflow-hidden p-6 sm:p-7" aria-labelledby="welcome-heading">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -274,23 +272,10 @@ export default function DashboardView({ admin, organizationResult, data }: Props
           </div>
         </dl>
       </GlassCard>
+  );
 
-      {!organization && (
-        <GlassCard className="p-5">
-          {!organizationResult.ok && organizationResult.reason === "forbidden" ? (
-            <p role="alert" className="text-sm text-amber-100/90">Your organization is currently inactive or unavailable. Please contact your platform administrator.</p>
-          ) : (
-            <p role="alert" className="text-sm text-ix-muted">Organization details are temporarily unavailable. Please refresh in a moment.</p>
-          )}
-        </GlassCard>
-      )}
-
-      {kpis.length > 0 && <div className={grid} role="list" aria-label="Key figures">{kpis.map((k, i) => <div role="listitem" key={i} className="contents">{k}</div>)}</div>}
-      {analytics.length > 0 && <div className={wideGrid}>{analytics}</div>}
-      {operations.length > 0 && <div className={wideGrid}>{operations}</div>}
-
-      {organization && (
-        <div className={wideGrid}>
+  if (organization) {
+    nodes["org.panel.modules"] = (
           <GlassCard className="p-5 sm:p-6" aria-labelledby="modules-heading">
             <CardHeader title="Your modules" subtitle="Where would you like to work?" />
             <h3 id="modules-heading" className="sr-only">Your modules</h3>
@@ -313,7 +298,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
             )}
             <Footnote>Need another module? <Link href="/support/new?module=other" className="text-ix-muted underline-offset-2 hover:underline">Ask the Impex team</Link>. Only the Impex team can enable it.</Footnote>
           </GlassCard>
-
+    );
+    nodes["org.panel.quick-actions"] = (
           <GlassCard className="p-5 sm:p-6" aria-label="Quick actions">
             <CardHeader title="Quick actions" />
             <ul className="grid gap-2 sm:grid-cols-2">
@@ -327,7 +313,8 @@ export default function DashboardView({ admin, organizationResult, data }: Props
               ))}
             </ul>
           </GlassCard>
-
+    );
+    nodes["org.panel.organization"] = (
           <GlassCard className="p-5 sm:p-6" aria-labelledby="organization-heading">
             <CardHeader title="Organization" />
             <h3 id="organization-heading" className="sr-only">{organization.name}</h3>
@@ -340,8 +327,22 @@ export default function DashboardView({ admin, organizationResult, data }: Props
               ))}
             </dl>
           </GlassCard>
-        </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* A notice that explains why figures are missing is never a widget: it cannot be removed. */}
+      {!organization && (
+        <GlassCard className="p-5">
+          {!organizationResult.ok && organizationResult.reason === "forbidden" ? (
+            <p role="alert" className="text-sm text-amber-100/90">Your organization is currently inactive or unavailable. Please contact your platform administrator.</p>
+          ) : (
+            <p role="alert" className="text-sm text-ix-muted">Organization details are temporarily unavailable. Please refresh in a moment.</p>
+          )}
+        </GlassCard>
       )}
+      <DashboardLayoutEditor nodes={nodes} />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { CURRENCY_CODES } from "@/lib/currencies";
+
 // The time zones offered in Settings: the common business ones, as IANA names. The Organization Service accepts any valid IANA zone and is the
 // real judge; the list is a fixed one (not read from the browser's runtime) so the server and the browser always render the same options.
 export const TIMEZONES: string[] = [
@@ -19,11 +21,8 @@ export function timezoneOptions(current: string): string[] {
   return TIMEZONES.includes(current) ? TIMEZONES : [current, ...TIMEZONES];
 }
 
-// ISO 4217 codes offered as the default currency. The Organization Service validates against the full ISO list.
-export const CURRENCY_OPTIONS: string[] = [
-  "PKR", "USD", "EUR", "GBP", "AED", "SAR", "INR", "BDT", "CNY", "JPY", "KRW", "SGD", "MYR", "THB", "IDR", "TRY", "EGP", "ZAR", "NGN", "KES",
-  "CAD", "AUD", "NZD", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "BRL", "MXN", "ARS", "CLP", "COP", "QAR", "KWD", "OMR", "BHD",
-];
+// The ISO 4217 codes offered as the default currency: all of them (see lib/currencies.ts). The Organization Service validates against the same list.
+export const CURRENCY_OPTIONS: string[] = CURRENCY_CODES;
 
 export function currencyOptions(current: string): string[] {
   return CURRENCY_OPTIONS.includes(current) ? CURRENCY_OPTIONS : [current, ...CURRENCY_OPTIONS];

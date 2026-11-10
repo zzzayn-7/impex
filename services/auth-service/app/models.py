@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Uuid, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -37,3 +38,5 @@ class User(Base):
     # The person's own colour theme for the portals: identifiers of the approved palettes only (see app/theme.py). NULL = never chosen (the default theme).
     theme_background: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     theme_accent: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    # The person's own arrangement of the widgets on their portal's home page: identifiers and a revision only (see app/dashboard_layout.py). NULL = never customised.
+    dashboard_layout: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)

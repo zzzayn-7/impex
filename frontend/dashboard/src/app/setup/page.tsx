@@ -44,6 +44,7 @@ export default async function SetupPage() {
       initialCompanyName={organization.name}
       hasLogo={Boolean(organization.has_logo)}
       logoVersion={organization.logo_version ?? null}
+      initialCurrency={organization.default_currency ?? "USD"}
       initialFullName={admin.full_name}
       email={admin.email}
     />

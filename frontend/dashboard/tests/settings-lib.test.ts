@@ -141,7 +141,8 @@ describe("the lists offered in Settings", () => {
     for (const c of ["PKR", "USD", "EUR", "GBP", "AED"]) expect(CURRENCY_OPTIONS).toContain(c);
     expect(timezoneOptions("Asia/Tokyo")).toEqual(TIMEZONES); // already listed: nothing is added
     expect(timezoneOptions("Pacific/Fiji")[0]).toBe("Pacific/Fiji"); // valid but not listed: kept, not lost
-    expect(currencyOptions("XOF")[0]).toBe("XOF");
+    expect(currencyOptions("XOF")).toEqual(CURRENCY_OPTIONS); // listed: nothing is added
+    expect(currencyOptions("ZZZ")[0]).toBe("ZZZ"); // not listed: kept, not lost
     expect(new Set(TIMEZONES).size).toBe(TIMEZONES.length);
     for (const z of TIMEZONES) expect(() => new Intl.DateTimeFormat("en-US", { timeZone: z })).not.toThrow();
   });

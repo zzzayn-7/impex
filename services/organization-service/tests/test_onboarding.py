@@ -128,7 +128,7 @@ def test_a_newly_created_organization_requires_setup(client, session_factory, te
     row = org(session_factory, tenants, "beta")
     assert (row.setup_status, row.setup_completed_at, row.setup_completed_by, row.logo_storage_key) == ("pending", None, None, None)
     body = client.get(ONBOARDING, headers=bearer("beta-1")).json()
-    assert body == {"setup_status": "pending", "setup_completed_at": None, "company_name": "Beta Logistics", "has_logo": False, "logo_version": None, "can_edit": True}
+    assert body == {"setup_status": "pending", "setup_completed_at": None, "company_name": "Beta Logistics", "has_logo": False, "logo_version": None, "default_currency": "USD", "can_edit": True}
 
 
 def test_the_tenant_organization_view_carries_the_status_too(client):
@@ -574,3 +574,76 @@ def test_the_storage_module_only_ever_touches_its_own_directory(tmp_path):
     store.delete(key)
     store.delete(key)  # idempotent
     assert store.read(key) is None and not store.exists(key)
+
+
+# =====================================================================================================
+# the default currency chosen in the wizard
+# =====================================================================================================
+def test_the_status_carries_the_current_default_currency(client):
+    assert client.get(ONBOARDING, headers=bearer("alpha-1")).json()["default_currency"] == "USD"  # the database default until somebody chooses
+
+
+@pytest.mark.parametrize("code", ["USD", "EUR", "PKR", "JPY", "XOF", "ZWL", "AED", "KWD"])
+def test_the_company_step_saves_the_chosen_currency(client, session_factory, tenants, code):
+    body = client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": code}, headers=bearer("alpha-1")).json()
+    assert body["default_currency"] == code and body["setup_status"] == "in_progress"
+    assert org(session_factory, tenants, "alpha").default_currency == code
+    assert client.get(ONBOARDING, headers=bearer("alpha-2")).json()["default_currency"] == code  # the other administrator sees it
+
+
+def test_a_lower_case_code_is_accepted_and_stored_in_capitals(client, session_factory, tenants):
+    assert client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "usd"}, headers=bearer("alpha-1")).status_code == 200
+    assert org(session_factory, tenants, "alpha").default_currency == "USD"
+
+
+def test_not_sending_a_currency_leaves_the_current_default_alone(client, session_factory, tenants):
+    client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "EUR"}, headers=bearer("alpha-1"))
+    assert client.put(COMPANY, json={"name": "Alpha Trading GmbH"}, headers=bearer("alpha-1")).status_code == 200
+    assert org(session_factory, tenants, "alpha").default_currency == "EUR"
+
+
+@pytest.mark.parametrize("bad", ["", "US", "USDX", "ABC", "XXX", "usd ", " USD", "$", "<script>", "US$", "🇺🇸", 1, True, ["USD"], {"code": "USD"}])
+def test_anything_that_is_not_a_real_iso_code_is_refused_and_nothing_changes(client, session_factory, tenants, bad):
+    response = client.put(COMPANY, json={"name": "New Name", "default_currency": bad}, headers=bearer("alpha-1"))
+    assert response.status_code == 422, response.text
+    row = org(session_factory, tenants, "alpha")
+    assert (row.name, row.default_currency, row.setup_status) == ("Alpha Trading", "USD", "pending")
+    upload(client, "alpha-1", *FILES["png"])
+    assert client.post(COMPLETE, json={"company_name": "New Name", "default_currency": bad}, headers=bearer("alpha-1")).status_code == 422
+    row = org(session_factory, tenants, "alpha")
+    assert (row.name, row.default_currency, row.setup_status) == ("Alpha Trading", "USD", "in_progress")
+
+
+def test_completion_saves_the_confirmed_currency_with_the_name_and_the_status_together(client, session_factory, tenants):
+    upload(client, "alpha-1", *FILES["png"])
+    body = client.post(COMPLETE, json={"company_name": "Alpha Trading", "default_currency": "GBP"}, headers=bearer("alpha-1")).json()
+    assert body["setup_status"] == "completed" and body["default_currency"] == "GBP"
+    assert org(session_factory, tenants, "alpha").default_currency == "GBP"
+
+
+def test_a_completion_without_a_currency_keeps_what_the_company_step_saved(client, session_factory, tenants):
+    client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "CAD"}, headers=bearer("alpha-1"))
+    upload(client, "alpha-1", *FILES["png"])
+    assert complete(client).status_code == 200
+    assert org(session_factory, tenants, "alpha").default_currency == "CAD"
+
+
+def test_once_completed_the_currency_cannot_be_changed_through_the_wizard(client, session_factory, tenants):
+    upload(client, "alpha-1", *FILES["png"])
+    client.post(COMPLETE, json={"company_name": "Alpha Trading", "default_currency": "USD"}, headers=bearer("alpha-1"))
+    assert client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "EUR"}, headers=bearer("alpha-1")).status_code == 409
+    again = client.post(COMPLETE, json={"company_name": "Alpha Trading", "default_currency": "EUR"}, headers=bearer("alpha-2"))
+    assert again.status_code == 200 and again.json()["default_currency"] == "USD"  # the first completion stands
+    assert org(session_factory, tenants, "alpha").default_currency == "USD"
+
+
+def test_choosing_a_currency_here_is_not_a_settings_change(client, session_factory, tenants):
+    client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "JPY"}, headers=bearer("alpha-1"))
+    with session_factory() as db:
+        assert db.scalar(text("SELECT count(*) FROM organization_settings_history")) == 0
+        assert db.scalar(text("SELECT settings_version FROM organizations WHERE slug = 'alpha-trading'")) == 1
+
+
+def test_a_second_organization_is_untouched(client, session_factory, tenants):
+    client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "CHF"}, headers=bearer("alpha-1"))
+    assert org(session_factory, tenants, "beta").default_currency == "USD"

@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ro
 
 import SetupWizard from "@/app/setup/setup-wizard";
 import PortalShell from "@/components/dashboard/frame";
+import { CURRENCIES } from "@/lib/currencies";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 type Call = { url: string; method: string; body: any; headers: any };
@@ -39,7 +40,7 @@ const user = () => userEvent.setup({ applyAccept: false });
 
 const props = (extra: Record<string, unknown> = {}) => ({
   mode: "full" as const, setupStatus: "pending", initialCompanyName: "Alpha Trading GmbH", hasLogo: false, logoVersion: null as string | null,
-  initialFullName: "Olivia Owner", email: "owner@acme.example", ...extra,
+  initialCurrency: "USD", initialFullName: "Olivia Owner", email: "owner@acme.example", ...extra,
 });
 const mount = (extra: Record<string, unknown> = {}) => render(<SetupWizard {...props(extra)} />);
 const fileInput = () => screen.getByLabelText("Choose a logo file") as HTMLInputElement;
@@ -172,7 +173,7 @@ describe("Step 1: company identity", () => {
     await u.type(screen.getByLabelText("Company name"), "  Alpha   Trading AG ");
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(heading()).toBe("Tell us about yourself"));
-    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading AG" }); // only the name: no slug, no ids
+    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading AG", defaultCurrency: "USD" }); // only the name and the currency: no slug, no ids
     expect(screen.getByRole("list", { name: "Setup progress" }).querySelector('[aria-current="step"]')!.textContent).toBe("2You");
   });
 
@@ -185,6 +186,110 @@ describe("Step 1: company identity", () => {
     await u.click(screen.getByRole("button", { name: "Continue" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Company setup is already completed.");
     expect(heading()).toBe("Welcome to Impex");
+  });
+});
+
+// =====================================================================================================
+// step 1: the default currency
+// =====================================================================================================
+describe("Step 1: the default currency", () => {
+  const select = () => screen.getByLabelText("Default currency") as HTMLSelectElement;
+
+  it("is a dropdown with every currency, each shown as its code and name, starting from the organization's current default", () => {
+    mount({ initialCurrency: "PKR" });
+    expect(select().tagName).toBe("SELECT");
+    expect(select().value).toBe("PKR");
+    const options = within(select()).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toHaveLength(CURRENCIES.length);
+    expect(options.length).toBeGreaterThan(140);
+    for (const text of ["USD — US Dollar", "EUR — Euro", "GBP — British Pound Sterling", "JPY — Japanese Yen", "PKR — Pakistani Rupee", "AED — UAE Dirham", "INR — Indian Rupee", "CHF — Swiss Franc", "ZWL — Zimbabwean Dollar"]) expect(options, text).toContain(text);
+    expect(new Set(options).size).toBe(options.length);
+  });
+
+  it("explains it, with the United States example", () => {
+    mount();
+    expect(screen.getByText(/for example USD if you are based in the United States/)).toBeTruthy();
+    expect(select().getAttribute("aria-describedby")).toBe("currency-help");
+  });
+
+  it("an American company picks USD; the choice is saved with the company step and shown on the review", async () => {
+    withLogo();
+    server["PUT /api/setup/company"] = () => json(200, { setup: STATUS() });
+    mount({ initialCurrency: "EUR" });
+    const u = user();
+    await chooseLogo(u);
+    await u.selectOptions(select(), "USD");
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(heading()).toBe("Tell us about yourself"));
+    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading GmbH", defaultCurrency: "USD" });
+    server["PUT /api/setup/profile"] = () => json(200, { user: { full_name: "Olivia Owner" } });
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Review and complete");
+    const row = screen.getByText("Default currency").closest("div")!;
+    expect(row.textContent).toContain("USD — US Dollar");
+  });
+
+  it("another currency (here Japanese Yen) is sent as chosen, and completion confirms it", async () => {
+    withLogo();
+    server["PUT /api/setup/company"] = () => json(200, { setup: STATUS() });
+    server["PUT /api/setup/profile"] = () => json(200, { user: { full_name: "Olivia Owner" } });
+    server["POST /api/setup/complete"] = () => json(200, { done: true, redirectTo: "/" });
+    mount();
+    const u = user();
+    await chooseLogo(u);
+    await u.selectOptions(select(), "JPY");
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Tell us about yourself");
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Review and complete");
+    await u.click(screen.getByRole("button", { name: "Complete Setup & Enter Dashboard" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
+    expect(made("PUT", "/api/setup/company")[0].body.defaultCurrency).toBe("JPY");
+    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "JPY" });
+  });
+
+  it("the review's Edit for the currency goes back to step 1, and a change there is what completes", async () => {
+    withLogo();
+    server["PUT /api/setup/company"] = () => json(200, { setup: STATUS() });
+    server["PUT /api/setup/profile"] = () => json(200, { user: { full_name: "Olivia Owner" } });
+    mount();
+    const u = user();
+    await chooseLogo(u);
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Tell us about yourself");
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("Review and complete");
+    await u.click(within(screen.getByText("Default currency").closest("div")!.parentElement!).getByRole("button", { name: "Edit" }));
+    expect(heading()).toBe("Welcome to Impex");
+    await u.selectOptions(select(), "GBP");
+    expect(select().value).toBe("GBP");
+  });
+
+  it("a currency that is not in the list is never sent: the browser stops it first", async () => {
+    withLogo();
+    mount({ initialCurrency: "" });
+    const u = user();
+    await chooseLogo(u);
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    expect((await screen.findByText("Choose your currency from the list.")).getAttribute("role")).toBe("alert");
+    expect(made("PUT", "/api/setup/company")).toHaveLength(0);
+    expect(heading()).toBe("Welcome to Impex");
+  });
+
+  it("shows the service's refusal of the currency next to the field", async () => {
+    withLogo();
+    server["PUT /api/setup/company"] = () => json(400, { error: "Choose a valid currency from the list.", code: "invalid_currency", fieldErrors: { defaultCurrency: "Choose a valid currency from the list." } });
+    mount();
+    const u = user();
+    await chooseLogo(u);
+    await u.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(screen.getAllByText("Choose a valid currency from the list.").length).toBeGreaterThan(0));
+    expect(heading()).toBe("Welcome to Impex");
+  });
+
+  it("is not asked of a new administrator joining a company that is already set up", () => {
+    mount({ mode: "profile", setupStatus: "completed" });
+    expect(screen.queryByLabelText("Default currency")).toBeNull();
   });
 });
 
@@ -279,7 +384,8 @@ describe("Step 3: review and complete", () => {
   it("lets you return to either earlier step to correct something", async () => {
     const u = await atReview();
     const edits = screen.getAllByRole("button", { name: "Edit" });
-    await u.click(edits[1]);
+    expect(edits).toHaveLength(3); // company, currency, administrator
+    await u.click(edits[2]);
     expect(heading()).toBe("Tell us about yourself");
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await screen.findByText("Review and complete");
@@ -293,7 +399,7 @@ describe("Step 3: review and complete", () => {
     await u.click(screen.getByRole("button", { name: "Complete Setup & Enter Dashboard" }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
     expect(router.refresh).toHaveBeenCalled();
-    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH" });
+    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "USD" });
   });
 
   it("a double click submits once, and the button stays disabled while the browser moves on", async () => {

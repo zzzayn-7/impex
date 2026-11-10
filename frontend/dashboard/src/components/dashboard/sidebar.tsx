@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { activeHref, type NavGroup } from "@/lib/dashboard-nav";
 import { Tooltip } from "@/components/ui/tooltip";
+import { containWheel } from "@/lib/contain-wheel";
 import Icon from "./icons";
 
 // The dashboard's navigation. On a desktop it is a fixed 76px icon rail that EXPANDS OVER the page (a fixed-position overlay: the page itself
@@ -69,6 +70,12 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
     if (active instanceof HTMLElement && ref.current?.contains(active)) active.blur(); // focus-within would otherwise keep the rail open
   }, [setMobileOpen, setPinned]);
 
+  // The page behind never scrolls while the pointer is over the sidebar: the list scrolls itself, and at its ends (or anywhere else on the sidebar) the wheel does nothing.
+  useEffect(() => {
+    const panel = ref.current;
+    return panel ? containWheel(panel, () => panel.querySelector<HTMLElement>("nav")) : undefined;
+  }, []);
+
   // Escape closes the drawer from anywhere on the page (the rail handles it itself, below).
   useEffect(() => {
     if (!mobileOpen) return;
@@ -95,7 +102,7 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
           if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
         }}
         className={[
-          "ix-glass group fixed z-40 flex flex-col overflow-clip print:hidden",
+          "ix-glass group fixed z-40 flex flex-col overflow-clip overscroll-contain print:hidden",
           // desktop: an icon rail inset from the edges that grows over the page
           "lg:inset-y-3 lg:left-3 lg:w-[76px] lg:translate-x-0 lg:visible lg:hover:w-[256px] lg:focus-within:w-[256px] lg:data-[pinned=true]:w-[256px] lg:transition-[width,box-shadow] lg:duration-200 lg:ease-out",
           "lg:hover:shadow-[0_24px_48px_-20px_rgb(var(--ix-shadow-rgb)/0.8)] lg:focus-within:shadow-[0_24px_48px_-20px_rgb(var(--ix-shadow-rgb)/0.8)]",
@@ -126,7 +133,7 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
           </Tooltip>
         </div>
 
-        <nav aria-label="Main" className="ix-scroll flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3">
+        <nav aria-label="Main" className="ix-scroll flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 pb-3">
           {groups.map((group) => (
             <div key={group.id} data-nav-group={group.id} role="group" aria-label={group.label}>
               <div className="relative h-7" aria-hidden="true">

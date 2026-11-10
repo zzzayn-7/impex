@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { DATE_FORMAT_OPTIONS, NUMBER_FORMAT_OPTIONS, formatDateTime, formatDecimal, type DateFormat, type NumberFormat, type Preferences } from "@/lib/format";
 import { api, jsonBody } from "@/lib/sales-browser";
+import { currencyLabel } from "@/lib/currencies";
 import { currencyOptions, timezoneOptions } from "@/lib/timezones";
 import { Card, Field, Notice, SaveBar, inputClass } from "./settings-ui";
 import type { SectionProps } from "./company-section";
@@ -57,7 +58,7 @@ export default function PreferencesSection({ settings, onSaved, onConflict, setD
       <div className="grid gap-5 sm:grid-cols-2">
         <Field id="pref-currency" label="Default currency" error={errors.default_currency} hint="Used to start new invoices and purchase orders. You can still pick another currency on any document.">
           <select id="pref-currency" value={draft.default_currency} onChange={(e) => set("default_currency", e.target.value)} className={inputClass}>
-            {currencyOptions(saved.default_currency).map((c) => <option key={c} value={c}>{c}</option>)}
+            {currencyOptions(saved.default_currency).map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
           </select>
         </Field>
         <Field id="pref-timezone" label="Time zone" error={errors.timezone} hint="How dates and times are written on screen. Stored times stay in UTC.">

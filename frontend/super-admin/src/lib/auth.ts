@@ -13,6 +13,8 @@ export type AuthUser = {
   // The Super Admin's own colour theme (identifiers of the approved palettes), or null when they never chose one.
   theme_background?: string | null;
   theme_accent?: string | null;
+  // The Super Admin's own home-page widget arrangement ({ version, revision, order, hidden }), or null when they never changed it.
+  dashboard_layout?: unknown;
 };
 
 // Server-side only. Inside Docker this is the auth-service container; set in docker-compose.yml.
