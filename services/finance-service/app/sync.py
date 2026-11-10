@@ -21,6 +21,12 @@ The recognition policy (what becomes an accounting entry):
 Nothing is recognised from a purchase order alone, and no supplier payable is invented: Purchasing has no supplier invoice.
 
 Each entry is in the event's OWN currency. Nothing is converted. Events dated before the organization's Finance activation are not back-filled.
+
+The same events also feed the REPORTING model behind the Finance page (app/trading.py, in the SAME transaction as the entry, so both exist or neither does):
+  receipt.confirmed   the stock cost of each product goes up by accepted quantity x purchase price (an investment activity - never an owner contribution)
+  delivery.confirmed  (Sales) revenue and cost of goods sold are recognised ONCE, when the goods leave; no journal entry is made for it
+  invoice.issued      only ADJUSTS the revenue delivery recognised (a discount); it never recognises revenue again
+  invoice.voided      reverses those adjustments
 """
 import logging
 import os
@@ -37,7 +43,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app import ledger
+from app import ledger, trading
 from app.chart import activated_at as org_activated_at, ensure_setup, system_account
 from app.common import Actor, audit
 from app.currencies import is_known_currency
@@ -50,7 +56,7 @@ MAX_PAGES = 20
 PAGE_SIZE = 500
 ZERO = Decimal("0")
 
-SALES_TYPES = {"invoice.issued", "invoice.voided", "payment.recorded", "payment.reversed"}
+SALES_TYPES = {"invoice.issued", "invoice.voided", "payment.recorded", "payment.reversed", "delivery.confirmed"}
 PURCHASING_TYPES = {"receipt.confirmed"}
 KNOWN_TYPES = {"sales": SALES_TYPES, "purchasing": PURCHASING_TYPES}
 
@@ -97,6 +103,8 @@ class FeedClient:
 
     def feed(self, source: str, organization_id: uuid.UUID, since: Optional[datetime], limit: int) -> dict:
         params = {"limit": limit}
+        if source == "sales":
+            params["include_deliveries"] = "true"  # confirmed dispatches: the moment revenue is recognised
         if since is not None:
             params["since"] = since.isoformat()
         return self._get(f"{self._urls[source]}/internal/v1/organizations/{organization_id}/finance-feed", params)
@@ -284,7 +292,7 @@ def _handle_invoice_voided(db: Session, event: SyncEvent) -> JournalEntry:
     number = _text(data.get("number"), "?", 30)
     if original is None:
         issued_event = db.scalar(select(SyncEvent).where(SyncEvent.organization_id == org, SyncEvent.event_key == issued_key))
-        if issued_event is not None and issued_event.status == "skipped":
+        if issued_event is not None and (issued_event.status == "skipped" or (issued_event.status == "posted" and issued_event.journal_entry_id is None)):
             raise Skip("the invoice produced no entry, so there is nothing to reverse")
         if issued_event is None and data.get("issued_at") and _parse_time(data["issued_at"]) < (org_activated_at(db, org) or _now()):
             raise Skip("the invoice was issued before Finance was activated")
@@ -328,18 +336,45 @@ def _handle_receipt(db: Session, event: SyncEvent) -> JournalEntry:
     return _post(db, event, description=what, reference=receipt, currency=currency, entry_date=_date(None, _parse_time(data.get("confirmed_at") or event.event_time)), lines=[(inventory, value, ZERO), (grni, ZERO, value)], summary=what)
 
 
-def handle(db: Session, event: SyncEvent) -> JournalEntry:
-    kind = event.event_type
+def handle(db: Session, event: SyncEvent) -> Optional[JournalEntry]:
+    """Record one event. Returns its journal entry, or None when it only feeds the reporting model (a delivery; an invoice whose total is zero)."""
+    try:
+        return _handle(db, event)
+    except trading.Unreadable as exc:
+        raise Reject(str(exc))
+    except trading.NotYet as exc:
+        raise Defer(str(exc))
+
+
+def _handle(db: Session, event: SyncEvent) -> Optional[JournalEntry]:
+    kind, org, actor = event.event_type, event.organization_id, Actor.sync()
     if kind == "invoice.issued":
-        return _handle_invoice_issued(db, event)
+        adjusted = trading.apply_invoice_issued(db, org, event.payload, org_activated_at(db, org), actor)
+        try:
+            return _handle_invoice_issued(db, event)
+        except Skip:
+            if adjusted:
+                return None  # a zero-value invoice has no entry, but its (discount) adjustment stands
+            raise
     if kind == "invoice.voided":
-        return _handle_invoice_voided(db, event)
+        adjusted = trading.apply_invoice_voided(db, org, event.payload, actor)
+        try:
+            return _handle_invoice_voided(db, event)
+        except Skip:
+            if adjusted:
+                return None
+            raise
     if kind == "payment.recorded":
         return _handle_payment(db, event, reversed_=False)
     if kind == "payment.reversed":
         return _handle_payment(db, event, reversed_=True)
     if kind == "receipt.confirmed":
-        return _handle_receipt(db, event)
+        entry = _handle_receipt(db, event)
+        trading.apply_receipt(db, org, event.payload, actor)
+        return entry
+    if kind == "delivery.confirmed":
+        trading.apply_delivery(db, org, event.payload, actor)
+        return None
     raise Skip("unsupported event type")
 
 
@@ -381,7 +416,7 @@ def _process_one(db: Session, event: SyncEvent, result: Processed) -> None:
     event_id, organization_id = event.id, event.organization_id
     try:
         entry = handle(db, event)
-        event.status, event.journal_entry_id, event.processed_at, event.last_error = "posted", entry.id, _now(), None
+        event.status, event.journal_entry_id, event.processed_at, event.last_error = "posted", entry.id if entry is not None else None, _now(), None
         db.commit()  # the entry, its audit lines and the event's new status are one transaction
         result.posted += 1
         return

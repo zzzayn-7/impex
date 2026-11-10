@@ -106,3 +106,101 @@ export function parseReason(value: unknown): Parsed<string> {
 export function badParse(parsed: { ok: false; message: string; fieldErrors?: Fields }) {
   return fail(parsed.message, 400, parsed.fieldErrors ? { fieldErrors: parsed.fieldErrors } : {});
 }
+
+// ---- Capital, Investment and Profit & Loss ------------------------------------------------------------------------------------------------
+export const PERIOD_KEYS = ["1w", "1m", "1y"] as const;
+export const HISTORY_CATEGORIES = ["all", "investments", "profitable_sales", "loss_sales", "expenses_adjustments", "reconciliation"] as const;
+export const INVESTMENT_KINDS = ["contribution", "withdrawal"] as const;
+export const INVESTMENT_TYPES = ["cash", "asset", "inventory"] as const;
+
+const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : fallback);
+
+export type InvestmentBody = { kind: (typeof INVESTMENT_KINDS)[number]; entry_type: (typeof INVESTMENT_TYPES)[number]; amount: string; currency_code?: string; effective_date: string; description?: string; reference?: string; notes?: string };
+
+/** An owner contribution or withdrawal: only these fields are read; the amount is an exact decimal string (never a number). */
+export function parseInvestmentBody(body: Record<string, unknown>): Parsed<InvestmentBody> {
+  const fieldErrors: Fields = {};
+  const amount = checkMoney(body.amount, false);
+  const date = text(body.effectiveDate) ?? "";
+  const currencyRaw = text(body.currencyCode) ?? "";
+  const currency = currencyRaw ? checkCurrency(currencyRaw) : null;
+  const description = collapse(text(body.description) ?? "");
+  const reference = collapse(text(body.reference) ?? "");
+  const notes = collapse(text(body.notes) ?? "");
+  if (!amount) fieldErrors.amount = "Enter an amount above zero with at most 4 decimals.";
+  if (!checkDispatchDate(date)) fieldErrors.effectiveDate = "Enter a valid date.";
+  if (currencyRaw && !currency) fieldErrors.currencyCode = "Use a 3-letter currency code such as USD, EUR or PKR.";
+  if (description.length > 500) fieldErrors.description = "Use 500 characters or fewer.";
+  if (reference.length > 100) fieldErrors.reference = "Use 100 characters or fewer.";
+  if (notes.length > 500) fieldErrors.notes = "Use 500 characters or fewer.";
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, message: "Please correct the highlighted fields.", fieldErrors };
+  return {
+    ok: true,
+    value: {
+      kind: pick(body.kind, INVESTMENT_KINDS, "contribution"), entry_type: pick(body.entryType, INVESTMENT_TYPES, "cash"), amount: amount!, effective_date: date,
+      ...(currency ? { currency_code: currency } : {}), ...(description ? { description } : {}), ...(reference ? { reference } : {}), ...(notes ? { notes } : {}),
+    },
+  };
+}
+
+export type OpeningBody = { currency_code?: string; effective_date: string; assets: string; liabilities: string; notes?: string };
+
+export function parseOpeningBody(body: Record<string, unknown>): Parsed<OpeningBody> {
+  const fieldErrors: Fields = {};
+  const assets = checkMoney(body.assets === "" || body.assets === undefined ? "0" : body.assets, true);
+  const liabilities = checkMoney(body.liabilities === "" || body.liabilities === undefined ? "0" : body.liabilities, true);
+  const date = text(body.effectiveDate) ?? "";
+  const currencyRaw = text(body.currencyCode) ?? "";
+  const currency = currencyRaw ? checkCurrency(currencyRaw) : null;
+  const notes = collapse(text(body.notes) ?? "");
+  if (!assets) fieldErrors.assets = "Enter what the business owned, with at most 4 decimals.";
+  if (!liabilities) fieldErrors.liabilities = "Enter what the business owed, with at most 4 decimals.";
+  if (!checkDispatchDate(date)) fieldErrors.effectiveDate = "Enter a valid date.";
+  if (currencyRaw && !currency) fieldErrors.currencyCode = "Use a 3-letter currency code such as USD, EUR or PKR.";
+  if (notes.length > 500) fieldErrors.notes = "Use 500 characters or fewer.";
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, message: "Please correct the highlighted fields.", fieldErrors };
+  return { ok: true, value: { effective_date: date, assets: assets!, liabilities: liabilities!, ...(currency ? { currency_code: currency } : {}), ...(notes ? { notes } : {}) } };
+}
+
+export type CostBody = { product_id: string; quantity: string; unit_cost: string; currency_code?: string; effective_date: string; notes?: string };
+
+/** The cost of stock already held. The product's SKU and name are NOT read from the browser: the route looks the product up. */
+export function parseCostBody(body: Record<string, unknown>): Parsed<CostBody> {
+  const fieldErrors: Fields = {};
+  const product = checkUuid(body.productId);
+  const quantity = checkMoney(body.quantity, false);
+  const unitCost = checkMoney(body.unitCost, false);
+  const date = text(body.effectiveDate) ?? "";
+  const currencyRaw = text(body.currencyCode) ?? "";
+  const currency = currencyRaw ? checkCurrency(currencyRaw) : null;
+  const notes = collapse(text(body.notes) ?? "");
+  if (!product) fieldErrors.productId = "Choose a product.";
+  if (!quantity) fieldErrors.quantity = "Enter a quantity above zero with at most 4 decimals.";
+  if (!unitCost) fieldErrors.unitCost = "Enter the cost of ONE unit, above zero, with at most 4 decimals.";
+  if (!checkDispatchDate(date)) fieldErrors.effectiveDate = "Enter a valid date.";
+  if (currencyRaw && !currency) fieldErrors.currencyCode = "Use a 3-letter currency code such as USD, EUR or PKR.";
+  if (notes.length > 300) fieldErrors.notes = "Use 300 characters or fewer.";
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, message: "Please correct the highlighted fields.", fieldErrors };
+  return { ok: true, value: { product_id: product!, quantity: quantity!, unit_cost: unitCost!, effective_date: date, ...(currency ? { currency_code: currency } : {}), ...(notes ? { notes } : {}) } };
+}
+
+export type ReconcileBody = { unit_price?: string; unit_cost?: string; currency_code?: string; reason: string };
+
+export function parseReconcileBody(body: Record<string, unknown>): Parsed<ReconcileBody> {
+  const fieldErrors: Fields = {};
+  const priceRaw = text(body.unitPrice) ?? "";
+  const costRaw = text(body.unitCost) ?? "";
+  const price = priceRaw ? checkMoney(priceRaw, false) : null;
+  const cost = costRaw ? checkMoney(costRaw, true) : null;
+  const currencyRaw = text(body.currencyCode) ?? "";
+  const currency = currencyRaw ? checkCurrency(currencyRaw) : null;
+  const reason = collapse(text(body.reason) ?? "");
+  if (priceRaw && !price) fieldErrors.unitPrice = "Enter the price of ONE unit, above zero, with at most 4 decimals.";
+  if (costRaw && !cost) fieldErrors.unitCost = "Enter the cost of ONE unit with at most 4 decimals.";
+  if (!priceRaw && !costRaw) fieldErrors.unitCost = "Enter the price or the cost to reconcile this delivery.";
+  if (currencyRaw && !currency) fieldErrors.currencyCode = "Use a 3-letter currency code such as USD, EUR or PKR.";
+  if (reason.length < 3) fieldErrors.reason = "Say how you know it (at least 3 characters).";
+  else if (reason.length > 200) fieldErrors.reason = "Use 200 characters or fewer.";
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, message: "Please correct the highlighted fields.", fieldErrors };
+  return { ok: true, value: { reason, ...(price ? { unit_price: price } : {}), ...(cost ? { unit_cost: cost } : {}), ...(currency ? { currency_code: currency } : {}) } };
+}

@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import FinanceLayout from "@/app/finance/layout";
-import OverviewPage from "@/app/finance/page";
+import OverviewPage from "@/app/finance/accounting/page"; // the accounting overview (the Finance page itself is tested in finance-page.test.tsx)
 import AccountsPage from "@/app/finance/accounts/page";
 import JournalPage from "@/app/finance/journal/page";
 import NewEntryPage from "@/app/finance/journal/new/page";
@@ -149,13 +149,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the Finance layout", () => {
-  it("is inside the protected frame, with Finance in the navigation and the four pages as tabs", async () => {
+  it("is inside the protected frame, with ONE Finance entry in the navigation and a way back on the accounting pages", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await FinanceLayout({ children: "CONTENT" }));
     expect(html).toContain('href="/finance"');
-    for (const tab of ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]) expect(html).toContain(tab);
-    expect(html).toContain('aria-current="page"'); // (the mocked path is /finance/journal)
+    for (const gone of ["Financial Overview", "Journal Entries", 'href="/finance/accounts"', 'href="/finance/expenses"', 'href="/finance/journal"']) expect(html, gone).not.toContain(gone); // not in the sidebar any more
+    expect(html).toContain("← Finance"); // (the mocked path is /finance/journal: the way back to the Finance page)
+    expect(html).toContain('aria-current="page"');
     expect(html).toContain("CONTENT");
     expect(html).toContain("Sign out");
   });

@@ -31,7 +31,9 @@ def test_only_a_confirmed_receipt_is_an_event_valued_at_what_was_accepted(client
     assert event["key"] == f"receipt-confirmed:{draft['id']}" and event["type"] == "receipt.confirmed"
     data = event["data"]
     assert (data["receipt_number"], data["purchase_order_number"], data["currency_code"], data["supplier_name"]) == (draft["number"], order["number"], order["currency_code"], "Acme Supplies")
-    assert data["lines"] == [{"accepted_quantity": "8.0000", "unit_price": "2.0000"}]  # nothing accepted on the flour line: it is not in the event
+    (line,) = data["lines"]  # nothing accepted on the flour line: it is not in the event
+    assert (line["accepted_quantity"], line["unit_price"]) == ("8.0000", "2.0000")
+    assert line["product_id"] == str(shop["bolt"]) and line["sku"] == "BOLT-1" and line["name"] == "Steel bolt"  # the product the cost belongs to
 
 
 def test_the_order_alone_and_an_unconfirmed_posting_receipt_create_no_event(client, api, shop, two_orgs, inventory):

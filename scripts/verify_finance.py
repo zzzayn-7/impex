@@ -331,7 +331,9 @@ def main() -> int:
         s, html, loc = tpage("a1", "/")
         check("A's menu now has Finance and the dashboard lists the module", s == 200 and 'href="/finance"' in html and 'data-module="finance"' in html, s)
         s, html, loc = tpage("a1", "/finance")
-        check("the Financial Overview opens", s == 200 and "Financial Overview" in html and "data-module-denied" not in html, (s, loc))
+        check("the Finance page opens (Capital, Investment and Profit & Loss)", s == 200 and "Finance Overview" in html and "Track your business capital" in html and "data-module-denied" not in html, (s, loc))
+        s, html, loc = tpage("a1", "/finance/accounting")
+        check("the accounting overview (the former Financial Overview) is still served at /finance/accounting", s == 200 and "Financial Overview" in html and "data-module-denied" not in html, (s, loc))
         check("B and C still have Finance off", tapi("b1", "GET", "/api/finance/accounts")[0] == 403 and tapi("c1", "GET", "/api/finance/accounts")[0] in (403,))
         check("the Organization Service lists A among the organizations that can use Finance (service secret only)",
               org_ids["a"] in [o["organization_id"] for o in jbody(call(ORG, "GET", "/internal/v1/modules/finance/organizations", headers={"X-Internal-Key": module_key})[1])]
@@ -427,7 +429,7 @@ def main() -> int:
         s, body = create_entry([ln(cash, "40"), ln(revenue, "", "40")], True, currencyCode="eur")
         check("an entry keeps its own currency (EUR) although the organization's default is USD", s == 201 and body["entry"]["currency_code"] == "EUR" and e1["currency_code"] == "USD", (s, body))
         check("an unknown currency is refused, never defaulted", create_entry([ln(cash, "1"), ln(revenue, "", "1")], True, currencyCode="ZZZ")[0] == 400)
-        overview_html = tpage("a1", "/finance")[1]
+        overview_html = tpage("a1", "/finance/accounting")[1]
         check("the overview shows USD and EUR on separate rows, no combined total", "EUR" in overview_html and "USD" in overview_html and "Position by currency" in overview_html)
         fin_overview = fin("a1", "GET", "/overview")[1]
         totals = {t["currency_code"]: t for t in fin_overview.get("totals_by_currency", [])}
@@ -501,7 +503,7 @@ def main() -> int:
               count_entries("a") > posted_before and fin_entry_for("a", f"invoice-issued:{inv7['id']}") is not None and snapshots == (sales_snapshot("a"), purchasing_snapshot("a"), inventory_snapshot("a")) and all(snapshots))
         check("the earlier invoices and payments are all still there (issued, payment recorded and reversed, voided, draft)", psql("impex_sales", f"SELECT count(*) FROM invoices WHERE organization_id = '{org_ids['a']}'") == "5"
               and psql("impex_sales", f"SELECT count(*) FROM invoice_payments WHERE organization_id = '{org_ids['a']}'") == "2")
-        s, html, _ = tpage("a1", "/finance")
+        s, html, _ = tpage("a1", "/finance/accounting")
         check("the overview shows the synchronisation as healthy, with counts", s == 200 and "Up to date" in html and "posted" in html and "Automatic postings from Sales and Purchasing" in html, s)
 
         print("\n== 8. goods received into stock (a purchase order alone posts nothing)")
@@ -550,7 +552,7 @@ def main() -> int:
                 check("with Sales down, a synchronisation still answers and the overview reports Sales as unreachable (with the reason, no secret)",
                       s == 200 and src.get("sales", {}).get("status") == "error" and src["sales"].get("consecutive_failures", 0) >= 1 and "Sales Service" in (src["sales"].get("last_error") or "") and bool(module_key) and module_key not in json.dumps(ov), src.get("sales"))
                 check("the Purchasing side keeps working meanwhile", src.get("purchasing", {}).get("status") == "ok", src.get("purchasing"))
-                html = tpage("a1", "/finance")[1]
+                html = tpage("a1", "/finance/accounting")[1]
                 check("the overview page tells the administrator, and that nothing is lost", "Not reachable" in html and "Nothing is lost" in html)
             finally:
                 docker("compose", "start", "sales-service")
@@ -640,7 +642,9 @@ def main() -> int:
         orgs = created.get("organizations")
         left = {}
         finance_tables = (("expenses", "organization_id"), ("journal_lines", "organization_id"), ("journal_entries", "organization_id"), ("accounts", "organization_id"), ("finance_events", "organization_id"),
-                          ("finance_requests", "organization_id"), ("finance_counters", "organization_id"), ("sync_events", "organization_id"), ("sync_sources", "organization_id"), ("finance_organizations", "organization_id"))
+                          ("finance_requests", "organization_id"), ("finance_counters", "organization_id"), ("sync_events", "organization_id"), ("sync_sources", "organization_id"), ("finance_organizations", "organization_id"),
+                          ("trade_adjustments", "organization_id"), ("trade_deliveries", "organization_id"), ("cost_entries", "organization_id"), ("inventory_costs", "organization_id"),
+                          ("capital_records", "organization_id"), ("opening_positions", "organization_id"))
         if orgs:
             # The Finance worker is live: while an organization still exists and has Finance on, it would set Finance up for it again. So the organizations
             # go FIRST (the worker then stops listing them), and the Finance rows are removed afterwards - twice, a worker cycle apart, to catch a cycle in flight.

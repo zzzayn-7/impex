@@ -9,6 +9,7 @@ from app.api import router as finance_router
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
 from app.sync import Worker, create_feed_client
+from app.trading_api import router as trading_router
 from app.worker_api import router as worker_router
 
 log = logging.getLogger("impex.finance")
@@ -47,6 +48,7 @@ app = FastAPI(
 # Every route depends on `finance_tenant`: an ACTIVE organization administrator, setup completed, Finance enabled by the Super Admin.
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.
 app.include_router(finance_router)
+app.include_router(trading_router)  # Capital, Investment and Profit & Loss (the Finance page)
 app.include_router(worker_router)  # one synchronisation pass for a scheduler (shared secret; not in the OpenAPI document)
 
 PREFIX = "/api/v1/finance"

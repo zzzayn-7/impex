@@ -448,11 +448,9 @@ describe("SyncPanel", () => {
 });
 
 describe("FinanceTabs", () => {
-  it("lists the four Finance pages and marks the current one", () => {
-    render(<FinanceTabs />);
+  it("is only the way back to the Finance page on an accounting page (the old tabs are gone from the sidebar and the page)", () => {
+    render(<FinanceTabs />);  // (the mocked path is /finance/expenses)
     const nav = screen.getByRole("navigation", { name: "Finance" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Financial Overview", "Accounts", "Expenses", "Journal Entries"]);
-    expect(within(nav).getByRole("link", { name: "Expenses" }).getAttribute("aria-current")).toBe("page");
-    expect(within(nav).getByRole("link", { name: "Financial Overview" }).getAttribute("aria-current")).toBeNull();
+    expect(within(nav).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([["← Finance", "/finance"]]);
   });
 });

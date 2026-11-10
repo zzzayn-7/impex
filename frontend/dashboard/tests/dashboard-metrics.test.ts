@@ -113,7 +113,7 @@ describe("the sidebar lists exactly what the organization can use", () => {
       ["purchasing", ["Suppliers", "Purchase Orders"]],
       ["sales", ["Clients", "Create Order", "Delivery Lists"]],
       ["invoices", ["Suppliers Invoice", "Sales Invoice"]],
-      ["finance", ["Financial Overview", "Accounts", "Expenses", "Journal Entries"]],
+      ["finance", ["Finance"]], // ONE destination: the accounting pages are linked from it, not listed
       ["workspace", ["Help & Support", "Settings"]],
     ]);
   });

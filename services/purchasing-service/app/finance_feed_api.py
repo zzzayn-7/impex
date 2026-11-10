@@ -13,7 +13,8 @@ Purchasing needs no outbox, no callback and no change to any record: this module
 
   receipt.confirmed   key receipt-confirmed:<receipt id>   time = confirmed_at
     data: receipt id + number, purchase order id + number, supplier name, currency, confirmed_at,
-          lines: [{"accepted_quantity", "unit_price"}]   (only lines with something accepted; exact decimal strings)
+          lines: [{"accepted_quantity", "unit_price", "product_id", "sku", "name"}]   (only lines with something accepted; exact decimal strings; the product
+          fields are what lets Finance keep the ACTUAL cost of each product)
 
 `key` is a stable, unique identifier of the fact; the consumer posts each fact exactly once however often the feed is read. Events with
 time >= `since` are returned oldest first, so the consumer re-reads a short overlap and relies on the key to ignore what it already has.
@@ -56,12 +57,13 @@ def finance_feed(organization_id: uuid.UUID, since: Optional[datetime] = None, l
     events = []
     for receipt, order, supplier in receipts[:limit]:
         lines = db.execute(
-            select(GoodsReceiptLine.accepted_quantity, PurchaseOrderLine.unit_price)
+            select(GoodsReceiptLine.accepted_quantity, PurchaseOrderLine.unit_price, GoodsReceiptLine.product_id, GoodsReceiptLine.product_sku, GoodsReceiptLine.product_name)
             .join(PurchaseOrderLine, (PurchaseOrderLine.id == GoodsReceiptLine.purchase_order_line_id) & (PurchaseOrderLine.organization_id == GoodsReceiptLine.organization_id))
             .where(GoodsReceiptLine.organization_id == organization_id, GoodsReceiptLine.goods_receipt_id == receipt.id, GoodsReceiptLine.accepted_quantity > 0)
             .order_by(GoodsReceiptLine.created_at, GoodsReceiptLine.id)
         ).all()
         events.append({"key": f"receipt-confirmed:{receipt.id}", "type": "receipt.confirmed", "time": receipt.confirmed_at.isoformat(), "data": {
             "receipt_id": str(receipt.id), "receipt_number": receipt.number, "purchase_order_id": str(order.id), "purchase_order_number": order.number, "supplier_name": supplier.name,
-            "currency_code": order.currency_code, "confirmed_at": receipt.confirmed_at.isoformat(), "lines": [{"accepted_quantity": format(q, "f"), "unit_price": format(p, "f")} for q, p in lines]}})
+            "currency_code": order.currency_code, "confirmed_at": receipt.confirmed_at.isoformat(), "lines": [
+                {"accepted_quantity": format(q, "f"), "unit_price": format(p, "f"), "product_id": str(pid), "sku": sku, "name": name} for q, p, pid, sku, name in lines]}})
     return {"events": events, "has_more": len(receipts) > limit}

@@ -190,7 +190,7 @@ class FinanceEvent(Base):
 
     __tablename__ = "finance_events"
     __table_args__ = (
-        CheckConstraint("entity_type IN ('account', 'journal_entry', 'expense', 'sync')", name="entity_type_valid"),
+        CheckConstraint("entity_type IN ('account', 'journal_entry', 'expense', 'sync', 'capital_record', 'opening', 'delivery', 'cost_basis')", name="entity_type_valid"),
         CheckConstraint("source IN ('user', 'sync')", name="source_valid"),
         Index("ix_finance_events_organization_id_seq", "organization_id", "seq"),
         Index("ix_finance_events_organization_id_entity_id", "organization_id", "entity_id"),
@@ -275,4 +275,223 @@ class SyncEvent(Base):
     last_error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+
+
+# =====================================================================================================
+# Capital, Investment and Profit & Loss (Step 24). ADDITIVE: nothing above is changed, the ledger stays exactly as it was.
+#
+# These tables are the Finance Service's reporting model. Each row records ONE fact exactly once (a unique `source_key` / Idempotency-Key), in ONE
+# currency; nothing here converts between currencies. See docs/finance.md ("Capital, Investment and Profit & Loss").
+# =====================================================================================================
+COST_ENTRY_KINDS = ("basis", "receipt", "delivery")
+DELIVERY_STATUSES = ("recognized", "needs_cost", "needs_price")
+ADJUSTMENT_KINDS = ("invoice_adjustment", "invoice_adjustment_reversal")
+CAPITAL_KINDS = ("contribution", "withdrawal")
+CAPITAL_TYPES = ("cash", "asset", "inventory")
+POSITION_STATUSES = ("active", "reversed")
+
+
+class InventoryCost(Base):
+    """What the stock of ONE product, in ONE currency, cost: the running quantity and VALUE (weighted-average method). A delivery takes its cost from here
+    (value x quantity delivered / quantity on hand), so the cost of goods sold is the ACTUAL historical cost - never the product's editable cost-price field."""
+
+    __tablename__ = "inventory_costs"
+    __table_args__ = (
+        CheckConstraint("quantity >= 0 AND total_value >= 0", name="not_negative"),
+        CheckConstraint("quantity > 0 OR total_value = 0", name="empty_stock_has_no_value"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    currency_code: Mapped[str] = mapped_column(String(3), primary_key=True)
+    product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=0, server_default=text("0"))
+    total_value: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=0, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW, onupdate=NOW)
+
+
+class CostEntry(TenantOwnedMixin, Base):
+    """Every movement of a product's cost, append-only: a goods receipt adds quantity at its actual price ('receipt'), the person adds the cost of stock
+    already held ('basis'), a delivery takes quantity out at the weighted-average cost ('delivery'). The history of how every cost came to be."""
+
+    __tablename__ = "cost_entries"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "source_key", name="uq_cost_entries_organization_id_source_key"),
+        Index("ix_cost_entries_organization_id_effective_at", "organization_id", "effective_at"),
+        Index("ix_cost_entries_organization_id_product_id", "organization_id", "product_id"),
+        CheckConstraint(_in("kind", COST_ENTRY_KINDS), name="kind_valid"),
+        CheckConstraint("quantity > 0 AND value >= 0", name="amounts_valid"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    value: Mapped[Decimal] = mapped_column(MONEY, nullable=False)  # what this quantity cost (receipt / basis) or the cost of what was delivered (delivery)
+    quantity_after: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    value_after: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # the goods receipt / dispatch number
+    counterparty: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)  # the supplier / the client
+    detail: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)  # the purchase order / sales order number, or a note
+    link_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)  # the goods receipt id in Purchasing
+    created_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)  # NULL: recorded by the synchronisation
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+
+
+class TradeDelivery(TenantOwnedMixin, Base):
+    """Goods that LEFT stock for a client, recognised ONCE at delivery confirmation: revenue = delivered quantity x the unit price agreed on the order,
+    cost of goods sold = the actual (weighted-average) cost of that quantity. Neither an invoice nor a payment ever creates one: they cannot recognise it twice.
+
+    status: 'recognized' (price and cost both known: it counts in profit), 'needs_price' (an older order with no recorded price) or 'needs_cost' (no reliable
+    cost yet). Nothing is guessed: such a delivery is listed for reconciliation and counts in no profit figure until a person (or a later goods receipt) settles it."""
+
+    __tablename__ = "trade_deliveries"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "source_key", name="uq_trade_deliveries_organization_id_source_key"),
+        UniqueConstraint("organization_id", "id", name="uq_trade_deliveries_organization_id_id"),
+        Index("ix_trade_deliveries_organization_id_delivered_at", "organization_id", "delivered_at"),
+        Index("ix_trade_deliveries_organization_id_product_id", "organization_id", "product_id"),
+        Index("ix_trade_deliveries_organization_id_status", "organization_id", "status"),
+        CheckConstraint(_in("status", DELIVERY_STATUSES), name="status_valid"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("currency_code IS NULL OR currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+        CheckConstraint("(unit_price IS NULL) = (revenue IS NULL)", name="price_and_revenue_together"),
+        CheckConstraint("unit_price IS NULL OR (unit_price >= 0 AND currency_code IS NOT NULL)", name="price_has_currency"),
+        CheckConstraint("cogs IS NULL OR cogs >= 0", name="cogs_not_negative"),
+        CheckConstraint(
+            "(status = 'needs_price' AND revenue IS NULL) OR (status = 'needs_cost' AND revenue IS NOT NULL AND cogs IS NULL) OR (status = 'recognized' AND revenue IS NOT NULL AND cogs IS NOT NULL)",
+            name="status_matches_amounts",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)  # 'delivery-line:<dispatch line id>'
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    dispatch_line_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    dispatch_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    order_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    currency_code: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    unit_price: Mapped[Optional[Decimal]] = mapped_column(MONEY, nullable=True)
+    revenue: Mapped[Optional[Decimal]] = mapped_column(MONEY, nullable=True)
+    cogs: Mapped[Optional[Decimal]] = mapped_column(MONEY, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)  # why it needs reconciliation / how it was settled
+    delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reconciled_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW, onupdate=NOW)
+
+
+class TradeAdjustment(TenantOwnedMixin, Base):
+    """A change to revenue that was already recognised at delivery - today only: an issued invoice that billed LESS or MORE than the delivery's agreed value (a
+    discount, a different price). Signed (negative reduces profit), append-only; voiding the invoice adds the opposite row. Never a second revenue."""
+
+    __tablename__ = "trade_adjustments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "source_key", name="uq_trade_adjustments_organization_id_source_key"),
+        UniqueConstraint("organization_id", "id", name="uq_trade_adjustments_organization_id_id"),
+        Index("ix_trade_adjustments_organization_id_effective_at", "organization_id", "effective_at"),
+        CheckConstraint(_in("kind", ADJUSTMENT_KINDS), name="kind_valid"),
+        CheckConstraint("amount <> 0", name="amount_not_zero"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+        CheckConstraint("(kind = 'invoice_adjustment_reversal') = (reverses_id IS NOT NULL)", name="reversal_names_its_original"),
+        ForeignKeyConstraint(["organization_id", "reverses_id"], ["trade_adjustments.organization_id", "trade_adjustments.id"], name="fk_trade_adjustments_organization_id_trade_adjustments"),
+        ForeignKeyConstraint(["organization_id", "delivery_id"], ["trade_deliveries.organization_id", "trade_deliveries.id"], name="fk_trade_adjustments_organization_id_trade_deliveries"),
+        Index("ix_trade_adjustments_organization_id_invoice_id", "organization_id", "invoice_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    delivery_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # the recognised delivery whose revenue this adjusts
+    reference: Mapped[str] = mapped_column(String(32), nullable=False)  # the invoice number
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reverses_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+
+
+class CapitalRecord(TenantOwnedMixin, Base):
+    """An owner contribution or withdrawal - the ONLY things that change the owner's invested capital. Append-only: a mistake is corrected by a REVERSAL row that
+    names it. `effect` is the signed change to invested capital (contribution +, withdrawal -, a reversal the opposite of what it reverses)."""
+
+    __tablename__ = "capital_records"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_capital_records_organization_id_id"),
+        UniqueConstraint("organization_id", "reverses_id", name="uq_capital_records_organization_id_reverses_id"),
+        Index("ix_capital_records_organization_id_effective_date", "organization_id", "effective_date"),
+        CheckConstraint(_in("kind", CAPITAL_KINDS), name="kind_valid"),
+        CheckConstraint(_in("entry_type", CAPITAL_TYPES), name="entry_type_valid"),
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+        CheckConstraint("(reverses_id IS NOT NULL) = is_reversal", name="reversal_names_its_original"),
+        CheckConstraint("effect = amount * (CASE WHEN kind = 'contribution' THEN 1 ELSE -1 END) * (CASE WHEN is_reversal THEN -1 ELSE 1 END)", name="effect_matches"),
+        CheckConstraint("NOT is_reversal OR (reversal_reason IS NOT NULL AND length(btrim(reversal_reason)) > 0)", name="reversal_has_reason"),
+        ForeignKeyConstraint(["organization_id", "reverses_id"], ["capital_records.organization_id", "capital_records.id"], name="fk_capital_records_organization_id_capital_records"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    entry_type: Mapped[str] = mapped_column(String(10), nullable=False)  # cash | asset (an asset given in kind) | inventory (stock given in kind)
+    is_reversal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    reverses_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    effect: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    reversal_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+
+
+class OpeningPosition(TenantOwnedMixin, Base):
+    """The financial position an organization starts from, per currency: what it owned and what it owed on `effective_date`. The owner's equity is the difference.
+    One active position per currency; a correction reverses it (kept, with who and why) and records a new one."""
+
+    __tablename__ = "opening_positions"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_opening_positions_organization_id_id"),
+        Index("uq_opening_positions_organization_id_active_currency", "organization_id", "currency_code", unique=True, postgresql_where=text("status = 'active'")),
+        CheckConstraint(_in("status", POSITION_STATUSES), name="status_valid"),
+        CheckConstraint("assets >= 0 AND liabilities >= 0", name="amounts_not_negative"),
+        CheckConstraint("equity = assets - liabilities", name="equity_matches"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+        CheckConstraint("status = 'active' OR (reversed_at IS NOT NULL AND reversal_reason IS NOT NULL)", name="reversed_has_reason"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    assets: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    liabilities: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    equity: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active", server_default=text("'active'"))
+    reversed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reversed_by_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    reversal_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)

@@ -14,7 +14,7 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Stock and product details, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock (the receipts are listed under Invoices, as Suppliers Invoice).",
   sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
-  finance: "Chart of accounts, double-entry journal and expenses, with entries posted from your issued invoices, payments and goods receipts.",
+  finance: "Your capital, owner investment and profit & loss, built from owner contributions, goods receipts, deliveries and expenses; the accounting records behind them stay available.",
 };
 
 // The modules a module cannot work without (the Organization Service enforces the same rule when the Super Admin changes them).
@@ -40,11 +40,10 @@ export const MODULE_PAGES: Record<ModuleKey, ModulePage[]> = {
     { label: "Delivery Lists", href: "/delivery-lists" },
     { label: "Sales Invoice", href: "/invoices/sales", group: "invoices" },
   ],
+  // ONE destination: capital, investment and profit & loss. The accounting pages (accounts, expenses, journal entries) are still served, with all their records and
+  // APIs, but are no longer listed in the sidebar: the Finance page links to them.
   finance: [
-    { label: "Financial Overview", href: "/finance" },
-    { label: "Accounts", href: "/finance/accounts" },
-    { label: "Expenses", href: "/finance/expenses" },
-    { label: "Journal Entries", href: "/finance/journal" },
+    { label: "Finance", href: "/finance" },
   ],
 };
 

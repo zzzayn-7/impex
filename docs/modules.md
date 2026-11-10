@@ -10,7 +10,7 @@ Purchasing and Sales services each enforce it themselves, on every request. A me
 | **Inventory** | Products, Stock, Scanning, Movements | nothing |
 | **Purchasing** | Suppliers, Purchase Orders, Goods Receipts | Inventory |
 | **Sales** | Clients, Delivery Lists, Dispatches, Invoices and Payments | Inventory |
-| **Finance** | Financial Overview, Accounts, Expenses, Journal Entries (see [`finance.md`](finance.md)) | nothing (off by default; only the Super Admin enables it) |
+| **Finance** | Finance: capital, investment and profit & loss (the accounting pages are linked from it; see [`finance.md`](finance.md)) | nothing (off by default; only the Super Admin enables it) |
 
 **Always on, never a module:** Authentication, Organization Management, Onboarding and Help & Support. Nothing here can switch them off.
 

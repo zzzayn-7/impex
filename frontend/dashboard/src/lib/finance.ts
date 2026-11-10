@@ -221,6 +221,7 @@ export type FinanceFailure = { status: number; message: string; code?: string; f
 
 const FIELD_NAMES: Record<string, string> = {
   entry_date: "entryDate", currency_code: "currencyCode", account_id: "accountId", expense_date: "expenseDate", account_type: "accountType", is_active: "isActive",
+  effective_date: "effectiveDate", entry_type: "entryType", unit_price: "unitPrice", unit_cost: "unitCost", product_id: "productId",
 };
 
 export function describeFinanceFailure(result: FinanceResult, notFound = "Not found."): FinanceFailure {
@@ -258,4 +259,68 @@ export function describeFinanceFailure(result: FinanceResult, notFound = "Not fo
 export function financeFailureResponse(result: FinanceResult, notFound?: string) {
   const { status, message, ...rest } = describeFinanceFailure(result, notFound);
   return NextResponse.json({ error: message, ...rest }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+// ---- Capital, Investment and Profit & Loss (the Finance page) -------------------------------------------------------------
+export type PeriodKey = "1w" | "1m" | "1y";
+export type ChangeFigure = { absolute: string; percent: string | null; state: "value" | "new"; direction: "up" | "down" | "flat" };
+export type CurrencyBlock = {
+  currency_code: string;
+  capital: { ready: boolean; basis: "opening_position" | "owner_records" | null; closing?: string; opening?: string; change?: ChangeFigure };
+  investment: { closing: string; opening: string; change: ChangeFigure; contributions: string; withdrawals: string; net_invested: string; inventory_purchases: string };
+  profit_loss: { net: string; gross_profit: string; revenue: string; cost_of_goods_sold: string; expenses: string; adjustments: string; needs_cost_count: number; needs_cost_revenue: string };
+  trend: { at: string; capital: string }[];
+};
+export type FinanceSummary = {
+  period: { key: PeriodKey; label: string; start: string; end: string; timezone: string };
+  default_currency: string;
+  currencies: string[];
+  combined_available: boolean;
+  combined_note: string | null;
+  setup_required: boolean;
+  setup_message: string | null;
+  has_opening_position: boolean;
+  reconciliation: { needs_cost: number; needs_price: number; total: number };
+  by_currency: Record<string, CurrencyBlock>;
+};
+export type HistoryCategory = "all" | "investments" | "profitable_sales" | "loss_sales" | "expenses_adjustments" | "reconciliation";
+export type HistoryRow = {
+  id: string;
+  kind: string;
+  category: HistoryCategory;
+  occurred_at: string;
+  description: string;
+  counterparty: string | null;
+  transaction: string;
+  amount: string | null;
+  profit_loss: string | null;
+  currency_code: string | null;
+  status: string | null;
+  reference: string | null;
+  notes: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  affects_capital: boolean;
+  can_reverse: boolean;
+  delivery_id: string | null;
+  direction: "in" | "out" | "exchange" | null;
+};
+export type FinanceHistory = { items: HistoryRow[]; total: number; limit: number; offset: number; period: { key: PeriodKey; label: string; start: string; end: string } };
+export type ReconciliationItem = {
+  delivery_id: string; status: "needs_cost" | "needs_price"; delivered_at: string; dispatch_number: string; order_number: string | null; client_name: string; product_id: string; sku: string; name: string;
+  quantity: string; currency_code: string | null; unit_price: string | null; revenue: string | null; note: string | null;
+};
+
+export async function getFinanceSummary(token: string, period: PeriodKey): Promise<{ ok: true; summary: FinanceSummary } | Failure> {
+  const result = await financeRequest("GET", `/api/v1/finance/summary?period=${period}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, summary: result.data };
+}
+
+export async function getFinanceHistory(token: string, period: PeriodKey, category: HistoryCategory = "all", currency = "", offset = 0): Promise<{ ok: true; history: FinanceHistory } | Failure> {
+  const params = new URLSearchParams({ period, category, limit: String(PAGE_SIZE), offset: String(offset) });
+  if (currency) params.set("currency", currency);
+  const result = await financeRequest("GET", `/api/v1/finance/history?${params}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, history: result.data };
 }

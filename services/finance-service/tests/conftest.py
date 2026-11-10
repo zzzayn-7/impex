@@ -100,7 +100,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with empty tables and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE finance_events, finance_requests, finance_counters, sync_events, sync_sources, expenses, journal_lines, journal_entries, accounts, finance_organizations"))
+        conn.execute(text("TRUNCATE TABLE finance_events, finance_requests, finance_counters, sync_events, sync_sources, expenses, journal_lines, journal_entries, accounts, finance_organizations, trade_adjustments, trade_deliveries, cost_entries, inventory_costs, capital_records, opening_positions"))
 
     def override_get_db():
         db = session_factory()
@@ -124,9 +124,9 @@ class Directory:
         self.auth_mode = None  # "down" | "500"
         self.org_mode = None
 
-    def add_organization(self, name: str, active: bool = True, modules=None, currency: str = "USD") -> str:
+    def add_organization(self, name: str, active: bool = True, modules=None, currency: str = "USD", timezone: str = "UTC") -> str:
         org_id = str(uuid.uuid4())
-        self.organizations[org_id] = {"name": name, "is_active": active, "setup_status": "completed", "modules": list(modules) if modules is not None else ["finance"], "default_currency": currency}
+        self.organizations[org_id] = {"name": name, "is_active": active, "setup_status": "completed", "modules": list(modules) if modules is not None else ["finance"], "default_currency": currency, "timezone": timezone}
         return org_id
 
     def add_user(self, token: str, role: str, organization_id=None, **overrides) -> dict:
@@ -159,7 +159,7 @@ class Directory:
         organization = self.organizations.get(str(user.get("organization_id")))
         if user["role"] != "organization-admin" or organization is None or not organization["is_active"]:
             return httpx.Response(403, json={"detail": "Your organization is not active."})
-        body = {"id": user["organization_id"], "name": organization["name"], "is_active": True, "default_currency": organization["default_currency"]}
+        body = {"id": user["organization_id"], "name": organization["name"], "is_active": True, "default_currency": organization["default_currency"], "timezone": organization["timezone"]}
         if self.org_mode != "no-setup-status":
             body["setup_status"] = organization.get("setup_status", "completed")
         if self.org_mode != "no-modules":
@@ -214,12 +214,14 @@ class FakeFeeds:
         self.events.setdefault((source, str(org)), []).append(event)
         return event
 
-    def invoice_issued(self, org, *, invoice_id=None, number="INV-000001", currency="USD", subtotal="100.00", discount="0", tax="0", total=None, when=None, client="Acme Ltd"):
+    def invoice_issued(self, org, *, invoice_id=None, number="INV-000001", currency="USD", subtotal="100.00", discount="0", tax="0", total=None, when=None, client="Acme Ltd", allocations=None):
         invoice_id = invoice_id or str(uuid.uuid4())
         when = when or now()
         if total is None:
             total = str(Decimal(subtotal) - Decimal(discount) + Decimal(tax))
         data = {"invoice_id": invoice_id, "number": number, "currency_code": currency, "issued_at": when.isoformat(), "subtotal": subtotal, "discount_total": discount, "tax_total": tax, "total": total, "client_name": client}
+        if allocations is not None:
+            data["allocations"] = allocations
         return self.add("sales", org, f"invoice-issued:{invoice_id}", "invoice.issued", when, data)
 
     def invoice_voided(self, org, issued, *, when=None):
@@ -238,16 +240,31 @@ class FakeFeeds:
             return self.add("sales", org, f"payment-reversed:{payment_id}", "payment.reversed", when, data)
         return self.add("sales", org, f"payment-recorded:{payment_id}", "payment.recorded", when, data)
 
-    def receipt(self, org, *, lines=(("10", "2.50"),), currency="USD", when=None, number="GR-000001", receipt_id=None):
+    def receipt(self, org, *, lines=(("10", "2.50"),), currency="USD", when=None, number="GR-000001", receipt_id=None, product=None):
+        """`product` (a dict from `product()`) names the product of every line, as the feed does now; without it the lines carry only quantity and price (an older event)."""
         receipt_id = receipt_id or str(uuid.uuid4())
         when = when or now()
+        extra = {"product_id": product["id"], "sku": product["sku"], "name": product["name"]} if product else {}
         data = {"receipt_id": receipt_id, "receipt_number": number, "purchase_order_id": str(uuid.uuid4()), "purchase_order_number": "PO-000001", "supplier_name": "Acme Supplies",
-                "currency_code": currency, "confirmed_at": when.isoformat(), "lines": [{"accepted_quantity": q, "unit_price": p} for q, p in lines]}
+                "currency_code": currency, "confirmed_at": when.isoformat(), "lines": [{"accepted_quantity": q, "unit_price": p, **extra} for q, p in lines]}
         return self.add("purchasing", org, f"receipt-confirmed:{receipt_id}", "receipt.confirmed", when, data)
+
+    def delivery(self, org, *, lines, currency="USD", client="Acme Ltd", order="SO-000001", when=None, dispatch_id=None, number="DS-000001"):
+        """`lines` are (product dict, quantity, unit price or None). Returns the event; each line gets a `dispatch_line_id` (read them from event["data"]["lines"])."""
+        dispatch_id = dispatch_id or str(uuid.uuid4())
+        when = when or now()
+        data = {"dispatch_id": dispatch_id, "dispatch_number": number, "client_name": client, "delivery_list_id": str(uuid.uuid4()), "delivery_list_number": "DL-000001",
+                "order_id": str(uuid.uuid4()) if order else None, "order_number": order, "currency_code": currency, "confirmed_at": when.isoformat(),
+                "lines": [{"dispatch_line_id": str(uuid.uuid4()), "product_id": p["id"], "sku": p["sku"], "name": p["name"], "unit": "pcs", "quantity": q, "unit_price": price} for p, q, price in lines]}
+        return self.add("sales", org, f"delivery-confirmed:{dispatch_id}", "delivery.confirmed", when, data)
 
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def product(sku="LAP-1", name="Laptop") -> dict:
+    return {"id": str(uuid.uuid4()), "sku": sku, "name": name}
 
 
 @pytest.fixture

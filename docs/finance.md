@@ -108,7 +108,8 @@ organization.
 
 ## The portal (Organization Portal → Finance)
 
-* **Financial Overview** (`/finance`): counts, the position per currency (assets, liabilities, equity, revenue, expenses — each currency on its own),
+* **Finance** (`/finance`): the ONE sidebar entry since Step 24 - see "Capital, Investment and Profit & Loss" below.
+* **Accounting overview** (`/finance/accounting`, the former Financial Overview, no longer in the sidebar): counts, the position per currency (assets, liabilities, equity, revenue, expenses — each currency on its own),
   the latest entries, the health of the synchronisation with "Sync now", and failed events with Retry.
 * **Accounts** (`/finance/accounts`): the chart grouped by type; add, rename, deactivate/reactivate, delete (when unused); system accounts marked.
 * **Expenses** (`/finance/expenses`, `/new`, `/<id>`, `/<id>/edit`): list with filters, record, post, reverse, delete drafts.
@@ -166,3 +167,59 @@ the module gate.
 * No supplier invoices or payables from purchase orders (no recognition policy exists for them); receipts are recorded as *goods received not invoiced*.
 * No back-fill of history from before Finance was switched on; use an opening-balance entry.
 * Posting dates are the event's date in UTC; there are no accounting periods or period locks yet.
+
+
+# Capital, Investment and Profit & Loss (Step 24)
+
+The Finance sidebar now has **one** entry, **Finance** (`/finance`, "Finance Overview"): three cards - **Capital**, **Investment**, **Profit & Loss** - one capital trend line and a
+filterable transaction history, for a rolling period chosen top-right: **1 Week | 1 Month | 1 Year** (measured in the organization's time zone). The accounting pages (accounting
+overview, Accounts, Expenses, Journal Entries) are **not deleted**: all their records, routes and APIs are unchanged and linked from the bottom of the Finance page. Expense entry
+stays available as "Add Expense" on the page (and at `/finance/expenses`). Nothing in the ledger, the accounts, the audit trail or the synchronisation inbox was changed or removed.
+
+## The rules (one place)
+
+| | |
+|---|---|
+| **Investment** (total) | opening-position equity + owner contributions - owner withdrawals, as of a moment. |
+| **Capital** | Investment + the net profit accumulated since the opening position (or since the beginning when there is none). **Contribute 5,000,000, buy 50 laptops at 100,000 with it: capital stays 5,000,000** (a purchase changes the *form* of the money). A delivery at a profit raises it by exactly that profit; customer payments never do. It is not the bank balance. |
+| **Inventory purchase** | an investment *activity*: confirmed goods-receipt quantity x the purchase order's actual unit price, linked to the receipt, purchase order and supplier. Never an owner contribution, never counted as new capital. Recognised once per receipt however often the receipt is read again. The supplier-credit liability is the existing "Goods Received Not Invoiced" posting. |
+| **Profit & Loss** | gross trading profit of **deliveries** + invoice adjustments - expenses, during the period. Recognised **once, when a dispatch is confirmed** (goods left) - not when an order is saved, reserved or prepared, not when an invoice is issued, not when it is paid. |
+| **Revenue** | delivered quantity x the unit price agreed on the sales order line. Partial deliveries recognise only the quantity delivered. |
+| **Cost of goods sold** | the **actual weighted-average cost** of the delivered quantity from the goods receipts (and from stock cost recorded by hand), taken from a running quantity/value per product and currency. **Never** the product's editable cost-price field. |
+| **Gross vs net** | net = gross + adjustments - expenses. Posted expenses (and their reversals) count; drafts do not. |
+| **Adjustments** | an issued invoice that bills more or less than delivery recognised (e.g. a discount) records the difference per delivered line as an auditable, signed, append-only adjustment; voiding the invoice adds the opposite row. An invoice never recognises revenue a second time. |
+| **Change** | `((closing - opening) / abs(opening)) x 100`, shown with an arrow, a colour and the absolute change. A zero baseline shows **New** (plus the absolute change); both zero is 0.0%; never infinity. Capital and Investment compare the balance at the end of the period with the balance at its start. |
+| **Currencies** | everything is computed per currency; currencies are never added or converted (no rates exist). With several currencies each is shown on its own and a combined figure is declared unavailable. |
+
+## Nothing is guessed
+
+* **Capital needs a basis.** It is shown only when an opening position or an owner contribution exists in that currency; otherwise the card says **Setup required** (no starting balance is
+  invented). *Opening position*: what the business owned and owed on a date, per currency (equity = assets - liabilities); one active per currency; corrected by reversing (kept, with who and why).
+  Profit dated before the opening date is part of the opening equity and is not added again.
+* **A delivery with no recorded price** (an order made before prices were recorded) is `needs_price`; **with no reliable cost** (stock bought before Finance began, a cost in another currency) is
+  `needs_cost`. Neither counts in any profit figure, a cost is never assumed to be zero, and they are listed ("Needs reconciliation") until settled: by recording the cost of the stock you hold
+  ("Stock cost" - settles every waiting delivery of that product), by a later goods receipt, or by hand with a reason (final and audited).
+* Stock cost entered by hand (opening stock, stock given in kind) is a cost basis only: it changes no capital figure (its value is already in the opening position or the in-kind contribution).
+
+## How it works
+
+* **Sales feed** (`GET /internal/v1/organizations/{id}/finance-feed?include_deliveries=true`) adds `delivery.confirmed` (one per confirmed dispatch: lines with quantity and the agreed unit price, order currency,
+  null when none was recorded) and `allocations` on `invoice.issued`. **Purchasing feed**: receipt lines now carry product id, SKU and name. Older consumers see exactly what they saw before.
+* The existing exactly-once synchronisation feeds the new model **in the same transaction** as the journal entry: receipt -> stock cost; delivery -> recognition (no journal entry); invoice -> adjustments only.
+* **Tables** (migration `0002`, additive): `inventory_costs`, `cost_entries`, `trade_deliveries`, `trade_adjustments`, `capital_records`, `opening_positions`. Every fact has a unique key, so a retry,
+  an overlapping read or a restart can never record it twice. The database refuses UPDATE/DELETE of recorded facts (a delivery's price/cost can be settled once, then is final).
+* **API** (`/api/v1/finance`): `GET /summary?period=1w|1m|1y`, `GET /history?period&category&currency&limit&offset`, `GET /reconciliation`, `GET /deliveries/{id}`, `POST /deliveries/{id}/reconcile`,
+  `POST /investments` (+ `/{id}/reverse`), `GET|POST /opening-positions` (+ `/{id}/reverse`), `GET|POST /inventory-costs`. Creates take an `Idempotency-Key`; only organization administrators of an organization with
+  Finance enabled can use them, and the tenant comes only from the session.
+
+## Existing organizations and history (reconciliation)
+
+* The migration only adds tables. Existing accounts, journal entries, expenses and events are untouched. It resets the Sales *reading position* once so confirmed dispatches since Finance was switched on are read
+  (each stored under its unique key; everything already received is ignored). Such deliveries have no recorded cost, so they appear as **needs cost reconciliation**.
+* Goods receipts recorded before this release carry no product in the stored event, so their cost cannot be attributed: record the cost of that stock ("Stock cost") or set an opening position.
+* Events before Finance was switched on are still not back-filled; bring that history in with the opening position and stock cost.
+
+## Known limits
+
+Costing is weighted-average in the order facts are recognised (a late-arriving receipt re-costs only deliveries made after it). One active opening position per currency. A manual reconciliation is final. Returns,
+supplier invoices and bank balances are out of scope. The Super Admin's module description still uses the older wording.

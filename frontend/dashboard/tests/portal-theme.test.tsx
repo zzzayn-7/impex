@@ -100,7 +100,7 @@ describe("the current page is highlighted, nested routes included", () => {
   const groups = navGroups(["inventory", "purchasing", "sales", "finance"]);
   it.each([
     ["/", "/"], ["/invoices/sales", "/invoices/sales"], ["/invoices/suppliers", "/invoices/suppliers"], ["/stock/abc", "/stock"],
-    ["/finance", "/finance"], ["/finance/accounts", "/finance/accounts"], ["/finance/journal/new", "/finance/journal"], ["/finance/expenses/9", "/finance/expenses"],
+    ["/finance", "/finance"], ["/finance/accounts", "/finance"], ["/finance/journal/new", "/finance"], ["/finance/expenses/9", "/finance"], ["/finance/accounting", "/finance"], // the accounting pages are no menu entries: Finance stays marked
     ["/purchase-orders/7", "/purchase-orders"], ["/support/new", "/support"], ["/settings", "/settings"],
   ])("%s -> %s", (path, expected) => {
     expect(activeHref(path, groups, "/fallback")).toBe(expected);
@@ -118,7 +118,7 @@ describe("the current page is highlighted, nested routes included", () => {
     nav.path = "/finance/journal/abc";
     render(<PortalShell admin={admin} current="finance" organization={org(["finance"])}>x</PortalShell>);
     const marked = screen.getAllByRole("link").filter((l) => l.getAttribute("aria-current") === "page");
-    expect(marked.map((l) => l.getAttribute("href"))).toEqual(["/finance/journal"]);
+    expect(marked.map((l) => l.getAttribute("href"))).toEqual(["/finance"]);
   });
   it("only enabled modules are listed, and Settings and Help & Support always are", () => {
     render(<PortalShell admin={admin} current="settings" organization={org([])}>x</PortalShell>);

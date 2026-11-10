@@ -111,7 +111,7 @@ describe("the Settings page shows what the services hold, in five sections", () 
     expect(html).not.toContain("Planned: not available yet"); // Finance is released now: a module like the others
     expect(html).toMatch(/data-module="finance" data-enabled="false"/);
     expect(html).toContain('href="/support/new?module=finance"'); // Request access: only opens a ticket, it enables nothing
-    expect(html).toContain("Includes: Financial Overview, Accounts, Expenses, Journal Entries");
+    expect(html).toContain("Includes: Finance");
     expect(html).toContain("Purchasing and Sales both need Inventory");
     for (const permanent of ["Authentication", "Organization Management", "Onboarding", "Help &amp; Support"]) expect(html).toContain(permanent);
     expect(html).not.toMatch(/<input[^>]*type="checkbox"/); // nothing here can switch a module on

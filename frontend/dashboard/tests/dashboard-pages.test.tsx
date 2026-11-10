@@ -269,7 +269,8 @@ describe("modules that are not enabled", () => {
   it("the sidebar lists every page of each enabled module and the permanent ones", async () => {
     const html = await render();
     for (const href of ["/", "/stock", "/movements", "/suppliers", "/purchase-orders", "/invoices/suppliers", "/clients", "/delivery-lists", "/invoices/sales",
-      "/finance", "/finance/accounts", "/finance/expenses", "/finance/journal", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
+      "/finance", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
+    for (const gone of ["/finance/accounts", "/finance/expenses", "/finance/journal"]) expect(html, gone).not.toContain(`href="${gone}"`); // Finance is ONE entry; the accounting pages are linked from its page
     for (const group of ["main", "inventory", "purchasing", "sales", "invoices", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
   });
 

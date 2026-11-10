@@ -25,6 +25,7 @@ import re
 import uuid
 from dataclasses import dataclass, replace
 from typing import Optional, Tuple
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import Depends, HTTPException, Request, status
@@ -101,6 +102,7 @@ class TenantContext:
     full_name: str
     organization_name: str = ""  # the organization's name, once the Organization Service has confirmed it
     default_currency: str = "USD"  # the organization's default currency (Settings): only a DEFAULT for new entries, never applied to a recorded one
+    timezone: str = "UTC"  # the organization's time zone (Settings): the 1 Week / 1 Month / 1 Year periods and "today" are measured in it
     # The Auth Service's record that this administrator confirmed their own profile during first-time setup.
     profile_confirmed: bool = False
 
@@ -156,7 +158,12 @@ async def _verified_tenant(tenant: TenantContext, credentials: Optional[HTTPAuth
     ):
         raise inactive
     code = str(organization.get("default_currency") or "")
-    tenant = replace(tenant, organization_name=str(organization.get("name") or ""), default_currency=code if re.fullmatch(r"[A-Z]{3}", code) else "USD")
+    zone = str(organization.get("timezone") or "UTC")
+    try:
+        ZoneInfo(zone)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        zone = "UTC"
+    tenant = replace(tenant, organization_name=str(organization.get("name") or ""), default_currency=code if re.fullmatch(r"[A-Z]{3}", code) else "USD", timezone=zone)
     if not _setup_done(organization, tenant):
         raise setup_required()  # before the module: an organization that is not set up has nothing to be entitled to yet
     return tenant, _module_allowed(organization, unavailable)
