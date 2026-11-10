@@ -39,7 +39,7 @@ describe("validateProduct", () => {
     ["hsCode", { hsCode: "12" }], ["hsCode", { hsCode: "abcd" }], ["hsCode", { hsCode: "8517.1" }],
     ["costPrice", { costPrice: "" }], ["costPrice", { costPrice: "-1" }], ["costPrice", { costPrice: "1.23456" }],
     ["costPrice", { costPrice: "12345678901" }], ["costPrice", { costPrice: "1e3" }], ["costPrice", { costPrice: "12,5" }],
-    ["costPrice", { costPrice: "abc" }], ["costPrice", { costPrice: ".5" }], ["sellingPrice", { sellingPrice: "" }],
+    ["costPrice", { costPrice: "abc" }], ["costPrice", { costPrice: ".5" }],
     ["currencyCode", { currencyCode: "US" }], ["currencyCode", { currencyCode: "USDX" }], ["currencyCode", { currencyCode: "12A" }],
   ])("rejects an invalid %s: %j", (field, change) => {
     expect(Object.keys(validateProduct({ ...valid, ...change }))).toContain(field);
@@ -64,7 +64,7 @@ describe("validateProduct", () => {
 describe("request bodies", () => {
   it("creating omits blank optional fields, keeps money as the exact strings, and has no organization field", () => {
     const body = toCreateBody({ ...valid, costPrice: "0.1", sellingPrice: "0.2" });
-    expect(body).toEqual({ sku: "WID-001", name: "Widget", unit: "pcs", cost_price: "0.1", selling_price: "0.2", currency_code: "USD" });
+    expect(body).toEqual({ sku: "WID-001", name: "Widget", unit: "pcs", cost_price: "0.1", selling_price: "0.2", currency_code: "USD" }); // a selling price is still forwarded when one is sent (compatibility)
     expect(Object.keys(body).join()).not.toMatch(/org|tenant/i);
     expect(toCreateBody({ ...valid, description: "d", hsCode: "8517" })).toMatchObject({ description: "d", hs_code: "8517" });
   });
@@ -95,5 +95,26 @@ describe("money display (strings only, never floating point)", () => {
       selling_price: "1234567.8912", currency_code: "USD", is_active: true, created_at: "", updated_at: "",
     };
     expect(productToForm(product)).toEqual({ ...EMPTY_PRODUCT, sku: "A-1", name: "A", unit: "pcs", costPrice: "0.10", sellingPrice: "1234567.8912" });
+  });
+});
+
+describe("the selling price is retired: a product needs none", () => {
+  const { sellingPrice: _unused, ...withoutPrice } = valid;
+  it("is valid without one, and an empty one is not an error", () => {
+    expect(validateProduct({ ...withoutPrice, sellingPrice: "" })).toEqual({});
+    expect(Object.keys(validateProduct(valid))).toEqual([]);
+  });
+  it("a price that IS sent is still checked", () => {
+    expect(Object.keys(validateProduct({ ...valid, sellingPrice: "1.23456" }))).toContain("sellingPrice");
+    expect(Object.keys(validateProduct({ ...valid, sellingPrice: "-1" }))).toContain("sellingPrice");
+  });
+  it("the create body leaves it out when it is empty", () => {
+    expect(toCreateBody({ ...valid, sellingPrice: "" })).not.toHaveProperty("selling_price");
+  });
+  it("an older product's price fills the form, and a product without one gives an empty field", () => {
+    const base = { id: "i", sku: "A", name: "A", description: null, unit: "pcs", hs_code: null, cost_price: "1.0000", currency_code: "USD", is_active: true, created_at: "", updated_at: "" };
+    expect(productToForm({ ...base, selling_price: "2.5000" }).sellingPrice).toBe("2.50");
+    expect(productToForm({ ...base, selling_price: null }).sellingPrice).toBe("");
+    expect(productToForm(base).sellingPrice).toBe("");
   });
 });

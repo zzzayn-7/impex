@@ -148,7 +148,7 @@ def main() -> int:
         return body
 
     def make_order(key, client_id, lines, idem=None):
-        status, text, _ = portal(key, "POST", "/api/sales/orders", {"clientId": client_id, "lines": [{"productId": p, "quantity": q} for p, q in lines]}, {"Idempotency-Key": idem or f"so-{uuid.uuid4()}"})
+        status, text, _ = portal(key, "POST", "/api/sales/orders", {"clientId": client_id, "currencyCode": "USD", "lines": [{"productId": p, "quantity": q, "unitPrice": "9.99"} for p, q in lines]}, {"Idempotency-Key": idem or f"so-{uuid.uuid4()}"})
         body = jbody(text)
         order = body.get("order") or {}
         created.add("orders", order.get("id"))
@@ -159,7 +159,7 @@ def main() -> int:
         return jbody(portal(key, "GET", f"/api/sales/orders/{order_id}")[1]).get("order", {})
 
     def edit_order(key, order, lines):
-        status, text, _ = portal(key, "PATCH", f"/api/sales/orders/{order['id']}", {"version": order["version"], "lines": [{"productId": p, "quantity": q} for p, q in lines]})
+        status, text, _ = portal(key, "PATCH", f"/api/sales/orders/{order['id']}", {"version": order["version"], "lines": [{"productId": p, "quantity": q, "unitPrice": "9.99"} for p, q in lines]})  # (a line keeps its saved price; a new one must be given its agreed price)
         return status, jbody(text)
 
     def order_action(key, order_id, action):

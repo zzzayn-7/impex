@@ -179,7 +179,7 @@ def main() -> int:
 
         s, text, _, _ = portal("a", "POST", "/api/sales/clients", {"name": "IV Client Ltd"})
         client = jbody(text).get("client", {})
-        s, text, _, _ = portal("a", "POST", "/api/sales/orders", {"clientId": client["id"], "lines": [{"productId": widget["id"], "quantity": "100"}]}, {"Idempotency-Key": f"iv-{uuid.uuid4()}"})
+        s, text, _, _ = portal("a", "POST", "/api/sales/orders", {"clientId": client["id"], "currencyCode": "USD", "lines": [{"productId": widget["id"], "quantity": "100", "unitPrice": "6.00"}]}, {"Idempotency-Key": f"iv-{uuid.uuid4()}"})
         order = jbody(text).get("order", {})
         list_id = (order.get("delivery_list") or {}).get("id")
         dl = jbody(portal("a", "GET", f"/api/sales/delivery-lists/{list_id}")[1]).get("list", {})

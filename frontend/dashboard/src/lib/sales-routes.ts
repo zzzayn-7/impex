@@ -125,11 +125,11 @@ export function parseInvoiceLines(value: unknown): { ok: true; lines: InvoiceLin
 // ---- sales orders (Step 23) -------------------------------------------------------------------------------------------------
 /** The order lines as sent by the browser: only a product id and an exact quantity string are read. Name, SKU, unit and stock come from the
  *  Inventory Service; the organization, the numbers and the reservation are decided by the Sales Service. */
-export function parseOrderLines(value: unknown): { ok: true; lines: { product_id: string; quantity: string }[] } | { ok: false; message: string } {
+export function parseOrderLines(value: unknown, prices: "required" | "optional" | "none" = "required"): { ok: true; lines: { product_id: string; quantity: string; unit_price?: string }[] } | { ok: false; message: string } {
   if (!Array.isArray(value) || value.length === 0) return { ok: false, message: "Add at least one product." };
   if (value.length > 200) return { ok: false, message: "An order can have at most 200 products." };
   const seen = new Set<string>();
-  const lines: { product_id: string; quantity: string }[] = [];
+  const lines: { product_id: string; quantity: string; unit_price?: string }[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return { ok: false, message: "Invalid order line." };
     const line = entry as Record<string, unknown>;
@@ -139,7 +139,17 @@ export function parseOrderLines(value: unknown): { ok: true; lines: { product_id
     seen.add(productId);
     const quantity = checkQuantity(line.quantity);
     if (!quantity.ok) return { ok: false, message: quantity.message };
-    lines.push({ product_id: productId, quantity: quantity.value });
+    // The agreed price of ONE unit, exact (never a number): required for a new order, optional when editing (a line keeps its saved price), absent for an
+    // order made before prices were recorded. An empty price is never read as zero; zero must be typed.
+    let unitPrice: string | undefined;
+    if (line.unitPrice !== undefined && line.unitPrice !== null && prices !== "none") {
+      const price = checkMoney(line.unitPrice, true);
+      if (price === null) return { ok: false, message: "Enter a valid price for every product: a number, not negative, with at most 4 decimals." };
+      unitPrice = price;
+    } else if (prices === "required") {
+      return { ok: false, message: "Enter the price per piece for every product." };
+    }
+    lines.push({ product_id: productId, quantity: quantity.value, ...(unitPrice !== undefined ? { unit_price: unitPrice } : {}) });
   }
   return { ok: true, lines };
 }

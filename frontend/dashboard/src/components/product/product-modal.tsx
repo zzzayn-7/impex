@@ -162,7 +162,6 @@ export default function ProductModal({ productId, onClose, onChanged, startEditi
                   <Item label="Product name" wide>{product.name}</Item>
                   <Item label="Description" wide>{product.description || <span className="text-ix-muted">—</span>}</Item>
                   <Item label="Cost price" mono>{formatMoney(product.cost_price, product.currency_code)}</Item>
-                  <Item label="Selling price" mono>{formatMoney(product.selling_price, product.currency_code)}</Item>
                   <Item label="HS code" mono>{product.hs_code || <span className="text-ix-muted">—</span>}</Item>
                   <Item label="Status">{product.is_active ? "Active" : "Archived"}</Item>
                 </dl>

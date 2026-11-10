@@ -1,18 +1,17 @@
 """Generate Invoice from a dispatched sales order: one click on the Delivery Lists card makes a DRAFT invoice and saves it.
 
 What goes on the invoice (nothing is invented):
-  * the CLIENT, and the CONFIRMED dispatch lines of the order's delivery list: product, SKU, name, unit and the dispatched quantity are the
-    dispatch's own (never typed, never from the caller);
-  * the unit price is the product's CURRENT selling price in the catalog (the same price the order's "Cost" on the Delivery Lists card shows),
-    read from the Inventory Service with the caller's own token; the invoice currency is the products' currency. If a product has no price or the
-    products use different currencies, NOTHING is made: no price is guessed and no currency is converted - the message says what to fix, and the
-    invoice can still be made by hand on the Sales Invoice page;
-  * discount and tax are zero. Both can be set on the draft before it is issued.
+  * the CLIENT, and the CONFIRMED dispatch lines of the order's delivery list: product, SKU, name, unit and the dispatched quantity are the dispatch's own
+    (never typed, never from the caller);
+  * the unit price is the price AGREED with this client on the sales order (saved on the order line when the order was created) and the invoice currency is the
+    order's currency. The product catalog is never consulted: it has no selling price for a client. An order made before prices were recorded has no agreed
+    prices: NOTHING is made and the message says to enter the price by hand on the Sales Invoice page (no price is guessed, nothing is converted);
+  * discount and tax are zero. Both can be set on the draft before it is issued, and the draft's prices can still be edited under the invoice's own rules.
 
-It is only a DRAFT: no number is used and no stock, payment or Finance record is touched (see app/invoicing.py). Repeating the click never makes
-a second invoice for the same goods: while an invoice (a draft, or an issued one) already covers the order's dispatched goods, THAT invoice is
-returned. A voided invoice does not count, so voiding a mistaken one lets the order be invoiced again. The order row is locked for the whole
-operation, so two simultaneous clicks make one invoice.
+It is only a DRAFT: no number is used and no stock, payment or Finance record is touched (see app/invoicing.py). Repeating the click never makes a second
+invoice for the same goods: while an invoice (a draft, or an issued one) already covers the order's dispatched goods, THAT invoice is returned. A voided
+invoice does not count, so voiding a mistaken one lets the order be invoiced again. The order row is locked for the whole operation, so two simultaneous
+clicks make one invoice.
 """
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
@@ -24,7 +23,6 @@ from sqlalchemy.orm import Session
 
 from app import invoicing
 from app.auth import TenantContext
-from app.inventory import InventoryGateway, InventoryUnavailable
 from app.models import Invoice, InvoiceAllocation
 from app.orders import get_order_or_404
 from app.schemas import InvoiceCreate, InvoiceDetail, InvoiceLineInput
@@ -48,7 +46,7 @@ def _existing(db: Session, tenant: TenantContext, dispatch_line_ids: list) -> Op
     )
 
 
-def generate(db: Session, tenant: TenantContext, gateway: InventoryGateway, order_id: uuid.UUID) -> Tuple[InvoiceDetail, bool]:
+def generate(db: Session, tenant: TenantContext, order_id: uuid.UUID) -> Tuple[InvoiceDetail, bool]:
     """(the invoice, created): created is False when the order already had one and that one is returned."""
     order = get_order_or_404(db, tenant, order_id, lock=True)  # another organization's order is a 404; one generation at a time per order
 
@@ -68,34 +66,19 @@ def generate(db: Session, tenant: TenantContext, gateway: InventoryGateway, orde
         db.rollback()
         raise _refuse(status.HTTP_409_CONFLICT, "nothing_to_invoice", "Everything dispatched for this order is already invoiced.")
 
-    try:
-        prices = gateway.products({l.product_id for l in to_bill})
-    except InventoryUnavailable:
+    if order.currency_code is None or any(l.agreed_unit_price is None for l in to_bill):
         db.rollback()
-        raise _refuse(status.HTTP_503_SERVICE_UNAVAILABLE, "prices_unavailable", "The product prices could not be read just now, so the invoice was not made. Please try again in a moment.")
-    except HTTPException:
-        db.rollback()
-        raise
-
-    unpriced = sorted({l.product_name for l in to_bill if prices.get(l.product_id) is None or prices[l.product_id].selling_price is None or not prices[l.product_id].currency_code})
-    if unpriced:
-        db.rollback()
-        names = ", ".join(unpriced)
-        raise _refuse(status.HTTP_422_UNPROCESSABLE_ENTITY, "price_missing", f"No selling price is set for {names}. Set it in Stock, or create this invoice by hand on the Sales Invoice page.")
-    currencies = {prices[l.product_id].currency_code for l in to_bill}
-    if len(currencies) != 1:
-        db.rollback()
-        raise _refuse(status.HTTP_422_UNPROCESSABLE_ENTITY, "mixed_currencies", f"The products of this order are priced in different currencies ({', '.join(sorted(currencies))}), and nothing is converted. Create the invoice by hand on the Sales Invoice page.")
+        raise _refuse(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "prices_not_recorded",
+            f"{order.number} was made before agreed prices were recorded, so there is no price to put on the invoice. Create the invoice by hand on the Sales Invoice page and enter the price you agreed.",
+        )
 
     payload = InvoiceCreate(
         client_id=order.client_id,
-        currency_code=currencies.pop(),
+        currency_code=order.currency_code,
         notes=f"Generated from sales order {order.number} (delivery list {to_bill[0].delivery_list.number}).",
         lines=[
-            InvoiceLineInput(
-                dispatch_line_id=l.dispatch_line_id, quantity=l.remaining_quantity,
-                unit_price=prices[l.product_id].selling_price.quantize(PRICE, rounding=ROUND_HALF_UP),
-            )
+            InvoiceLineInput(dispatch_line_id=l.dispatch_line_id, quantity=l.remaining_quantity, unit_price=l.agreed_unit_price.quantize(PRICE, rounding=ROUND_HALF_UP))
             for l in to_bill
         ],
     )

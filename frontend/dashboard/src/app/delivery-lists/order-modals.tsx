@@ -7,7 +7,8 @@ import OrderLinesEditor from "@/components/sales/order-lines-editor";
 import { buttonClass } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/page";
-import { type OrderRow, orderLines, rowErrors } from "@/lib/order-form";
+import { type OrderRow, orderLines, orderTotal, priceErrors as rowPriceErrors, rowErrors } from "@/lib/order-form";
+import { formatMoney, plainDecimal } from "@/lib/product-validation";
 import type { OrderDetail, OrderLine } from "@/lib/sales";
 import { FULFILMENT_LABELS, ORDER_STATUS_LABELS, RESERVATION_LABELS, addDecimal, api, jsonBody, qty } from "@/lib/sales-browser";
 
@@ -78,13 +79,16 @@ function ListBody({ order }: { order: OrderDetail }) {
         <Fact label="Created">{stamp(order.created_at)}</Fact>
         <Fact label="Order status"><StatusBadge tone={orderTone(order.status)}>{ORDER_STATUS_LABELS[order.status]}</StatusBadge> <span className="ml-1 text-xs font-normal text-ix-muted">{fulfilment}</span></Fact>
         <Fact label="Reservation"><StatusBadge tone={order.reservation_status === "reserved" ? "success" : "neutral"}>{RESERVATION_LABELS[order.reservation_status]}</StatusBadge></Fact>
+        <Fact label="Order total">
+          {order.total_amount && order.currency_code ? <span data-testid="view-order-total">{formatMoney(order.total_amount, order.currency_code)}</span> : <span className="font-normal text-ix-muted" title="This order was made before agreed prices were recorded">Price not recorded</span>}
+        </Fact>
       </dl>
       {order.completed_at && <p className="text-xs text-ix-muted">Completed {stamp(order.completed_at)}{order.history_expires_at ? ` · shown in Delivered History until ${stamp(order.history_expires_at)}` : ""}.</p>}
 
       <section aria-label="Products and quantities">
         <h3 className="mb-2 text-sm font-semibold text-ix-text">Products and quantities</h3>
         <div className="ix-inset overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-left text-sm">
+          <table className={`w-full text-left text-sm ${order.currency_code && order.prices_recorded ? "min-w-[46rem]" : "min-w-[34rem]"}`}>
             <caption className="sr-only">Products on {order.number}</caption>
             <thead className="sticky top-0 bg-[rgb(var(--ix-field-rgb)/0.92)] text-[11px] uppercase tracking-wide text-ix-muted">
               <tr>
@@ -92,6 +96,8 @@ function ListBody({ order }: { order: OrderDetail }) {
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">Ordered</th>
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">Dispatched</th>
                 <th scope="col" className="px-3 py-2.5 text-right font-medium">Remaining</th>
+                {order.prices_recorded && order.currency_code && <th scope="col" className="px-3 py-2.5 text-right font-medium">Price per piece</th>}
+                {order.prices_recorded && order.currency_code && <th scope="col" className="px-3 py-2.5 text-right font-medium">Line total</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-ix-mist/10">
@@ -101,6 +107,8 @@ function ListBody({ order }: { order: OrderDetail }) {
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">{qty(l.ordered_quantity)} <span className="text-ix-muted">{l.unit}</span></td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">{qty(l.dispatched_quantity)}{l.pending_quantity !== "0.0000" && l.pending_quantity !== "0" && <span className="block text-[11px] text-amber-200">+{qty(l.pending_quantity)} being posted</span>}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-ix-text">{qty(l.remaining_quantity)}</td>
+                  {order.prices_recorded && order.currency_code && <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">{l.unit_price ? formatMoney(l.unit_price, order.currency_code) : "—"}</td>}
+                  {order.prices_recorded && order.currency_code && <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-ix-text">{l.line_total ? formatMoney(l.line_total, order.currency_code) : "—"}</td>}
                 </tr>
               ))}
             </tbody>
@@ -136,6 +144,8 @@ function rowsOf(order: OrderDetail): OrderRow[] {
       productId: l.product_id, sku: l.product_sku, name: l.product_name, unit: l.unit, fractions: l.unit_allows_fractions ?? false,
       quantity: qty(l.ordered_quantity).replace(/,/g, ""), onHand: l.stock?.total_quantity ?? "0", reserved: l.stock?.reserved_quantity ?? "0",
       available: free, max: addDecimal(l.ordered_quantity, free), min: l.dispatched_quantity === "0.0000" ? "0" : l.dispatched_quantity,
+      // the line's saved agreed price (frozen once any of it was dispatched); a product added in this dialog starts with none and MUST be given one
+      unitPrice: l.unit_price ? plainDecimal(l.unit_price) : "", priceLocked: l.dispatched_quantity !== "0.0000" && l.dispatched_quantity !== "0",
     };
   });
 }
@@ -149,6 +159,10 @@ export function EditOrderModal({ orderId, onClose, onSaved }: { orderId: string;
   const initial = useMemo(() => (order ? rowsOf(order) : null), [order]);
   const current = rows ?? initial;
   const errors = touched && current ? rowErrors(current) : {};
+  // An order made before prices were recorded has no currency: nothing about prices is shown or sent for it. Otherwise every line must have its agreed price.
+  const currency = order?.currency_code && order.prices_recorded !== false ? order.currency_code : null;
+  const priceProblems = touched && current && currency ? rowPriceErrors(current) : {};
+  const total = current && currency ? orderTotal(current) : null;
 
   async function save() {
     if (!order || !current || busy) return;
@@ -156,8 +170,9 @@ export function EditOrderModal({ orderId, onClose, onSaved }: { orderId: string;
     setProblem(null);
     if (current.length === 0) return setProblem("An order needs at least one product.");
     if (Object.keys(rowErrors(current)).length > 0) return setProblem("Please correct the highlighted quantities.");
+    if (currency && Object.keys(rowPriceErrors(current)).length > 0) return setProblem("Enter a valid price per piece for every product (a product you added needs its agreed price).");
     setBusy(true);
-    const r = await api(`/api/sales/orders/${order.id}`, { method: "PATCH", ...jsonBody({ version: order.version, lines: orderLines(current) }) });
+    const r = await api(`/api/sales/orders/${order.id}`, { method: "PATCH", ...jsonBody({ version: order.version, lines: orderLines(current, currency !== null) }) });
     setBusy(false);
     if (!r.ok) return setProblem(r.error);
     if (r.data?.pending) return setProblem("The change was saved but the Inventory Service has not confirmed the new booking yet. Nothing is changed until it does; reopen the order to retry.");
@@ -188,7 +203,9 @@ export function EditOrderModal({ orderId, onClose, onSaved }: { orderId: string;
             Lowering a quantity releases the difference at once; raising it books the extra units only if they are available. Goods that were already dispatched are never changed:
             a line cannot go below what was dispatched, and cannot be removed.
           </p>
-          <OrderLinesEditor rows={current} onChange={setRows} errors={errors} disabled={busy || !order.can_edit} />
+          {currency && <p className="text-xs text-ix-muted">Prices are in {currency}. A line keeps the price agreed when the order was made (changing it is only possible before any of it is dispatched); a product you add needs its own agreed price.</p>}
+          <OrderLinesEditor rows={current} onChange={setRows} errors={errors} disabled={busy || !order.can_edit} currency={currency} priceErrors={priceProblems} />
+          {currency && <p className="text-right text-sm text-ix-muted">Order total <span className="ml-2 text-lg font-semibold tabular-nums text-ix-text" data-testid="edit-order-total">{total ? formatMoney(total, currency) : "—"}</span></p>}
         </div>
       )}
     </Modal>

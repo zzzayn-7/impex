@@ -115,6 +115,7 @@ class DeliveryListItem(TenantOwnedMixin, Base):
         ForeignKeyConstraint(["organization_id", "delivery_list_id"], ["delivery_lists.organization_id", "delivery_lists.id"],
                              name="fk_delivery_list_items_delivery_list_same_organization", ondelete="CASCADE"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_price IS NULL OR unit_price >= 0", name="unit_price_non_negative"),
         Index("ix_delivery_list_items_organization_id_delivery_list_id", "organization_id", "delivery_list_id"),
     )
 
@@ -125,6 +126,9 @@ class DeliveryListItem(TenantOwnedMixin, Base):
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    # The price of ONE unit agreed with THIS client for THIS order (a snapshot: a catalog change never touches it), in the order's currency. NULL for lines made
+    # before prices were recorded: their negotiated price is unknown and is never invented.
+    unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -498,6 +502,7 @@ class SalesOrder(TenantOwnedMixin, Base):
         CheckConstraint("status IN ('pending_reservation', 'active', 'delivered', 'closed', 'cancelled', 'failed')", name="status_valid"),
         CheckConstraint("reservation_status IN ('pending', 'reserved', 'updating', 'consumed', 'released', 'none')", name="reservation_status_valid"),
         CheckConstraint("origin IN ('order', 'list')", name="origin_valid"),
+        CheckConstraint("currency_code IS NULL OR currency_code ~ '^[A-Z]{3}$'", name="currency_code_format"),
         CheckConstraint("version >= 1", name="version_positive"),
         CheckConstraint(
             "(status = 'pending_reservation' AND reservation_status = 'pending') OR "
@@ -523,6 +528,8 @@ class SalesOrder(TenantOwnedMixin, Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending_reservation", server_default=text("'pending_reservation'"))
     reservation_status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending", server_default=text("'pending'"))
     origin: Mapped[str] = mapped_column(String(12), nullable=False, default="order", server_default=text("'order'"))  # 'order', or 'list' (an older list that was booked)
+    # The one currency of this order's agreed unit prices (never converted). NULL for orders made before prices were recorded.
+    currency_code: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
     pending_action: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
     pending_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

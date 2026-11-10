@@ -132,10 +132,10 @@ def reconcile_order(order_id: uuid.UUID, response: Response, tenant: TenantConte
 
 
 @router.post("/orders/{order_id}/invoice", response_model=GeneratedInvoice, status_code=status.HTTP_201_CREATED, tags=["Sales orders"])
-def generate_order_invoice(order_id: uuid.UUID, response: Response, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
-    """Generate Invoice for a dispatched order: a DRAFT invoice for its client from the goods that were dispatched, priced with the products' current
-    selling price (see app/order_invoice.py). Changes no stock. Repeating it returns the invoice the order already has (200) instead of a second one."""
-    invoice, created = order_invoice.generate(db, tenant, gateway, order_id)
+def generate_order_invoice(order_id: uuid.UUID, response: Response, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """Generate Invoice for a dispatched order: a DRAFT invoice for its client from the goods that were dispatched, priced with the prices AGREED on the order
+    (see app/order_invoice.py). Changes no stock. Repeating it returns the invoice the order already has (200) instead of a second one."""
+    invoice, created = order_invoice.generate(db, tenant, order_id)
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return GeneratedInvoice(invoice=invoice, created=created)
 

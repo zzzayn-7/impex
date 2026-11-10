@@ -628,6 +628,10 @@ class BillableLine(BaseModel):
     invoiced_quantity: Decimal
     in_drafts_quantity: Decimal
     remaining_quantity: Decimal
+    # The price of one unit AGREED on the sales order this goods came from (and the order's currency), so an invoice starts from it. None for older orders.
+    agreed_unit_price: Optional[Decimal] = None
+    agreed_currency_code: Optional[str] = None
+    order_number: Optional[str] = None
 
 
 class AccountBalance(BaseModel):
@@ -657,12 +661,25 @@ ReservationStatus = Literal["pending", "reserved", "updating", "consumed", "rele
 
 
 class OrderLineInput(BaseModel):
-    """One product and the quantity the client wants. Name, SKU, unit and stock come from the Inventory Service, never from the caller."""
+    """One product, the quantity the client wants and the price of ONE unit agreed with THIS client for this order. Name, SKU, unit and stock come from the
+    Inventory Service, never from the caller. The price is required (an empty price is never a zero: zero must be typed) and is exactly what the
+    administrator entered: the product catalog is not consulted."""
 
     model_config = ConfigDict(extra="forbid")
 
     product_id: uuid.UUID
     quantity: Quantity
+    unit_price: UnitPrice
+
+
+class OrderEditLineInput(BaseModel):
+    """A line of an edited order. The price may be left out for a line that already has one (it keeps it); a NEW line must come with its agreed price."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: uuid.UUID
+    quantity: Quantity
+    unit_price: Optional[UnitPrice] = None
 
 
 class OrderLines(BaseModel):
@@ -677,12 +694,22 @@ class OrderLines(BaseModel):
 
 
 class OrderCreate(OrderLines):
-    """Save a customer order: the client and the products required. Prices, discounts, tax and payment are not part of an order."""
+    """Save a customer order: the client, the products required and the unit price agreed with this client for each. The order has ONE currency (never converted).
+    Discounts, tax and payment are not part of an order."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     client_id: uuid.UUID
+    currency_code: str = Field(min_length=3, max_length=3)
     notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("currency_code")
+    @classmethod
+    def _currency(cls, value: str) -> str:
+        value = value.upper()
+        if not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("Use a 3-letter currency code such as USD, EUR or PKR")
+        return value
 
     @field_validator("notes")
     @classmethod
@@ -697,6 +724,7 @@ class OrderUpdate(OrderLines):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     version: int = Field(ge=1)
+    lines: List[OrderEditLineInput] = Field(min_length=1, max_length=200)  # type: ignore[assignment]
     notes: Optional[str] = Field(default=None, max_length=2000)
 
     @field_validator("notes")
@@ -732,6 +760,8 @@ class OrderLineResponse(BaseModel):
     dispatched_quantity: Decimal  # confirmed dispatches only
     pending_quantity: Decimal  # on a dispatch that is being posted right now
     remaining_quantity: Decimal  # ordered - dispatched - pending
+    unit_price: Optional[Decimal] = None  # the price of ONE unit agreed for this order; None for an order made before prices were recorded
+    line_total: Optional[Decimal] = None  # ordered quantity x unit_price, in the order's currency
     stock: Optional[OrderStock] = None
 
 
@@ -751,10 +781,12 @@ class OrderSummary(BaseModel):
     origin: Literal["order", "list"]
     version: int
     product_count: int
-    # What the order is worth at the catalog's CURRENT selling prices (ordered quantity x price, one currency). Only the order LIST works it out; it is
-    # None when the products use different currencies, a product is gone, or the Inventory Service could not be asked: never a guess.
+    # What the order is worth at the prices AGREED with this client (the sum of ordered quantity x saved unit price) and its one currency. These are the order's own
+    # saved snapshots: a change to the product catalog never changes them. None for an order made before prices were recorded: the negotiated prices are unknown
+    # and are never guessed from the catalog.
     total_amount: Optional[Decimal] = None
     currency_code: Optional[str] = None
+    prices_recorded: bool = False
     created_by_email: str
     created_at: datetime
     updated_at: datetime

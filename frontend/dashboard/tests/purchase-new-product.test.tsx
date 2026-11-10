@@ -69,7 +69,6 @@ const fillNewProduct = async (user: ReturnType<typeof userEvent.setup>, dialog: 
   await user.type(within(dialog).getByLabelText("Product name"), v.name);
   await user.type(within(dialog).getByLabelText("Unit of measurement"), v.unit);
   await user.type(within(dialog).getByLabelText("Cost price"), v.cost);
-  await user.type(within(dialog).getByLabelText("Selling price"), v.selling);
   if (v.barcode) await user.type(within(dialog).getByLabelText(/^Barcode/), v.barcode);
 };
 
@@ -116,7 +115,7 @@ describe("Add New Product inside the product selector", () => {
     expect(screen.getByRole("status").textContent).toContain("Added Washer M10 (WASHER-1).");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(writes().slice(0, 2)).toEqual([
-      { url: "/api/products", method: "POST", body: { sku: "WASHER-1", name: "Washer M10", description: "", unit: "pcs", hsCode: "", costPrice: "0.05", sellingPrice: "0.1", currencyCode: "EUR" } },
+      { url: "/api/products", method: "POST", body: { sku: "WASHER-1", name: "Washer M10", description: "", unit: "pcs", hsCode: "", costPrice: "0.05", currencyCode: "EUR" } },
       { url: `/api/products/${NEW}/identifiers`, method: "POST", body: { kind: "manufacturer", value: "5901234123457" } },
     ]);
 

@@ -66,29 +66,35 @@ const openDetails = async (user: ReturnType<typeof userEvent.setup>) => {
 };
 
 describe("the Stock page shows the product inventory", () => {
-  it("lists name, SKU, unit, reserved, available, cost, price, the Total (on hand x price) and status for each product; there is no On hand column", () => {
+  it("lists name, SKU, unit, reserved, available, cost, the Total (on hand x cost) and status for each product; there is no On hand and no selling Price column", () => {
     mount([row(), row({ product_id: P2, sku: "NUT-1", name: "Steel nut", is_active: false, total_quantity: "0.0000", reserved_quantity: "0.0000", available_quantity: "0.0000", cost_price: "0.1000", selling_price: "0.2000" })]);
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Unit", "Reserved", "Available", "Cost", "Price", "Total", "Status", "Actions"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Unit", "Reserved", "Available", "Cost", "Total", "Status", "Actions"]);
     const [bolt, nut] = within(table).getAllByRole("row").slice(1);
-    expect(within(bolt).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Steel boltBOLT-1", "pcs", "400", "100", "1.25 USD", "2.50 USD", "1,250.00 USD", "Active", ""]);
+    expect(within(bolt).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Steel boltBOLT-1", "pcs", "400", "100", "1.25 USD", "625.00 USD", "Active", ""]); // 500 on hand x 1.25 cost
     expect(within(nut).getByText("Archived")).toBeTruthy();
     expect(within(nut).getAllByRole("cell")[4].textContent).toBe("0.10 USD");
-    expect(within(nut).getAllByRole("cell")[6].textContent).toBe("0.00 USD"); // nothing on hand: nothing is worth anything
+    expect(within(nut).getAllByRole("cell")[5].textContent).toBe("0.00 USD"); // nothing on hand: nothing is worth anything
   });
 
-  it("the Total is the quantity on hand times the selling price, exactly, and a dash when there is no price", () => {
+  it("the Total is the quantity on hand times the COST, exactly, and a dash when there is no cost", () => {
     mount([
-      row({ product_id: P1, sku: "A", total_quantity: "500.0000", selling_price: "2.5000" }),
-      row({ product_id: P2, sku: "B", total_quantity: "0.3333", selling_price: "10.0000", currency_code: "EUR" }),
-      row({ product_id: "b0000000-0000-4000-8000-000000000003", sku: "C", total_quantity: "12.5000", selling_price: null, currency_code: null }),
-      row({ product_id: "b0000000-0000-4000-8000-000000000004", sku: "D", total_quantity: "1234567.0000", selling_price: "1999.9999" }),
+      row({ product_id: P1, sku: "A", total_quantity: "500.0000", cost_price: "2.5000" }),
+      row({ product_id: P2, sku: "B", total_quantity: "0.3333", cost_price: "10.0000", currency_code: "EUR" }),
+      row({ product_id: "b0000000-0000-4000-8000-000000000003", sku: "C", total_quantity: "12.5000", cost_price: null, currency_code: null }),
+      row({ product_id: "b0000000-0000-4000-8000-000000000004", sku: "D", total_quantity: "1234567.0000", cost_price: "1999.9999" }),
     ]);
     expect(screen.getByTestId("total-A").textContent).toBe("1,250.00 USD");
     expect(screen.getByTestId("total-B").textContent).toBe("3.333 EUR"); // 0.3333 x 10.00 = 3.333: never rounded away
     expect(screen.getByTestId("total-C").textContent).toBe("—");
     expect(screen.getByTestId("total-D").textContent).toBe("2,469,133,876.5433 USD"); // exact, no floating point
     expect(screen.queryByTestId("onhand-A")).toBeNull();
+  });
+
+  it("shows no selling price anywhere: not as a column and not in the row, even for an older product that still has one", () => {
+    mount([row({ selling_price: "2.5000" })]);
+    expect(screen.queryByRole("columnheader", { name: "Price" })).toBeNull();
+    expect(screen.getByRole("table").textContent).not.toContain("2.50 USD");
   });
 
   it("has exactly three actions at the top (Add Stock, Remove Stock, Opening Balance); no standalone Products link or category", () => {
@@ -109,7 +115,8 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
     expect(within(dialog).queryByLabelText(/quantity/i)).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await within(dialog).findByText("M10 hex bolt");
-    for (const text of ["BOLT-1", "pcs", "1.25 USD", "2.50 USD", "7318.15", "Active"]) expect(dialog.textContent, text).toContain(text);
+    for (const text of ["BOLT-1", "pcs", "1.25 USD", "7318.15", "Active"]) expect(dialog.textContent, text).toContain(text);
+    expect(dialog.textContent).not.toContain("Selling price"); // retired: no universal selling price
     expect(within(dialog).queryByLabelText(/quantity/i)).toBeNull();
     expect(within(dialog).queryByRole("button", { name: /add stock|remove stock|opening/i })).toBeNull();
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET /api/products/${P1}`]); // opening it changes nothing

@@ -165,7 +165,7 @@ def main() -> int:
         s, html = page("a", "/stock")
         check("the Stock page's menu has Stock and Movements and NO link to /products", s == 200 and 'href="/stock"' in html and 'href="/movements"' in html and 'href="/products"' not in html)
         check("the Stock page shows the existing product with its prices and its Edit and Delete actions",
-              "TF legacy hammer" in html and "12.50 USD" in html and "8.00 USD" in html and "Edit TF legacy hammer" in html and "Delete TF legacy hammer" in html and "Add Stock" in html and "New product" not in html)
+              "TF legacy hammer" in html and "8.00 USD" in html and "12.50 USD" not in html and "Edit TF legacy hammer" in html and "Delete TF legacy hammer" in html and "Add Stock" in html and "New product" not in html)
         s, html = page("a", "/products")
         check("the old /products page still answers (compatibility) and points to Stock", s == 200 and "TF legacy hammer" in html and "no longer in the menu" in html)
 
@@ -232,12 +232,12 @@ def main() -> int:
         print("\n== 5. Sales: 400 of 500 reserved, 100 available; a manual stock-out cannot touch the reserved units")
         s, text, _ = portal("a", "POST", "/api/sales/clients", {"name": "TF Client Ltd"})
         client = jbody(text).get("client", {})
-        s, text, _ = portal("a", "POST", "/api/sales/orders", {"clientId": client["id"], "lines": [{"productId": widget["id"], "quantity": "400"}]}, {"Idempotency-Key": f"tf-{uuid.uuid4()}"})
+        s, text, _ = portal("a", "POST", "/api/sales/orders", {"clientId": client["id"], "currencyCode": "USD", "lines": [{"productId": widget["id"], "quantity": "400", "unitPrice": "6.50"}]}, {"Idempotency-Key": f"tf-{uuid.uuid4()}"})
         order = jbody(text).get("order", {})
         check("the sales order for 400 is saved and the stock is reserved", s == 201 and figures(widget["id"]) == (Decimal("500"), Decimal("400"), Decimal("100")), (s, text, figures(widget["id"])))
         s, html = page("a", "/stock?q=tf-widget")
-        check("the Stock page shows 400 reserved, 100 available and a Total of 500 x 6.50 = 3,250.00 USD for the product",
-              s == 200 and 'data-testid="total-TF-WIDGET-1">3,250.00 USD<' in html and 'data-testid="reserved-TF-WIDGET-1">400<' in html and 'data-testid="available-TF-WIDGET-1">100<' in html, s)
+        check("the Stock page shows 400 reserved, 100 available and a Total of 500 x the 3.20 cost = 1,600.00 USD for the product",
+              s == 200 and 'data-testid="total-TF-WIDGET-1">1,600.00 USD<' in html and 'data-testid="reserved-TF-WIDGET-1">400<' in html and 'data-testid="available-TF-WIDGET-1">100<' in html, s)
         s, text, _ = call(INVENTORY, "GET", "/api/v1/inventory/stock?q=TF-WIDGET", headers=bearer(tokens["a"]))
         item = (jbody(text).get("items") or [{}])[0]
         check("the Inventory Service row carries the prices for the page (cost 3.20, price 6.50)", s == 200 and item.get("cost_price") == "3.2000" and item.get("selling_price") == "6.5000" and item.get("available_quantity") == "100.0000", (s, text))

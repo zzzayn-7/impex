@@ -35,10 +35,11 @@ const summary = (id: string, number: string, list: string, listNumber: string, e
 });
 const detail = (extra: Record<string, unknown> = {}) => ({
   ...summary(O1, "SO-000001", L1, "DL-000001"),
+  prices_recorded: true,
   lines: [
-    { id: "l1", product_id: WATER, product_sku: "WATER", product_name: "Water bottle", unit: "pcs", unit_allows_fractions: false, ordered_quantity: "400.0000", dispatched_quantity: "150.0000", pending_quantity: "0.0000", remaining_quantity: "250.0000",
+    { id: "l1", product_id: WATER, product_sku: "WATER", product_name: "Water bottle", unit: "pcs", unit_allows_fractions: false, ordered_quantity: "400.0000", dispatched_quantity: "150.0000", pending_quantity: "0.0000", remaining_quantity: "250.0000", unit_price: "3.0000", line_total: "1200.0000",
       stock: { total_quantity: "350.0000", reserved_quantity: "250.0000", available_quantity: "100.0000", reserved_for_order: "250.0000", product_active: true } },
-    { id: "l2", product_id: FLOUR, product_sku: "FLOUR", product_name: "Flour", unit: "kg", unit_allows_fractions: true, ordered_quantity: "5.0000", dispatched_quantity: "0.0000", pending_quantity: "0.0000", remaining_quantity: "5.0000",
+    { id: "l2", product_id: FLOUR, product_sku: "FLOUR", product_name: "Flour", unit: "kg", unit_allows_fractions: true, ordered_quantity: "5.0000", dispatched_quantity: "0.0000", pending_quantity: "0.0000", remaining_quantity: "5.0000", unit_price: "10.0000", line_total: "50.0000",
       stock: { total_quantity: "20.0000", reserved_quantity: "5.0000", available_quantity: "15.0000", reserved_for_order: "5.0000", product_active: true } },
   ],
   stock_status: "ok", dispatches: [], can_edit: true, edit_blocked_reason: null, can_cancel: false, can_cancel_remaining: true, cancel_blocked_reason: "Goods were already dispatched", can_dispatch: true, message: null, ...extra,
@@ -119,7 +120,9 @@ describe("the order form's rules (lib/order-form)", () => {
   it("collects the errors per product and sends only ids and exact quantity strings", () => {
     const rows = [row("5"), { ...rowFromProduct(PRODUCTS[1]), quantity: "30" }];
     expect(Object.keys(rowErrors(rows))).toEqual([FLOUR]);
-    expect(orderLines(rows)).toEqual([{ productId: WATER, quantity: "5" }, { productId: FLOUR, quantity: "30" }]);
+    expect(orderLines(rows)).toEqual([{ productId: WATER, quantity: "5" }, { productId: FLOUR, quantity: "30" }]); // no price typed yet: none is sent (never a zero)
+    expect(orderLines([{ ...rows[0], unitPrice: " 120000 " }])).toEqual([{ productId: WATER, quantity: "5", unitPrice: "120000" }]);
+    expect(orderLines([{ ...rows[0], unitPrice: "120000" }], false)).toEqual([{ productId: WATER, quantity: "5" }]); // an order without agreed prices sends none
   });
 
   it("keeps ONE idempotency key per intended order and makes a new one when the order changes", () => {
@@ -193,8 +196,7 @@ describe("Create Order", () => {
     expect(box.value).toBe("Acme Ltd");
     expect(calls.some((c) => c.url === "/api/sales/orders")).toBe(false);
     await user.type(box, "x");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    expect((await screen.findAllByRole("alert"))[0].textContent).toContain("Choose the client"); // "Acme Ltdx" is not a selected client
+    expect((screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement).disabled).toBe(true); // "Acme Ltdx" is not a selected client
   });
 
   it("offers to register a NEW client inside the dropdown, but never one that already exists", async () => {
@@ -241,11 +243,13 @@ describe("Create Order", () => {
     expect(box.closest(".ix-qty")!.className).not.toMatch(/bg-/); // no fill of its own: it sits on the page background
   });
 
-  it("is ONE form: the client first, then Scan Product and the search bar, then the inventory, then Cancel / View List / Save Order", async () => {
+  it("Step 1 is ONE form: the client first, then Scan Product and the search bar, then the inventory, then ONLY Cancel and Checkout (no View List, no Save Order)", async () => {
     render(<CreateOrderForm clients={clients as any} />);
     expect(screen.getAllByRole("form")).toHaveLength(1);
     const form = screen.getByRole("form", { name: "Create order" });
-    const order = [form.querySelector("#client-heading")!, screen.getByRole("button", { name: /Scan Product/ }), screen.getByRole("searchbox", { name: "Search products" }), await screen.findByRole("table", { name: "Inventory" }), screen.getByRole("link", { name: "Cancel" }), screen.getByRole("button", { name: /View List/ }), screen.getByRole("button", { name: "Save Order" })];
+    expect(screen.queryByRole("button", { name: /View List/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save Order" })).toBeNull();
+    const order = [form.querySelector("#client-heading")!, screen.getByRole("button", { name: /Scan Product/ }), screen.getByRole("searchbox", { name: "Search products" }), await screen.findByRole("table", { name: "Inventory" }), screen.getByRole("link", { name: "Cancel" }), screen.getByRole("button", { name: "Checkout" })];
     order.slice(1).forEach((el, i) => expect(!!(order[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING), `${i}`).toBe(true));
   });
 
@@ -272,7 +276,7 @@ describe("Create Order", () => {
     expect((qtyBox("Water bottle", "pcs") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Increase order quantity of Water bottle in pcs" }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(add);
-    expect(screen.getByRole("button", { name: /View List/ }).textContent).toContain("0"); // nothing was added
+    expect((screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement).disabled).toBe(true); // nothing was added
     await user.type(screen.getByRole("searchbox", { name: "Search products" }), "flo"); // the inventory can still be searched
     expect(await screen.findByRole("button", { name: "Add Flour" })).toBeTruthy();
     await user.clear(screen.getByRole("searchbox", { name: "Search products" }));
@@ -312,41 +316,47 @@ describe("Create Order", () => {
     expect(add.disabled).toBe(true);
     expect(add.textContent).toBe("Added");
     expect((qtyBox("Water bottle", "pcs") as HTMLInputElement).value).toBe("40");
-    expect(screen.getByRole("button", { name: /View List/ }).textContent).toContain("1");
+    expect((screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement).disabled).toBe(false);
     await user.click(screen.getByRole("button", { name: "Drop Water bottle" }));
     expect((screen.getByRole("button", { name: "Add Water bottle" }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByRole("button", { name: /View List/ }).textContent).toContain("0");
+    expect((screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("View List shows exactly the selected products in a dialog in the middle of the page, where quantities can be changed and a product removed", async () => {
+  it("Checkout stays off until a client is chosen AND at least one product has a valid quantity", async () => {
     const user = userEvent.setup();
     render(<CreateOrderForm clients={clients as any} />);
-    await addProduct(user, "Water bottle", "40");
-    await addProduct(user, "Flour", "2.5");
-    await user.click(screen.getByRole("button", { name: /View List/ }));
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("Selected products");
-    expect(dialog.textContent).toContain("2 products");
-    const table = within(dialog).getByRole("table", { name: "Products required" });
-    expect(within(table).getAllByRole("row").slice(1).map((r) => r.querySelector("td")!.textContent)).toEqual(["Water bottleWATER", "FlourFLOUR"]);
-    expect(within(dialog).queryByRole("combobox")).toBeNull(); // review only: products are chosen in the inventory list
-    expect(dialog.className).toContain("rounded-[24px]"); // the platform's centered dialog
-    expect(dialog.className).toContain("-translate-x-1/2");
-    const input = within(dialog).getByLabelText("Quantity of Water bottle in pcs");
-    await user.clear(input);
-    await user.type(input, "60");
-    await user.click(within(dialog).getByRole("button", { name: "Remove Flour" }));
-    await user.click(within(dialog).getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect((qtyBox("Water bottle", "pcs") as HTMLInputElement).value).toBe("60");
-    expect((screen.getByRole("button", { name: "Add Flour" }) as HTMLButtonElement).disabled).toBe(false);
+    const checkout = () => screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement;
+    expect(checkout().disabled).toBe(true); // nothing at all
+    await pickClient(user);
+    expect(checkout().disabled).toBe(true); // a client but no product
+    await addProduct(user, "Water bottle");
+    expect(checkout().disabled).toBe(true); // a product without a quantity
+    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "40");
+    expect(checkout().disabled).toBe(false);
+    await user.clear(screen.getByLabelText("Order quantity of Water bottle in pcs"));
+    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "150"); // more than is available
+    expect(checkout().disabled).toBe(true);
   });
 
-  it("View List with nothing selected says so", async () => {
-    const user = userEvent.setup();
+  it("Cancel is the neutral secondary button (not red) and returns to Delivery Lists; Checkout is the primary accent button", () => {
     render(<CreateOrderForm clients={clients as any} />);
-    await user.click(screen.getByRole("button", { name: /View List/ }));
-    expect((await screen.findByRole("dialog")).textContent).toContain("No products selected yet");
+    const cancel = screen.getByRole("link", { name: "Cancel" });
+    expect(cancel.getAttribute("href")).toBe("/delivery-lists");
+    expect(cancel.className).toContain("bg-ix-mist/5");
+    expect(cancel.className).not.toMatch(/red|destructive/);
+    const checkout = screen.getByRole("button", { name: "Checkout" });
+    expect(checkout.className).toContain("bg-ix-butter"); // the user's accent, never a hard-coded colour
+    expect(checkout.className).not.toMatch(/indigo|yellow|amber/);
+  });
+
+  it("starts the order in the organization's default currency, which can be chosen from every currency; it is sent with the order", async () => {
+    const user = userEvent.setup();
+    render(<CreateOrderForm clients={clients as any} defaultCurrency="PKR" />);
+    const select = screen.getByLabelText("Order currency") as HTMLSelectElement;
+    expect(select.value).toBe("PKR");
+    expect(within(select).getAllByRole("option").length).toBeGreaterThan(140);
+    await user.selectOptions(select, "EUR");
+    expect(select.value).toBe("EUR");
   });
 
   describe("Scan Products", () => {
@@ -397,78 +407,267 @@ describe("Create Order", () => {
     });
   });
 
-  it("shows how much is available when more is asked for, and blocks saving", async () => {
+  it("shows how much is available when more is asked for, beside the quantity, and Checkout stays off", async () => {
     const user = userEvent.setup();
     render(<CreateOrderForm clients={clients as any} />);
     await pickClient(user);
     await addProduct(user, "Water bottle");
     await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "150");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
     expect((await screen.findAllByRole("alert")).map((a) => a.textContent).join(" ")).toContain("Only 100 pcs available");
+    expect((screen.getByRole("button", { name: "Checkout" }) as HTMLButtonElement).disabled).toBe(true);
     expect(calls.some((c) => c.url === "/api/sales/orders")).toBe(false);
   });
 
-  it("saves the order with the client, product ids and exact quantities, then opens Delivery Lists with a success message", async () => {
-    const user = userEvent.setup();
-    render(<CreateOrderForm clients={clients as any} />);
+  // ---- Step 2: Order Checkout --------------------------------------------------------------------------------------------------------------------
+  async function toCheckout(user: ReturnType<typeof userEvent.setup>, lines: [string, string][] = [["Water bottle", "40"], ["Flour", "2.5"]], props: Record<string, unknown> = {}) {
+    render(<CreateOrderForm clients={clients as any} {...props} />);
     await pickClient(user);
-    await addProduct(user, "Water bottle");
-    await addProduct(user, "Flour");
-    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "40");
-    await user.type(screen.getByLabelText("Order quantity of Flour in kg"), "2.5");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/delivery-lists?created=SO-000001"));
-    const post = calls.find((c) => c.url === "/api/sales/orders")!;
-    expect(post.body).toEqual({ clientId: C1, lines: [{ productId: WATER, quantity: "40" }, { productId: FLOUR, quantity: "2.5" }] });
-    expect(post.headers["Idempotency-Key"]).toMatch(/^ui-/);
-  });
+    for (const [name] of lines) await screen.findByRole("button", { name: `Add ${name}` });
+    for (const [name, quantity] of lines) await addProduct(user, name, quantity);
+    await user.click(screen.getByRole("button", { name: "Checkout" }));
+    await screen.findByRole("heading", { name: "Order Checkout" });
+  }
+  const priceBox = (name: string, currency = "USD") => screen.getByLabelText(`Per piece price of ${name} in ${currency}`) as HTMLInputElement;
+  const saveButton = () => screen.getByRole("button", { name: "Save Order" }) as HTMLButtonElement;
+  const priceAll = async (user: ReturnType<typeof userEvent.setup>, prices: Record<string, string>) => { for (const [name, price] of Object.entries(prices)) await user.type(priceBox(name), price); };
 
-  it("requires a client and at least one product", async () => {
-    const user = userEvent.setup();
-    render(<CreateOrderForm clients={clients as any} />);
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Choose the client");
-    await pickClient(user);
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Add at least one product");
-    expect(calls.some((c) => c.url === "/api/sales/orders")).toBe(false);
-  });
+  describe("Checkout", () => {
+    it("Checkout creates nothing: no order is saved, nothing is reserved, no request is made", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user);
+      expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+      expect(router.push).not.toHaveBeenCalled();
+    });
 
-  it("saving twice sends the SAME key; changing the order sends a new one", async () => {
-    const user = userEvent.setup();
-    handlers["POST /api/sales/orders"] = () => json(409, { error: "Only 100 pcs of Water bottle are available." });
-    render(<CreateOrderForm clients={clients as any} />);
-    await pickClient(user);
-    await addProduct(user, "Water bottle");
-    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "40");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    await screen.findByText("Only 100 pcs of Water bottle are available.");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "{backspace}");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    await waitFor(() => expect(calls.filter((c) => c.url === "/api/sales/orders")).toHaveLength(3));
-    const keys = calls.filter((c) => c.url === "/api/sales/orders").map((c) => c.headers["Idempotency-Key"]);
-    expect(keys[0]).toBe(keys[1]);
-    expect(keys[2]).not.toBe(keys[0]);
-  });
+    it("shows 'Order Checkout', its subtitle and the client's name, with the selected products and quantities", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user);
+      expect(screen.getByText("Review your selected products and enter the selling price for each item.")).toBeTruthy();
+      expect(screen.getByTestId("checkout-client").textContent).toBe("Acme Ltd");
+      const table = screen.getByRole("table");
+      expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "SKU", "Quantity", "Unit", "Per Piece Price", "Line Total"]);
+      const rows = within(table).getAllByRole("row").slice(1);
+      expect(rows).toHaveLength(2);
+      expect(rows[0].textContent).toContain("Water bottle");
+      expect(screen.getByTestId("qty-WATER").textContent).toBe("40");
+      expect(screen.getByTestId("qty-FLOUR").textContent).toBe("2.5");
+      expect(rows[0].textContent).toContain("pcs");
+      expect(rows[1].textContent).toContain("kg");
+    });
 
-  it("an unconfirmed booking (202) is said plainly and can be retried with the same key", async () => {
-    const user = userEvent.setup();
-    handlers["POST /api/sales/orders"] = () => json(202, { order: { id: O1, number: "SO-000007" }, pending: true });
-    render(<CreateOrderForm clients={clients as any} />);
-    await pickClient(user);
-    await addProduct(user, "Water bottle");
-    await user.type(screen.getByLabelText("Order quantity of Water bottle in pcs"), "10");
-    await user.click(screen.getByRole("button", { name: "Save Order" }));
-    const note = await screen.findByRole("status");
-    expect(note.textContent).toContain("SO-000007");
-    expect(note.textContent).toContain("nothing is treated as booked");
-    expect(router.push).not.toHaveBeenCalled();
-    handlers["POST /api/sales/orders"] = () => json(200, { order: { id: O1, number: "SO-000007" }, replayed: true });
-    await user.click(within(note).getByRole("button", { name: "Retry booking" }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/delivery-lists?created=SO-000007"));
-    const keys = calls.filter((c) => c.url === "/api/sales/orders").map((c) => c.headers["Idempotency-Key"]);
-    expect(new Set(keys).size).toBe(1);
+    it("the ONLY editable things are the per piece price fields: no quantity box, no remove button, no product search, no client box", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user);
+      const inputs = [...document.querySelectorAll("input, select, textarea")] as HTMLInputElement[];
+      expect(inputs.map((i) => i.getAttribute("aria-label"))).toEqual(["Per piece price of Water bottle in USD", "Per piece price of Flour in USD"]);
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(screen.queryByRole("searchbox")).toBeNull();
+      expect(screen.queryByLabelText(/Order quantity|Quantity of/)).toBeNull();
+      expect(screen.queryByRole("button", { name: /Remove|Drop|Add |Increase|Decrease/ })).toBeNull();
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Back to Products", "Save Order"]);
+    });
+
+    it("Save Order is off until EVERY product has a valid price (one price is not enough), and on once the last one is entered", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"], ["Flour", "10"]]);
+      expect(saveButton().disabled).toBe(true);
+      await user.type(priceBox("Water bottle"), "120000");
+      expect(saveButton().disabled).toBe(true); // Flour has no price yet
+      await user.type(priceBox("Flour"), "35000");
+      expect(saveButton().disabled).toBe(false);
+      await user.clear(priceBox("Flour"));
+      expect(saveButton().disabled).toBe(true); // an empty price is "not entered", never zero
+    });
+
+    it("an empty price is never zero, but an explicitly typed zero is a price", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "5"]]);
+      expect(saveButton().disabled).toBe(true);
+      expect(screen.getByTestId("order-total").textContent).toBe("—");
+      await user.type(priceBox("Water bottle"), "0");
+      expect(saveButton().disabled).toBe(false);
+      expect(screen.getByTestId("order-total").textContent).toBe("0.00 USD");
+    });
+
+    it.each([
+      ["-5", "A price cannot be negative."],
+      ["abc", "Enter a number such as 120000 or 49.99."],
+      ["1,5", "Enter a number such as 120000 or 49.99."],
+      ["1e3", "Enter a number such as 120000 or 49.99."],
+      ["12.34567", "Use at most 4 decimal places."],
+      ["123456789012345", "That price is too large."],
+    ])("the price %j is refused beside its field and Save Order stays off", async (typed, message) => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "5"]]);
+      await user.type(priceBox("Water bottle"), typed);
+      expect((await screen.findByRole("alert")).textContent).toBe(message);
+      expect(priceBox("Water bottle").getAttribute("aria-invalid")).toBe("true");
+      expect(saveButton().disabled).toBe(true);
+    });
+
+    it("accepts up to 14 whole digits and 4 decimals", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "1"]]);
+      await user.type(priceBox("Water bottle"), "99999999999999.9999");
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(saveButton().disabled).toBe(false);
+    });
+
+    it("an empty price is pointed at once the field was left, with the instruction to enter it", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "5"], ["Flour", "1"]]);
+      await user.click(priceBox("Water bottle"));
+      await user.tab();
+      expect((await screen.findByRole("alert")).textContent).toBe("Enter the price per pcs.");
+      expect(screen.getByRole("status").textContent).toContain("Enter the price per piece for every product");
+    });
+
+    it("line totals and the order total follow every keystroke, in exact decimals with the currency (20 x 120,000 + 10 x 35,000 = 2,750,000)", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"], ["Flour", "10"]], { defaultCurrency: "PKR" });
+      await user.type(screen.getByLabelText("Per piece price of Water bottle in PKR"), "120000");
+      expect(screen.getByTestId("line-WATER").textContent).toBe("2,400,000.00 PKR");
+      expect(screen.getByTestId("order-total").textContent).toBe("—"); // one line is still unpriced: no half total
+      await user.type(screen.getByLabelText("Per piece price of Flour in PKR"), "35000");
+      expect(screen.getByTestId("line-FLOUR").textContent).toBe("350,000.00 PKR");
+      expect(screen.getByTestId("order-total").textContent).toBe("2,750,000.00 PKR");
+      await user.clear(screen.getByLabelText("Per piece price of Flour in PKR"));
+      await user.type(screen.getByLabelText("Per piece price of Flour in PKR"), "34999.99");
+      expect(screen.getByTestId("order-total").textContent).toBe("2,749,999.90 PKR");
+    });
+
+    it("never goes through floating point: 3 x 0.1 is exactly 0.30 and 0.3333 x 3 is 0.9999", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "3"], ["Flour", "3"]]);
+      await user.type(priceBox("Water bottle"), "0.1");
+      await user.type(priceBox("Flour"), "0.3333");
+      expect(screen.getByTestId("line-WATER").textContent).toBe("0.30 USD");
+      expect(screen.getByTestId("line-FLOUR").textContent).toBe("0.9999 USD");
+      expect(screen.getByTestId("order-total").textContent).toBe("1.2999 USD");
+    });
+
+    it("shows the currency clearly: in the heading badge, beside each price and in every total", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "2"]], { defaultCurrency: "EUR" });
+      expect(screen.getByTestId("checkout-currency").textContent).toBe("Prices in EUR");
+      expect(screen.getByLabelText("Per piece price of Water bottle in EUR").parentElement!.textContent).toContain("EUR");
+      await user.type(priceBox("Water bottle", "EUR"), "5");
+      expect(screen.getByTestId("order-total").textContent).toBe("10.00 EUR");
+    });
+
+    it("the currency chosen on Step 1 is the one used at Checkout", async () => {
+      const user = userEvent.setup();
+      render(<CreateOrderForm clients={clients as any} defaultCurrency="USD" />);
+      await pickClient(user);
+      await user.selectOptions(screen.getByLabelText("Order currency"), "GBP");
+      await addProduct(user, "Water bottle", "4");
+      await user.click(screen.getByRole("button", { name: "Checkout" }));
+      expect((await screen.findByTestId("checkout-currency")).textContent).toBe("Prices in GBP");
+    });
+
+    it("Back to Products returns to Step 1 with the client, products and quantities (and any prices) still there", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"], ["Flour", "10"]]);
+      await user.type(priceBox("Water bottle"), "120000");
+      await user.click(screen.getByRole("button", { name: "Back to Products" }));
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeTruthy();
+      expect((screen.getByRole("combobox", { name: "Select client" }) as HTMLInputElement).value).toBe("Acme Ltd");
+      expect(((await screen.findByLabelText("Order quantity of Water bottle in pcs")) as HTMLInputElement).value).toBe("20");
+      expect((qtyBox("Flour", "kg") as HTMLInputElement).value).toBe("10");
+      await user.click(screen.getByRole("button", { name: "Checkout" }));
+      expect(priceBox("Water bottle").value).toBe("120000"); // the price typed before is kept
+      expect(calls.filter((c) => c.method !== "GET")).toEqual([]); // and still nothing was saved
+    });
+
+    it("a product dropped on Step 1 is gone from Checkout, and one added later needs its own price", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"], ["Flour", "10"]]);
+      await user.type(priceBox("Water bottle"), "5");
+      await user.type(priceBox("Flour"), "7");
+      await user.click(screen.getByRole("button", { name: "Back to Products" }));
+      await user.click(await screen.findByRole("button", { name: "Drop Flour" }));
+      await user.click(screen.getByRole("button", { name: "Checkout" }));
+      expect(screen.queryByLabelText(/Per piece price of Flour/)).toBeNull();
+      expect(saveButton().disabled).toBe(false);
+      expect(screen.getByTestId("order-total").textContent).toBe("100.00 USD");
+    });
+
+    it("Save Order sends the client, the currency and, for every product, the exact quantity and the price agreed for ONE piece; then opens Delivery Lists", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"], ["Flour", "2.5"]], { defaultCurrency: "PKR" });
+      await user.type(screen.getByLabelText("Per piece price of Water bottle in PKR"), "120000");
+      await user.type(screen.getByLabelText("Per piece price of Flour in PKR"), "49.99");
+      await user.click(saveButton());
+      await waitFor(() => expect(router.push).toHaveBeenCalledWith("/delivery-lists?created=SO-000001"));
+      const post = calls.find((c) => c.url === "/api/sales/orders")!;
+      expect(post.body).toEqual({ clientId: C1, currencyCode: "PKR", lines: [{ productId: WATER, quantity: "20", unitPrice: "120000" }, { productId: FLOUR, quantity: "2.5", unitPrice: "49.99" }] });
+      expect(post.headers["Idempotency-Key"]).toMatch(/^ui-/);
+    });
+
+    it("the same product for another client is priced on its own order: nothing is remembered between orders", async () => {
+      const user = userEvent.setup();
+      await toCheckout(user, [["Water bottle", "20"]]);
+      expect(priceBox("Water bottle").value).toBe(""); // no catalog price, no earlier price
+    });
+
+    it("saving twice sends the SAME key; changing a price sends a new one", async () => {
+      const user = userEvent.setup();
+      handlers["POST /api/sales/orders"] = () => json(409, { error: "Only 100 pcs of Water bottle are available." });
+      await toCheckout(user, [["Water bottle", "40"]]);
+      await user.type(priceBox("Water bottle"), "9");
+      await user.click(saveButton());
+      await screen.findByText("Only 100 pcs of Water bottle are available.");
+      await user.click(saveButton());
+      await user.type(priceBox("Water bottle"), "5"); // the order is not the same order any more
+      await user.click(saveButton());
+      await waitFor(() => expect(calls.filter((c) => c.url === "/api/sales/orders")).toHaveLength(3));
+      const keys = calls.filter((c) => c.url === "/api/sales/orders").map((c) => c.headers["Idempotency-Key"]);
+      expect(keys[0]).toBe(keys[1]);
+      expect(keys[2]).not.toBe(keys[0]);
+    });
+
+    it("a double click saves once, and the buttons are disabled while it is being saved", async () => {
+      const user = userEvent.setup();
+      let release: (r: Response) => void = () => undefined;
+      handlers["POST /api/sales/orders"] = () => new Promise<Response>((resolve) => { release = resolve; }) as unknown as Response;
+      await toCheckout(user, [["Water bottle", "10"]]);
+      await user.type(priceBox("Water bottle"), "3");
+      const save = saveButton();
+      await user.dblClick(save);
+      expect(calls.filter((c) => c.url === "/api/sales/orders")).toHaveLength(1);
+      expect(save.disabled).toBe(true);
+      expect(save.textContent).toBe("Saving…");
+      expect((screen.getByRole("button", { name: "Back to Products" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(priceBox("Water bottle").disabled).toBe(true);
+      release(json(201, { order: { id: O1, number: "SO-000001" } }));
+      await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    });
+
+    it("an unconfirmed booking (202) is said plainly at Checkout and can be retried with the same key", async () => {
+      const user = userEvent.setup();
+      handlers["POST /api/sales/orders"] = () => json(202, { order: { id: O1, number: "SO-000007" }, pending: true });
+      await toCheckout(user, [["Water bottle", "10"]]);
+      await user.type(priceBox("Water bottle"), "3");
+      await user.click(saveButton());
+      await screen.findByText(/nothing is treated as booked/);
+      expect(document.body.textContent).toContain("SO-000007");
+      expect(router.push).not.toHaveBeenCalled();
+      handlers["POST /api/sales/orders"] = () => json(200, { order: { id: O1, number: "SO-000007" }, replayed: true });
+      await user.click(screen.getByRole("button", { name: "Retry booking" }));
+      await waitFor(() => expect(router.push).toHaveBeenCalledWith("/delivery-lists?created=SO-000007"));
+      const keys = calls.filter((c) => c.url === "/api/sales/orders").map((c) => c.headers["Idempotency-Key"]);
+      expect(new Set(keys).size).toBe(1);
+    });
+
+    it("the server's refusal is shown and Checkout stays as it was", async () => {
+      const user = userEvent.setup();
+      handlers["POST /api/sales/orders"] = () => json(409, { error: "Only 100 pcs of Water bottle are available." });
+      await toCheckout(user, [["Water bottle", "40"]]);
+      await user.type(priceBox("Water bottle"), "9");
+      await user.click(saveButton());
+      expect((await screen.findAllByRole("alert")).map((a) => a.textContent).join(" ")).toContain("Only 100 pcs of Water bottle are available.");
+      expect(priceBox("Water bottle").value).toBe("9");
+    });
   });
 });
 
@@ -578,6 +777,29 @@ describe("Delivery Lists board", () => {
     expect(dialog.querySelector("[data-modal-body]")!.className).toContain("overflow-y-auto"); // the list scrolls INSIDE the dialog
     expect(document.body.style.overflow).toBe("hidden"); // the page behind does not scroll
     expect(within(dialog).getByRole("link", { name: "Prepare dispatch" }).getAttribute("href")).toBe(`/delivery-lists/${L1}/dispatch`);
+  });
+
+  it("View List shows each product's agreed price per piece, its line total and the order total; an older order says its price was not recorded", async () => {
+    const user = userEvent.setup();
+    board();
+    await user.click(screen.getByRole("button", { name: "View list SO-000001" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Products and quantities");
+    expect(within(dialog).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Ordered", "Dispatched", "Remaining", "Price per piece", "Line total"]);
+    expect(dialog.textContent).toContain("3.00 USD");
+    expect(dialog.textContent).toContain("1,200.00 USD");
+    expect(within(dialog).getByTestId("view-order-total").textContent).toBe("1,250.00 USD");
+  });
+
+  it("View List of an order made before prices were recorded shows no price columns and 'Price not recorded'", async () => {
+    const user = userEvent.setup();
+    handlers["GET /api/sales/orders/" + O1] = () => json(200, { order: detail({ currency_code: null, total_amount: null, prices_recorded: false, lines: detail().lines.map((l: any) => ({ ...l, unit_price: null, line_total: null })) }) });
+    board();
+    await user.click(screen.getByRole("button", { name: "View list SO-000001" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Products and quantities");
+    expect(within(dialog).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Ordered", "Dispatched", "Remaining"]);
+    expect(dialog.textContent).toContain("Price not recorded");
   });
 
   it("closes with the close button, Escape and a backdrop click, and gives the page its scrolling back", async () => {
@@ -872,10 +1094,56 @@ describe("Delivery Lists board", () => {
       await user.type(input, "250");
       await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
       await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-      expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ version: 1, lines: [{ productId: WATER, quantity: "250" }, { productId: FLOUR, quantity: "5" }] });
+      // each line keeps its saved agreed price (the quantity changes, the price does not): the totals follow quantity x that price
+      expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ version: 1, lines: [{ productId: WATER, quantity: "250", unitPrice: "3.00" }, { productId: FLOUR, quantity: "5", unitPrice: "10.00" }] });
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       expect(router.refresh).toHaveBeenCalled();
       expect(screen.getByRole("status").textContent).toContain("SO-000001 was updated");
+    });
+
+    it("shows each line's saved agreed price and the order total; a dispatched line's price is frozen, an undispatched one can still be corrected", async () => {
+      const user = userEvent.setup();
+      const dialog = await openEdit(user);
+      expect((within(dialog).getByLabelText("Per piece price of Water bottle in USD") as HTMLInputElement).value).toBe("3.00");
+      expect((within(dialog).getByLabelText("Per piece price of Water bottle in USD") as HTMLInputElement).disabled).toBe(true); // 150 already dispatched
+      expect((within(dialog).getByLabelText("Per piece price of Flour in USD") as HTMLInputElement).disabled).toBe(false);
+      expect(within(dialog).getByTestId("edit-order-total").textContent).toBe("1,250.00 USD");
+      const input = within(dialog).getByLabelText("Quantity of Water bottle in pcs");
+      await user.clear(input);
+      await user.type(input, "300");
+      expect(within(dialog).getByTestId("edit-order-total").textContent).toBe("950.00 USD"); // 300 x 3 + 5 x 10, the same saved prices
+    });
+
+    it("a product added in the dialog must be given its agreed price before the change can be saved", async () => {
+      const user = userEvent.setup();
+      handlers["GET /api/sales/order-products"] = () => json(200, { items: [{ product_id: "9a1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6", sku: "SALT", name: "Salt", unit: "kg", unit_allows_fractions: true, is_active: true, total_quantity: "50.0000", reserved_quantity: "0.0000", available_quantity: "50.0000" }], total: 1, limit: 20, offset: 0 });
+      const dialog = await openEdit(user);
+      await user.click(within(dialog).getByRole("combobox", { name: /Add a product/ }));
+      await user.click(await screen.findByRole("button", { name: /Salt/ }));
+      await user.type(within(dialog).getByLabelText("Quantity of Salt in kg"), "4");
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+      expect(dialog.textContent).toContain("Enter a valid price per piece for every product");
+      expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+      await user.type(within(dialog).getByLabelText("Per piece price of Salt in USD"), "2.5");
+      expect(within(dialog).getByTestId("edit-order-total").textContent).toBe("1,260.00 USD");
+    });
+
+    it("an order made before prices were recorded shows no price column and sends no prices", async () => {
+      const user = userEvent.setup();
+      handlers["GET /api/sales/orders/" + O1] = () => json(200, { order: detail({ currency_code: null, total_amount: null, prices_recorded: false, lines: detail().lines.map((l: any) => ({ ...l, unit_price: null, line_total: null })) }) });
+      handlers["PATCH /api/sales/orders/" + O1] = () => json(200, { order: detail(), pending: false });
+      board();
+      await user.click(screen.getByRole("button", { name: "Edit SO-000001" }));
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("Water bottle");
+      expect(within(dialog).queryByLabelText(/Per piece price/)).toBeNull();
+      expect(within(dialog).queryByTestId("edit-order-total")).toBeNull();
+      const input = within(dialog).getByLabelText("Quantity of Water bottle in pcs");
+      await user.clear(input);
+      await user.type(input, "250");
+      await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+      await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+      expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ version: 1, lines: [{ productId: WATER, quantity: "250" }, { productId: FLOUR, quantity: "5" }] });
     });
 
     it("refuses a quantity below what was dispatched, and above what is available, before asking the server", async () => {

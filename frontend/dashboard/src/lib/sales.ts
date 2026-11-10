@@ -157,10 +157,11 @@ export type OrderSummary = {
   origin: "order" | "list";
   version: number;
   product_count: number;
-  /** What the order is worth at the catalog's current selling prices (exact decimal string) and its currency. Null when it cannot be totalled: products in two
-   *  currencies, a product that is gone, or the Inventory Service could not be asked. Only the order LIST carries it. */
+  /** What the order is worth at the prices AGREED with this client and saved on its lines (exact decimal string), and its one currency. Null for an order made
+   *  before prices were recorded: its negotiated prices are unknown and are never taken from the catalog. */
   total_amount?: string | null;
   currency_code?: string | null;
+  prices_recorded?: boolean;
   created_by_email: string;
   created_at: string;
   updated_at: string;
@@ -183,6 +184,9 @@ export type OrderLine = {
   dispatched_quantity: string;
   pending_quantity: string;
   remaining_quantity: string;
+  /** The price of ONE unit agreed for this order, and the line's total; null for an order made before prices were recorded. */
+  unit_price?: string | null;
+  line_total?: string | null;
   stock: { total_quantity: string; reserved_quantity: string; available_quantity: string; reserved_for_order: string; product_active: boolean } | null;
 };
 
@@ -302,6 +306,10 @@ export type BillableLine = {
   invoiced_quantity: string;
   in_drafts_quantity: string;
   remaining_quantity: string;
+  /** The price of one unit AGREED on the sales order this came from, and that order's currency (an invoice starts from them); null for older orders. */
+  agreed_unit_price?: string | null;
+  agreed_currency_code?: string | null;
+  order_number?: string | null;
 };
 
 export type AccountBalance = { currency_code: string; invoiced: string; paid: string; outstanding: string; overdue: string };

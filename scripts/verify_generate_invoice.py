@@ -128,8 +128,9 @@ def main() -> int:
         for module, enabled in flags.items():
             psql("impex_organizations", f"UPDATE organization_modules SET enabled = {str(enabled).lower()} WHERE organization_id = '{org_ids[org_key]}' AND module_key = '{module}'")
 
-    def make_order(key, client_id, lines):
-        s, text = portal(key, "POST", "/api/sales/orders", {"clientId": client_id, "lines": [{"productId": p, "quantity": q} for p, q in lines]}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
+    def make_order(key, client_id, lines, currency="USD"):
+        """lines: (product id, quantity, the price of ONE unit agreed with this client)"""
+        s, text = portal(key, "POST", "/api/sales/orders", {"clientId": client_id, "currencyCode": currency, "lines": [{"productId": p, "quantity": q, "unitPrice": price} for p, q, price in lines]}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
         order = jbody(text).get("order", {})
         return s, order
 
@@ -160,20 +161,24 @@ def main() -> int:
             mark_setup_complete(psql, org_ids[key])
             set_modules(key, inventory=True, sales=True)
 
-        def register(key, sku, name, price, currency):
-            status, text = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": "pcs", "costPrice": "3.20", "sellingPrice": price, "currencyCode": currency})
+        def register(key, sku, name, currency):
+            # NO selling price: a product has none (each client's price is agreed on their sales order)
+            status, text = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": "pcs", "costPrice": "3.20", "currencyCode": currency})
             product = jbody(text).get("product", {})
             created.add("products", product.get("id"))
             portal(key, "POST", "/api/stock/opening", {"product_id": product.get("id"), "quantity": "200"}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
             return product
 
-        widget = register("a", "GI-WIDGET", "GI Widget", "6.00", "USD")
-        gadget = register("a", "GI-GADGET", "GI Euro gadget", "9.99", "EUR")
-        check("two priced products exist with 200 each in stock", figures(widget["id"])[0] == Decimal("200") and figures(gadget["id"])[0] == Decimal("200"), (figures(widget["id"]), figures(gadget["id"])))
+        widget = register("a", "GI-WIDGET", "GI Widget", "USD")
+        gadget = register("a", "GI-GADGET", "GI Gadget", "USD")
+        check("two products registered WITHOUT a selling price exist with 200 each in stock", figures(widget["id"])[0] == Decimal("200") and figures(gadget["id"])[0] == Decimal("200")
+              and psql("impex_inventory", f"SELECT count(*) FROM products WHERE id IN ('{widget['id']}', '{gadget['id']}') AND selling_price IS NULL") == "2", (figures(widget["id"]), figures(gadget["id"])))
         s, text = portal("a", "POST", "/api/sales/clients", {"name": "GI Client Ltd"})
         client = jbody(text).get("client", {})
-        s, order = make_order("a", client["id"], [(widget["id"], "100")])
-        check("an order for 100 widgets is saved", s == 201 and order.get("id"), (s, order))
+        s, order = make_order("a", client["id"], [(widget["id"], "100", "6.00")])
+        check("an order for 100 widgets at the 6.00 agreed with this client is saved", s == 201 and order.get("id"), (s, order))
+        s, bad = portal("a", "POST", "/api/sales/orders", {"clientId": client["id"], "currencyCode": "USD", "lines": [{"productId": widget["id"], "quantity": "1"}]}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
+        check("an order line WITHOUT a price is refused (400): an empty price is never zero", s == 400 and "price" in bad.lower(), (s, bad))
 
         print("\n== 1. the card before and after the dispatch")
         s, html = page("a", "/delivery-lists")
@@ -250,12 +255,25 @@ def main() -> int:
         check("a voided invoice lets the order be invoiced again: a NEW draft (201)", s == 201 and again.get("created") is True and again["invoice"]["id"] != invoice_id and invoices_of("a") == 2, (s, text))
         check("through all of that, stock never changed", (figures(widget["id"]), movements(widget["id"])) == stock_after_dispatch)
 
-        print("\n== 6. nothing is made when it should not be")
-        s, mixed = make_order("a", client["id"], [(widget["id"], "5"), (gadget["id"], "5")])
-        dispatch("a", mixed.get("id"))
+        print("\n== 6. every client has their own price; nothing is invented")
+        s, second_client = portal("a", "POST", "/api/sales/clients", {"name": "GI Second Client"})
+        second = jbody(second_client).get("client", {})
+        s, other = make_order("a", second["id"], [(widget["id"], "5", "5.50")], currency="EUR")
+        dispatch("a", other.get("id"))
+        s, text = portal("a", "POST", f"/api/sales/orders/{other['id']}/invoice")
+        other_invoice = jbody(text).get("invoice", {})
+        created.add("invoices", other_invoice.get("id"))
+        check("the same product for another client, in another currency, is invoiced at THAT client's price: 5 x 5.50 = 27.50 EUR (nothing converted)",
+              s == 201 and other_invoice.get("total") == "27.5000" and other_invoice.get("currency_code") == "EUR", (s, text))
+        check("the first client's invoice is untouched: still 100 x 6.00 = 600 USD",
+              psql("impex_sales", f"SELECT total || '|' || currency_code FROM invoices WHERE id = '{again['invoice']['id']}'") == "600.0000|USD")
+        s, legacy = make_order("a", client["id"], [(gadget["id"], "3", "4.00")])
+        psql("impex_sales", f"UPDATE delivery_list_items SET unit_price = NULL WHERE delivery_list_id = '{legacy['delivery_list']['id']}'")
+        psql("impex_sales", f"UPDATE sales_orders SET currency_code = NULL WHERE id = '{legacy['id']}'")
+        dispatch("a", legacy.get("id"))
         before = invoices_of("a")
-        s, text = portal("a", "POST", f"/api/sales/orders/{mixed['id']}/invoice")
-        check("products priced in different currencies are refused with the reason (400) and nothing is converted or made", s == 400 and "different currencies" in text and "EUR" in text and "USD" in text and invoices_of("a") == before, (s, text))
+        s, text = portal("a", "POST", f"/api/sales/orders/{legacy['id']}/invoice")
+        check("an order made before prices were recorded is refused (400) with the way forward, and nothing is made", s == 400 and "by hand" in text and invoices_of("a") == before, (s, text))
         s, text = portal("b", "POST", f"/api/sales/orders/{order['id']}/invoice")
         check("another organization's order answers 404 and makes nothing there", s == 404 and invoices_of("b") == 0, (s, text))
         s, text = portal(None, "POST", f"/api/sales/orders/{order['id']}/invoice")

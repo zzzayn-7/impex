@@ -64,7 +64,6 @@ async function fill(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElemen
   await user.type(within(dialog).getByLabelText("Product name"), x.name);
   await user.type(within(dialog).getByLabelText("Unit of measurement"), x.unit);
   await user.type(within(dialog).getByLabelText("Cost price"), x.cost);
-  await user.type(within(dialog).getByLabelText("Selling price"), x.selling);
   if (x.opening !== undefined) await user.type(within(dialog).getByLabelText(/^Opening quantity$/), x.opening);
 }
 const submit = (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => user.click(within(dialog).getByRole("button", { name: "Add product" }));
@@ -89,9 +88,10 @@ describe("Add Stock opens a form for a NEW product", () => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    for (const label of ["Product name", "SKU or product code", "Unit of measurement", "Cost price", "Selling price", "Currency", "HS code", "Description"]) expect(within(dialog).getByLabelText(new RegExp(`^${label}`)), label).toBeTruthy();
+    for (const label of ["Product name", "SKU or product code", "Unit of measurement", "Cost price", "Currency", "HS code", "Description"]) expect(within(dialog).getByLabelText(new RegExp(`^${label}`)), label).toBeTruthy();
     expect(within(dialog).getByLabelText(/^Barcode/)).toBeTruthy();
     expect(within(dialog).getByLabelText(/^Opening quantity$/)).toBeTruthy();
+    expect(within(dialog).queryByLabelText("Selling price")).toBeNull(); // retired: no universal selling price
     expect(dialog.querySelector("select")).toBeNull(); // no "choose a product" dropdown (the unit box is a text box with suggestions)
     expect(within(dialog).queryByRole("combobox", { name: /^Product$/ })).toBeNull();
     expect(within(dialog).queryByText(/Choose a product/i)).toBeNull();
@@ -112,7 +112,7 @@ describe("Add Stock opens a form for a NEW product", () => {
     mount();
     const dialog = await openDialog(user);
     await submit(user, dialog);
-    for (const text of ["Enter a SKU.", "Enter the product name.", "Enter the unit of measurement", "Enter the cost price.", "Enter the selling price."]) expect(dialog.textContent, text).toContain(text);
+    for (const text of ["Enter a SKU.", "Enter the product name.", "Enter the unit of measurement", "Enter the cost price."]) expect(dialog.textContent, text).toContain(text);
     expect(calls).toEqual([]);
     expect(screen.getByRole("dialog", { name: "Add Product to Stock" })).toBeTruthy(); // it stays open
   });
@@ -162,7 +162,7 @@ describe("Scenario A: a new product with no existing stock", () => {
     await submit(user, dialog);
     await screen.findByText("Added Cisco Router (CISCO-001).");
     expect(writes().map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/products"]); // no /api/stock call at all: no artificial movement
-    expect(writes()[0].body).toMatchObject({ sku: "CISCO-001", name: "Cisco Router", unit: "pcs", costPrice: "620", sellingPrice: "799", currencyCode: "USD" });
+    expect(writes()[0].body).toMatchObject({ sku: "CISCO-001", name: "Cisco Router", unit: "pcs", costPrice: "620", currencyCode: "USD" }); // no selling price: it is agreed per sales order
     expect(Object.keys(writes()[0].body)).not.toContain("quantity");
     expect(router.refresh).toHaveBeenCalled(); // the Stock table re-reads, so the new product shows at once (with 0 on hand)
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

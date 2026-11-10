@@ -23,7 +23,8 @@ import StockForm from "./stock-form";
 // Stock list and out of everything new (orders, purchases) but ERASES NOTHING: it is the product's archive, so its movements, orders, receipts and invoices
 // keep their history and it can be restored (Products: Archived -> Edit). Goods bought from now on are not added here at all: they arrive through Purchase
 // Order -> confirmed Goods Receipt. A product can also be registered while buying (a purchase order's "Add New Product"). Registering a product never adds
-// stock by itself. The Total column is what the pieces on hand are worth at the selling price (on hand x price, in the product's currency).
+// stock by itself. There is no selling price here: a product has no universal one (each client's price is agreed on their sales order). The Total column is what
+// the pieces on hand are worth at what they cost you (on hand x cost, in the product's currency).
 
 type Props = {
   list: PagedResult<StockProduct>;
@@ -236,7 +237,6 @@ export default function StockOverview({ list, filters, products }: Props) {
                     <th className="px-4 py-3 font-semibold text-right">Reserved</th>
                     <th className="px-4 py-3 font-semibold text-right">Available</th>
                     <th className="px-4 py-3 font-semibold text-right">Cost</th>
-                    <th className="px-4 py-3 font-semibold text-right">Price</th>
                     <th className="px-4 py-3 font-semibold text-right">Total</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
@@ -255,9 +255,8 @@ export default function StockOverview({ list, filters, products }: Props) {
                         <span className="text-sm font-semibold text-white" data-testid={`available-${item.sku}`}>{formatQuantity(item.available_quantity ?? item.total_quantity)}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-slate-300">{money(item.cost_price, item.currency_code)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{money(item.selling_price, item.currency_code)}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">
-                        <span className="text-sm font-semibold text-white" data-testid={`total-${item.sku}`}>{money(item.selling_price ? lineTotal(item.total_quantity, item.selling_price) : null, item.currency_code)}</span>
+                        <span className="text-sm font-semibold text-white" data-testid={`total-${item.sku}`}>{money(item.cost_price ? lineTotal(item.total_quantity, item.cost_price) : null, item.currency_code)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${item.is_active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-600/40 bg-slate-700/30 text-slate-400"}`}>

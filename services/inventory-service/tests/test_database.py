@@ -23,7 +23,7 @@ def product(org, **overrides):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0009"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0010"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 
@@ -32,7 +32,7 @@ def test_prices_are_numeric_and_no_column_is_floating_point(engine):
     with engine.connect() as conn:
         columns = {r.column_name: (r.data_type, r.is_nullable) for r in conn.execute(text(
             "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'products'"))}
-    assert columns["cost_price"] == ("numeric", "NO") and columns["selling_price"] == ("numeric", "NO")
+    assert columns["cost_price"] == ("numeric", "NO") and columns["selling_price"] == ("numeric", "YES")  # no universal selling price: optional since 0010
     assert not [c for c, (t, _) in columns.items() if t in ("double precision", "real")]
     assert columns["organization_id"][1] == "NO"  # every product must belong to an organization
     assert set(columns) == {"id", "organization_id", "sku", "name", "description", "unit", "hs_code", "cost_price",

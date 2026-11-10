@@ -94,7 +94,7 @@ def test_invalid_products_are_rejected_and_nothing_is_stored(client, acme, sessi
 
 def test_missing_required_fields_are_rejected(client, acme):
     _, headers = acme
-    for field in ("sku", "name", "unit", "cost_price", "selling_price", "currency_code"):
+    for field in ("sku", "name", "unit", "cost_price", "currency_code"):
         body = payload()
         del body[field]
         assert client.post(URL, json=body, headers=headers).status_code == 422, field
@@ -262,3 +262,29 @@ def test_a_product_can_be_restored_and_edited_while_archived(client, acme):
 def test_health_is_public(client):
     assert client.get("/health").status_code == 200
     assert client.get("/api/v1/inventory/health").json()["service"] == "inventory-service"
+
+
+# --- no universal selling price ---------------------------------------------------
+def test_a_product_can_be_registered_and_stocked_without_a_selling_price(client, acme, session_factory):
+    _, headers = acme
+    body = payload(sku="NOPRICE-1")
+    del body["selling_price"]
+    created = client.post(URL, json=body, headers=headers)
+    assert created.status_code == 201, created.text
+    assert created.json()["selling_price"] is None and created.json()["cost_price"] == "10.5000"
+    pid = created.json()["id"]
+    assert client.get(f"{URL}/{pid}", headers=headers).json()["selling_price"] is None
+    stocked = client.post("/api/v1/inventory/stock/opening", json={"product_id": pid, "quantity": "5"}, headers={**headers, "Idempotency-Key": "np-open-0001"})
+    assert stocked.status_code in (200, 201), stocked.text
+    with session_factory() as db:
+        assert db.scalars(select(Product).where(Product.sku == "NOPRICE-1")).one().selling_price is None
+
+
+def test_an_old_price_is_kept_and_a_present_price_is_still_validated(client, acme):
+    _, headers = acme
+    made = create(client, headers, sku="OLD-PRICE")
+    assert made["selling_price"] == "15.9900"
+    assert client.post(URL, json=payload(sku="NEG", selling_price="-1"), headers=headers).status_code == 422
+    assert client.post(URL, json=payload(sku="TOOBIG", selling_price="1" + "0" * 16), headers=headers).status_code == 422
+    changed = client.patch(f"{URL}/{made['id']}", json={"name": "Renamed"}, headers=headers)
+    assert changed.status_code == 200 and changed.json()["selling_price"] == "15.9900"  # editing something else leaves it alone

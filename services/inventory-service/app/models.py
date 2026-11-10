@@ -50,7 +50,8 @@ class Product(TenantOwnedMixin, Base):
     unit: Mapped[str] = mapped_column(String(20), nullable=False)  # unit of measurement: pcs, kg, m, ...
     hs_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # customs Harmonized System code
     cost_price: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
-    selling_price: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    # NO universal selling price: each client's price is agreed per sales order (Sales Service). NULL for products registered without one; older products keep theirs.
+    selling_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 4), nullable=True)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)  # ISO 4217, e.g. USD
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

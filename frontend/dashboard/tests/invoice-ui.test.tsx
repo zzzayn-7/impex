@@ -230,6 +230,72 @@ describe("New invoice: billing dispatched goods", () => {
     expect(screen.getByRole("note").textContent).toContain("never changes your stock");
   });
 
+  describe("goods from a sales order with agreed prices", () => {
+    const AGREED = [
+      billable({ agreed_unit_price: "30.0000", agreed_currency_code: "PKR", order_number: "SO-000007" }),
+      billable({ dispatch_line_id: FLOUR_LINE, product_id: "b0000000-0000-4000-8000-000000000002", product_sku: "FLOUR", product_name: "Flour", unit: "kg", dispatched_quantity: "2.0000", remaining_quantity: "2.0000", agreed_unit_price: "12.5000", agreed_currency_code: "PKR", order_number: "SO-000007" }),
+    ];
+
+    it("starts the invoice in the order's currency and fills each line's price with the price agreed on the order (the quantity is still typed)", async () => {
+      mount({ billable: AGREED });
+      expect((screen.getByLabelText(/^Currency/) as HTMLInputElement).value).toBe("PKR");
+      await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));
+      expect(priceOf("Steel bolt").value).toBe("30");
+      expect(qtyOf("Steel bolt").value).toBe("");
+      expect(screen.getByTestId("agreed-BOLT-1-DS-000001").textContent).toContain("Agreed on SO-000007");
+      expect(screen.getByTestId("agreed-BOLT-1-DS-000001").textContent).toContain("30.00 PKR");
+      await user().click(screen.getByRole("button", { name: "Bill Flour" }));
+      expect(priceOf("Flour").value).toBe("12.5");
+    });
+
+    it("says plainly when the typed price differs from the agreed one, and keeps the agreed price untouched", async () => {
+      mount({ billable: AGREED });
+      await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));
+      const note = () => screen.getByTestId("agreed-BOLT-1-DS-000001").textContent!;
+      expect(note()).not.toContain("different from the agreed price");
+      await user().clear(priceOf("Steel bolt"));
+      await user().type(priceOf("Steel bolt"), "29");
+      expect(note()).toContain("The price you typed is different from the agreed price.");
+      expect(note()).toContain("30.00 PKR"); // the agreed price is still shown
+      await user().clear(priceOf("Steel bolt"));
+      await user().type(priceOf("Steel bolt"), "30.00");
+      expect(note()).not.toContain("different from the agreed price"); // 30.00 is the same amount as 30
+    });
+
+    it("never converts: an invoice in ANOTHER currency does not take the agreed price, and says why", async () => {
+      mount({ billable: AGREED, defaultCurrency: "USD" });
+      const currency = screen.getByLabelText(/^Currency/) as HTMLInputElement;
+      await user().clear(currency);
+      await user().type(currency, "EUR");
+      await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));
+      expect(priceOf("Steel bolt").value).toBe("");
+      expect(screen.getByTestId("agreed-BOLT-1-DS-000001").textContent).toContain("nothing is converted");
+    });
+
+    it("goods agreed in two currencies start in the organization's default currency, and each price is only offered in its own currency", () => {
+      mount({ billable: [AGREED[0], { ...AGREED[1], agreed_currency_code: "EUR" }], defaultCurrency: "GBP" });
+      expect((screen.getByLabelText(/^Currency/) as HTMLInputElement).value).toBe("GBP");
+    });
+
+    it("an older order has no agreed price: the line starts empty and the price is entered by hand, as before", async () => {
+      mount({ billable: [billable({ agreed_unit_price: null, agreed_currency_code: null, order_number: "SO-000001" })], defaultCurrency: "USD" });
+      await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));
+      expect(priceOf("Steel bolt").value).toBe("");
+      expect(screen.queryByTestId("agreed-BOLT-1-DS-000001")).toBeNull();
+    });
+
+    it("the invoice is saved with whatever is in the price box (the agreed price by default), through the invoice's own route", async () => {
+      mount({ billable: AGREED });
+      await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));
+      await user().type(qtyOf("Steel bolt"), "10");
+      await user().click(screen.getByRole("button", { name: "Save draft and review" }));
+      await waitFor(() => expect(calls.some((c) => c.url === "/api/sales/invoices" && c.method === "POST")).toBe(true));
+      const sent = calls.find((c) => c.url === "/api/sales/invoices" && c.method === "POST")!.body;
+      expect(sent.currencyCode).toBe("PKR");
+      expect(sent.lines[0]).toMatchObject({ dispatchLineId: BOLT_LINE, quantity: "10", unitPrice: "30" });
+    });
+  });
+
   it("never fills in a quantity or a price by itself", async () => {
     mount();
     await user().click(screen.getByRole("button", { name: "Bill Steel bolt" }));

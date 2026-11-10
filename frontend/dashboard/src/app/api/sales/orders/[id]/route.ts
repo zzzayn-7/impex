@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ order: result.data }, { headers: NO_STORE });
 }
 
-// EDIT an active order: the complete list of products and quantities it should have afterwards, and the version the editor saw. The Sales
+// EDIT an active order: the complete list of products, quantities and (optionally) agreed prices it should have afterwards, and the version the editor saw. The Sales
 // Service adjusts the reservation by the difference (all or nothing) and refuses anything unsafe: a stale version, a quantity below what was
 // dispatched, a change while a dispatch is being posted, more than is available.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (isResponse(body)) return body;
   const version = typeof body.version === "number" && Number.isInteger(body.version) && body.version >= 1 ? body.version : null;
   if (version === null) return fail("Reload the order and try again.", 400);
-  const lines = parseOrderLines(body.lines);
+  const lines = parseOrderLines(body.lines, "optional"); // a line keeps its saved price unless one is sent; a new line must bring its agreed price (the Sales Service says so)
   if (!lines.ok) return fail(lines.message, 400);
   const notes = text(body.notes);
   if (notes !== undefined && notes.length > 2000) return fail("Use 2000 characters or fewer for the notes.", 400);

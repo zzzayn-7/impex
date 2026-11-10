@@ -24,7 +24,8 @@ export type Product = {
   unit: string;
   hs_code: string | null;
   cost_price: string;
-  selling_price: string;
+  /** RETIRED: there is no universal selling price (each client's price is agreed on their sales order). Null for products registered without one; older products keep theirs. */
+  selling_price?: string | null;
   currency_code: string;
   is_active: boolean;
   created_at: string;
@@ -64,7 +65,7 @@ export function normalizeProduct<T extends Partial<ProductFormValues>>(values: T
   return out as T;
 }
 
-const REQUIRED: (keyof ProductFormValues)[] = ["sku", "name", "unit", "costPrice", "sellingPrice", "currencyCode"];
+const REQUIRED: (keyof ProductFormValues)[] = ["sku", "name", "unit", "costPrice", "currencyCode"]; // no selling price: it is agreed per sales order
 
 const CHECKS: { [K in keyof ProductFormValues]: (value: string) => string | undefined } = {
   sku: (v) =>
@@ -74,7 +75,7 @@ const CHECKS: { [K in keyof ProductFormValues]: (value: string) => string | unde
   unit: (v) => (!v ? "Enter the unit of measurement (e.g. pcs, kg)." : v.length > 20 ? "Unit must be 20 characters or fewer." : undefined),
   hsCode: (v) => (v && !HS_RE.test(v) ? "HS code must look like 8517, 8517.12 or 8517.12.00." : undefined),
   costPrice: (v) => (!v ? "Enter the cost price." : !MONEY_RE.test(v) ? "Use a number with at most 4 decimals, e.g. 12.50." : undefined),
-  sellingPrice: (v) => (!v ? "Enter the selling price." : !MONEY_RE.test(v) ? "Use a number with at most 4 decimals, e.g. 19.99." : undefined),
+  sellingPrice: (v) => (v && !MONEY_RE.test(v) ? "Use a number with at most 4 decimals, e.g. 19.99." : undefined), // retired and optional: only checked when somebody sends one
   currencyCode: (v) => (!CURRENCY_RE.test(v) ? "Use a 3-letter currency code such as USD or EUR." : undefined),
 };
 
@@ -102,7 +103,7 @@ export function toCreateBody(v: ProductFormValues) {
     unit: v.unit,
     ...(v.hsCode ? { hs_code: v.hsCode } : {}),
     cost_price: v.costPrice,
-    selling_price: v.sellingPrice,
+    ...(v.sellingPrice ? { selling_price: v.sellingPrice } : {}), // retired: never required, never asked for by the forms
     currency_code: v.currencyCode,
   };
 }
@@ -165,7 +166,7 @@ export function productToForm(product: Product): ProductFormValues {
     unit: product.unit,
     hsCode: product.hs_code ?? "",
     costPrice: plainDecimal(product.cost_price),
-    sellingPrice: plainDecimal(product.selling_price),
+    sellingPrice: product.selling_price ? plainDecimal(product.selling_price) : "",
     currencyCode: product.currency_code,
   };
 }

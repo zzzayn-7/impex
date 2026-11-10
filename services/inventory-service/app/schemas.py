@@ -59,7 +59,7 @@ class ProductCreate(ProductFields):
     unit: str = Field(min_length=1, max_length=20)
     hs_code: Optional[str] = Field(default=None, max_length=16)
     cost_price: Money
-    selling_price: Money
+    selling_price: Optional[Money] = None  # retired: selling prices are agreed per sales order. Still accepted (and stored) for compatibility; never required.
     currency_code: str = Field(min_length=3, max_length=3)
     is_active: bool = True
 
@@ -81,7 +81,7 @@ class ProductUpdate(ProductFields):
     def _at_least_one_and_no_nulls(self):
         if not self.model_fields_set:
             raise ValueError("Provide at least one field to change.")
-        required = ("sku", "name", "unit", "cost_price", "selling_price", "currency_code", "is_active")
+        required = ("sku", "name", "unit", "cost_price", "currency_code", "is_active")
         for field in required:
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be empty")
@@ -100,7 +100,7 @@ class ProductResponse(BaseModel):
     unit: str
     hs_code: Optional[str]
     cost_price: Decimal
-    selling_price: Decimal
+    selling_price: Optional[Decimal] = None
     currency_code: str
     is_active: bool
     created_at: datetime

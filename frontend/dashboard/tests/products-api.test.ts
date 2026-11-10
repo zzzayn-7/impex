@@ -15,7 +15,7 @@ const product = {
   cost_price: "0.1000", selling_price: "0.2000", currency_code: "USD", is_active: true,
   created_at: "2026-11-04T10:00:00+00:00", updated_at: "2026-11-04T10:00:00+00:00",
 };
-const valid = { sku: "WID-001", name: "Widget", unit: "pcs", costPrice: "0.1", sellingPrice: "0.2", currencyCode: "USD" };
+const valid = { sku: "WID-001", name: "Widget", unit: "pcs", costPrice: "0.1", currencyCode: "USD" }; // no selling price: it is agreed per sales order
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -72,7 +72,7 @@ describe("POST /api/products (create)", () => {
   });
 
   it.each([
-    ["missing everything", {}, ["sku", "name", "unit", "costPrice", "sellingPrice", "currencyCode"]],
+    ["missing everything", {}, ["sku", "name", "unit", "costPrice", "currencyCode"]],
     ["a bad SKU", { sku: "has space" }, ["sku"]],
     ["a negative price", { costPrice: "-1" }, ["costPrice"]],
     ["five decimals", { sellingPrice: "1.23456" }, ["sellingPrice"]],
@@ -89,7 +89,7 @@ describe("POST /api/products (create)", () => {
   });
 
   it("forwards money as the exact strings it received, never as numbers", async () => {
-    await createProduct(request("POST", { ...valid, costPrice: "0.1", sellingPrice: "9999999999.9999" }));
+    await createProduct(request("POST", { ...valid, costPrice: "0.1", sellingPrice: "9999999999.9999" })); // a selling price may still be sent
     const { url, init } = upstream();
     expect(url).toBe(`${INVENTORY}/api/v1/inventory/products`);
     expect(init.method).toBe("POST");
@@ -103,7 +103,7 @@ describe("POST /api/products (create)", () => {
     await createProduct(request("POST", { ...valid, sku: " wid-001 ", name: "  Steel   bolt", currencyCode: "usd", description: "Strong", hsCode: "7318.15" }));
     expect(JSON.parse(upstream().init.body)).toEqual({
       sku: "WID-001", name: "Steel bolt", description: "Strong", unit: "pcs", hs_code: "7318.15",
-      cost_price: "0.1", selling_price: "0.2", currency_code: "USD",
+      cost_price: "0.1", currency_code: "USD",
     });
   });
 
@@ -113,7 +113,7 @@ describe("POST /api/products (create)", () => {
       id: ID, is_active: false, stock: 50, created_at: "2020-01-01",
     }));
     const sent = JSON.parse(upstream().init.body);
-    expect(Object.keys(sent).sort()).toEqual(["cost_price", "currency_code", "name", "selling_price", "sku", "unit"]);
+    expect(Object.keys(sent).sort()).toEqual(["cost_price", "currency_code", "name", "sku", "unit"]);
     expect(upstream().url).not.toContain("?");
   });
 
@@ -293,5 +293,13 @@ describe("GET /api/products/[id] (one product with its barcodes)", () => {
     expect((await view()).status).toBe(403);
     stub(() => { throw new Error("down"); });
     expect((await view()).status).toBe(503);
+  });
+});
+
+describe("POST /api/products without a selling price", () => {
+  it("registers a product that has none, and forwards none", async () => {
+    const res = await createProduct(request("POST", valid));
+    expect(res.status).toBe(201);
+    expect(JSON.parse(upstream().init.body)).not.toHaveProperty("selling_price");
   });
 });

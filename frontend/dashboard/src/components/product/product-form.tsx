@@ -114,7 +114,9 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
       if (Object.keys(changed).length === 0) return onDone("No changes to save.");
       body = changed;
     } else {
-      body = normalized;
+      // a new product is sent without a selling price (retired: each client's price is agreed on their sales order)
+      const { sellingPrice: _retired, ...rest } = normalized;
+      body = rest;
     }
 
     setLoading(true);
@@ -269,8 +271,7 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
             <p id="product-barcode-hint" className={`mt-1.5 text-xs ${barcodeError ? "text-red-300" : "text-ix-muted/80"}`}>{barcodeError ?? "The manufacturer's barcode, so scanning it finds this product."}</p>
           </div>
         )}
-        {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "What it normally costs you. Up to 4 decimals." })}
-        {field("sellingPrice", "Selling price", { type: "text", inputMode: "decimal", placeholder: "19.99", autoComplete: "off", hint: "What you sell it for. Up to 4 decimals." })}
+        {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "What it normally costs you. Up to 4 decimals. The price you charge is agreed with each client when you create their order." })}
         {field("currencyCode", "Currency", { type: "text", placeholder: "USD", maxLength: 3, autoComplete: "off", hint: "3-letter code, e.g. USD, EUR.", style: { textTransform: "uppercase" } })}
       </div>
       {withOpeningQuantity && !editing && (

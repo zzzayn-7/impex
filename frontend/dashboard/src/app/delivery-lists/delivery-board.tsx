@@ -197,7 +197,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
                   <div><dt className="text-ix-muted">{view === "history" ? "Delivered" : "Created"}</dt><dd className="mt-0.5 text-ix-text">{stamp(view === "history" ? order.completed_at : order.created_at)}</dd></div>
                   <div><dt className="text-ix-muted">No. of items</dt><dd className="mt-0.5 text-ix-text">{order.product_count}</dd></div>
                   <div><dt className="text-ix-muted">Fulfilment</dt><dd className="mt-0.5 text-ix-text">{finishedOn ? FULFILMENT_LABELS.dispatched : FULFILMENT_LABELS[order.delivery_list.status] ?? order.delivery_list.status}</dd></div>
-                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Cost"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : order.total_amount && order.currency_code ? formatMoney(order.total_amount, order.currency_code) : <span title="The order could not be totalled: its products have different currencies or no price">—</span>}</dd></div>
+                  <div><dt className="text-ix-muted">{view === "history" ? "Leaves history" : "Cost"}</dt><dd className="mt-0.5 text-ix-text">{view === "history" ? stamp(order.history_expires_at) : order.total_amount && order.currency_code ? formatMoney(order.total_amount, order.currency_code) : <span title="Price not recorded: this order was made before agreed prices were saved">—</span>}</dd></div>
                 </dl>
                 {order.status === "pending_reservation" && (
                   <p role="status" className="rounded-xl border border-amber-200/25 bg-amber-100/10 px-3 py-2 text-xs text-amber-100">

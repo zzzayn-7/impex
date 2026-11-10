@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { api, formatMoney, INVOICE_NOTICE, jsonBody, lineAmounts, moneyExceeds, qty, sumMoney } from "@/lib/sales-browser";
+import { api, formatMoney, INVOICE_NOTICE, jsonBody, lineAmounts, MONEY_RE, moneyExceeds, qty, sumMoney } from "@/lib/sales-browser";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { BillableLine, Client, InvoiceDetail } from "@/lib/sales";
 import QuantityInput from "@/components/ui/quantity-input";
@@ -18,6 +18,14 @@ const CURRENCIES = ["USD", "EUR", "GBP", "PKR", "AED", "SAR", "INR", "CNY", "JPY
 type Row = { open: boolean; quantity: string; unitPrice: string; discount: string; taxRate: string; taxLabel: string };
 const EMPTY_ROW: Row = { open: false, quantity: "", unitPrice: "", discount: "", taxRate: "", taxLabel: "" };
 const plain = (value: string) => qty(value).replace(/,/g, "");
+/** Is the typed price a valid amount that differs from the one agreed on the sales order? (exact comparison, no floating point) */
+const differs = (typed: string, agreed: string) => MONEY_RE.test(typed.trim()) && (moneyExceeds(typed.trim(), agreed) || moneyExceeds(agreed, typed.trim()));
+
+/** The one currency every billable line was agreed in on its sales order, if there is exactly one (older orders have none). */
+function agreedCurrency(billable: BillableLine[]): string | null {
+  const codes = new Set(billable.map((l) => l.agreed_currency_code).filter((c): c is string => Boolean(c)));
+  return codes.size === 1 ? Array.from(codes)[0] : null;
+}
 
 /** Create a DRAFT invoice (or edit one) from the CONFIRMED dispatches of one client. The administrator types every quantity, selling price,
  *  discount and tax rate; nothing is filled in from the catalog. The amounts shown are an exact preview: the Sales Service calculates them
@@ -33,7 +41,8 @@ export default function InvoiceForm({
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [header, setHeader] = useState({
     // A NEW invoice starts in the organization's default currency (Settings); an existing invoice always keeps the currency it was made in.
-    currencyCode: invoice?.currency_code ?? defaultCurrency ?? "USD", invoiceDate: invoice?.invoice_date ?? today(), dueDate: invoice?.due_date ?? "", notes: invoice?.notes ?? "",
+    // ...unless the goods being billed were all agreed in ONE currency on their sales orders: then the invoice starts in that currency.
+    currencyCode: invoice?.currency_code ?? agreedCurrency(billable) ?? defaultCurrency ?? "USD", invoiceDate: invoice?.invoice_date ?? today(), dueDate: invoice?.due_date ?? "", notes: invoice?.notes ?? "",
   });
   const savedHeader = useRef(header);
   const [rows, setRows] = useState<Record<string, Row>>(() => {
@@ -50,6 +59,8 @@ export default function InvoiceForm({
   });
 
   const rowOf = (id: string): Row => rows[id] ?? EMPTY_ROW;
+  /** The price agreed on this line's sales order, when it is in the invoice's currency (nothing is ever converted); otherwise the price is typed by hand. */
+  const agreedFor = (l: BillableLine) => Boolean(l.agreed_unit_price) && l.agreed_currency_code === header.currencyCode.trim().toUpperCase();
   const setRow = (id: string, patch: Partial<Row>) => {
     setRows((current) => ({ ...current, [id]: { ...(current[id] ?? EMPTY_ROW), ...patch } }));
     setRowErrors((current) => ({ ...current, [id]: "" }));
@@ -220,7 +231,7 @@ export default function InvoiceForm({
                   {rowErrors[id] && <p role="alert" className="text-sm text-red-400">{rowErrors[id]}</p>}
                   {!r.open ? (
                     free ? (
-                      <button type="button" onClick={() => setRow(id, { open: true })} className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Bill {l.product_name}</button>
+                      <button type="button" onClick={() => setRow(id, { open: true, ...(agreedFor(l) ? { unitPrice: plain(l.agreed_unit_price as string) } : {}) })} className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Bill {l.product_name}</button>
                     ) : (
                       <p className="text-xs text-slate-500">Fully invoiced.</p>
                     )
@@ -250,6 +261,14 @@ export default function InvoiceForm({
                         </label>
                         <button type="button" onClick={() => setRow(id, { ...EMPTY_ROW })} aria-label={`Remove ${l.product_name} (${l.dispatch_number}) from the invoice`} className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Remove</button>
                       </div>
+                      {l.agreed_unit_price && l.agreed_currency_code && (
+                        <p data-testid={`agreed-${l.product_sku}-${l.dispatch_number}`} className={`text-xs ${differs(r.unitPrice, l.agreed_unit_price) || (l.agreed_currency_code !== header.currencyCode.trim().toUpperCase()) ? "text-amber-300" : "text-slate-400"}`}>
+                          Agreed on {l.order_number ?? "the sales order"}: <span className="font-mono">{formatMoney(l.agreed_unit_price)} {l.agreed_currency_code}</span> per {l.unit}.
+                          {l.agreed_currency_code !== header.currencyCode.trim().toUpperCase()
+                            ? ` This invoice is in ${header.currencyCode.trim().toUpperCase() || "another currency"}: nothing is converted, so enter the price yourself.`
+                            : differs(r.unitPrice, l.agreed_unit_price) ? " The price you typed is different from the agreed price." : ""}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                         <button type="button" onClick={() => setRow(id, { quantity: plain(l.remaining_quantity) })} className="font-medium text-indigo-300 hover:text-indigo-200">Bill all {qty(l.remaining_quantity)} {l.unit} that is left</button>
                         <span className="font-mono text-slate-300" data-testid={`amount-${l.product_sku}-${l.dispatch_number}`}>

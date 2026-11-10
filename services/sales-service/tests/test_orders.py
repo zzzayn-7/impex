@@ -37,8 +37,17 @@ def acme(api):
     return api.new_client("Acme Ltd")
 
 
-def body(client, *lines, **extra):
-    return {"client_id": client["id"], "lines": [{"product_id": p, "quantity": str(q)} for p, q in lines], **extra}
+PRICE = "1.00"  # the unit price most tests do not care about (a price is required on every new order line)
+
+
+def price_line(entry):
+    """(product, quantity) or (product, quantity, price): the price defaults to PRICE."""
+    product, quantity, *price = entry
+    return {"product_id": product, "quantity": str(quantity), "unit_price": str(price[0] if price else PRICE)}
+
+
+def body(client, *lines, currency="USD", **extra):
+    return {"client_id": client["id"], "currency_code": currency, "lines": [price_line(l) for l in lines], **extra}
 
 
 def create(api, client, *lines, key=None, **extra):
@@ -59,7 +68,18 @@ def get(api, order_id):
 
 
 def edit(api, order, *lines, version=None, **extra):
-    return api.client.patch(f"{ORDERS}/{order['id']}", json={"version": version or order["version"], "lines": [{"product_id": p, "quantity": str(q)} for p, q in lines], **extra}, headers=api.headers)
+    """Change the order to these lines. A line of a product already on the order keeps its saved price unless a price is given; a NEW product gets PRICE."""
+    on_order = {l["product_id"] for l in order.get("lines", [])}
+    entries = []
+    for entry in lines:
+        product, quantity, *price = entry
+        item = {"product_id": product, "quantity": str(quantity)}
+        if price:
+            item["unit_price"] = str(price[0])
+        elif product not in on_order:
+            item["unit_price"] = PRICE
+        entries.append(item)
+    return api.client.patch(f"{ORDERS}/{order['id']}", json={"version": version or order["version"], "lines": entries, **extra}, headers=api.headers)
 
 
 def cancel(api, order, path="cancel"):
@@ -783,62 +803,190 @@ def test_the_module_usage_counts_orders(client, two_orgs, water, acme, api, monk
 
 
 # =====================================================================================================================================
-# What an order is worth (the Delivery Lists card's "Cost"): ordered quantity x the catalog's selling price, from the Inventory Service
+# What an order is worth: the prices AGREED with the client and saved on the order, never the catalog's
 # =====================================================================================================================================
 @pytest.fixture
 def priced(inventory, two_orgs):
+    """Products whose CATALOG data carries a price (some older products still do): it must make no difference to any order."""
     org = two_orgs["alpha_id"]
     bottle = inventory.add_product(org, "P-WATER", "Priced water", "pcs", price="1.2500", currency="USD")
     flour = inventory.add_product(org, "P-FLOUR", "Priced flour", "kg", price="3.3333", currency="USD")
-    euro = inventory.add_product(org, "P-EURO", "Priced in euro", "pcs", price="10", currency="EUR")
     bare = inventory.add_product(org, "P-NONE", "Without a price", "pcs")
-    for product in (bottle, flour, euro, bare):
+    for product in (bottle, flour, bare):
         inventory.set_stock(product, 1000)
-    return {"bottle": bottle, "flour": flour, "euro": euro, "bare": bare}
+    return {"bottle": bottle, "flour": flour, "bare": bare}
 
 
-def test_the_order_list_totals_each_order_at_the_current_selling_price(api, priced, acme):
-    new_order(api, acme, (priced["bottle"], 40), (priced["flour"], "2.5"))
+def test_an_order_keeps_the_prices_agreed_for_it_and_totals_them_exactly(api, priced, acme):
+    order = new_order(api, acme, (priced["bottle"], 40, "120000"), (priced["flour"], "2.5", "3.3333"), currency="PKR")
+    assert order["currency_code"] == "PKR" and order["prices_recorded"] is True
+    assert d(order["total_amount"]) == d("4800008.3333")  # 40 x 120000 + 2.5 x 3.3333 = 4800008.33325, kept to four decimals (half up)
+    prices = {l["product_sku"]: (d(l["unit_price"]), d(l["line_total"])) for l in order["lines"]}
+    assert prices == {"P-WATER": (d("120000"), d("4800000")), "P-FLOUR": (d("3.3333"), d("8.3333"))}
     (card,) = orders_view(api)["items"]
-    assert card["currency_code"] == "USD"
-    assert d(card["total_amount"]) == d("58.3333")  # 40 x 1.25 + 2.5 x 3.3333 = 58.33325 exactly, kept to four decimals (half up)
+    assert (card["currency_code"], d(card["total_amount"])) == ("PKR", d("4800008.3333"))
+    assert get(api, order["id"])["lines"][0]["unit_price"] is not None  # and a later read says the same
 
 
-def test_each_order_gets_its_own_total(api, priced, acme):
-    first = new_order(api, acme, (priced["bottle"], 10))
-    second = new_order(api, acme, (priced["bottle"], 100))
-    totals = {o["number"]: d(o["total_amount"]) for o in orders_view(api)["items"]}
-    assert totals == {first["number"]: d("12.5"), second["number"]: d("125")}
+def test_the_catalog_price_is_ignored_even_when_the_product_has_one(api, priced, acme):
+    order = new_order(api, acme, (priced["bottle"], 10, "9.99"))  # the catalog says 1.25
+    assert d(order["total_amount"]) == d("99.9") and d(order["lines"][0]["unit_price"]) == d("9.99")
 
 
-def test_orders_with_products_in_two_currencies_or_without_a_price_have_no_total_instead_of_a_wrong_one(api, priced, acme):
-    new_order(api, acme, (priced["bottle"], 1), (priced["euro"], 1))
-    new_order(api, acme, (priced["bare"], 3))
-    new_order(api, acme, (priced["bottle"], 2))
-    by_amount = sorted(orders_view(api)["items"], key=lambda o: o["number"])
-    assert [(o["total_amount"], o["currency_code"]) for o in by_amount[:2]] == [(None, None), (None, None)]
-    assert (d(by_amount[2]["total_amount"]), by_amount[2]["currency_code"]) == (d("2.5"), "USD")
+def test_a_product_without_any_catalog_price_can_be_ordered_at_the_agreed_price(api, priced, acme):
+    order = new_order(api, acme, (priced["bare"], 3, "7.5"))
+    assert d(order["total_amount"]) == d("22.5")
 
 
-def test_an_unreachable_inventory_service_leaves_the_totals_empty_and_the_list_working(api, priced, acme, inventory):
-    order = new_order(api, acme, (priced["bottle"], 5))
+def test_two_clients_pay_different_prices_for_the_same_product_and_neither_affects_the_other(api, priced, acme, inventory):
+    beta_client = api.new_client("Beta Co")
+    first = new_order(api, acme, (priced["bottle"], 20, "120000"), currency="PKR")
+    second = new_order(api, beta_client, (priced["bottle"], 20, "110000"), currency="PKR")
+    assert (d(first["total_amount"]), d(second["total_amount"])) == (d("2400000"), d("2200000"))
+    seen = {o["number"]: (o["client"]["name"], d(o["total_amount"])) for o in orders_view(api)["items"]}
+    assert seen == {first["number"]: ("Acme Ltd", d("2400000")), second["number"]: ("Beta Co", d("2200000"))}
+    assert d(get(api, first["id"])["lines"][0]["unit_price"]) == d("120000") and d(get(api, second["id"])["lines"][0]["unit_price"]) == d("110000")
+    # stock is reserved independently, by quantity only: each order holds its own 20
+    assert d(first["lines"][0]["stock"]["reserved_for_order"]) == 20 and d(second["lines"][0]["stock"]["reserved_for_order"]) == 20
+
+
+def test_changing_the_catalog_never_recalculates_an_order(api, priced, acme, inventory, two_orgs):
+    order = new_order(api, acme, (priced["bottle"], 10, "5"))
+    inventory.products[two_orgs["alpha_id"]][priced["bottle"]]["price"] = "999.0000"  # the catalog changes afterwards
+    again = get(api, order["id"])
+    assert d(again["total_amount"]) == d("50") and d(again["lines"][0]["unit_price"]) == d("5")
+    assert d(orders_view(api)["items"][0]["total_amount"]) == d("50")
+
+
+def test_an_unreachable_inventory_service_does_not_touch_the_totals(api, priced, acme, inventory):
+    order = new_order(api, acme, (priced["bottle"], 5, "2"))
     inventory.mode = "down"
     page = orders_view(api)
-    assert [o["id"] for o in page["items"]] == [order["id"]]
-    assert page["items"][0]["total_amount"] is None and page["items"][0]["currency_code"] is None
-    inventory.mode = None
-    assert d(orders_view(api)["items"][0]["total_amount"]) == d("6.25")  # it comes back by itself
+    assert [o["id"] for o in page["items"]] == [order["id"]] and d(page["items"][0]["total_amount"]) == d("10") and page["items"][0]["currency_code"] == "USD"
 
 
-def test_only_the_order_list_works_out_a_total_and_it_only_reads_from_the_inventory_service(api, priced, acme, inventory):
-    order = new_order(api, acme, (priced["bottle"], 5))
-    assert get(api, order["id"])["total_amount"] is None  # the single order does not ask for prices
+def test_listing_orders_asks_the_inventory_service_for_nothing_about_prices(api, priced, acme, inventory):
+    new_order(api, acme, (priced["bottle"], 5, "2"))
     before, asked = inventory.snapshot(), len(inventory.requests)
     orders_view(api)
-    assert inventory.snapshot() == before  # no stock moved
-    assert inventory.requests[asked:] and all(method == "GET" for method, path, _ in inventory.requests[asked:])
+    assert inventory.snapshot() == before and all(method == "GET" for method, path, _ in inventory.requests[asked:])
+
+
+def test_an_order_made_before_prices_were_recorded_has_no_total_and_is_not_given_one(api, priced, acme, session_factory):
+    order = new_order(api, acme, (priced["bottle"], 5))
+    with session_factory() as db:  # what an older order looks like: no currency, no prices
+        db.execute(text("UPDATE delivery_list_items SET unit_price = NULL"))
+        db.execute(text("UPDATE sales_orders SET currency_code = NULL"))
+        db.commit()
+    shown = get(api, order["id"])
+    assert shown["total_amount"] is None and shown["currency_code"] is None and shown["prices_recorded"] is False
+    assert shown["lines"][0]["unit_price"] is None and shown["lines"][0]["line_total"] is None
+    assert orders_view(api)["items"][0]["total_amount"] is None
+
+
+def test_the_price_must_be_given_for_every_line_and_be_a_valid_nonnegative_amount(api, priced, acme):
+    base = body(acme, (priced["bottle"], 5, "2"), (priced["flour"], 1, "3"))
+    headers = lambda: {**api.headers, "Idempotency-Key": f"order-{uuid.uuid4()}"}
+    # missing on one line: refused, never read as zero
+    missing = {**base, "lines": [base["lines"][0], {k: v for k, v in base["lines"][1].items() if k != "unit_price"}]}
+    assert api.client.post(ORDERS, json=missing, headers=headers()).status_code == 422
+    for bad in ["", " ", "-1", "-0.01", "abc", "1,5", "NaN", "Infinity", "1.00001", "1" + "0" * 15, "9" * 19, None, [1], {"a": 1}]:
+        payload = {**base, "lines": [{**base["lines"][0], "unit_price": bad}, base["lines"][1]]}
+        assert api.client.post(ORDERS, json=payload, headers=headers()).status_code == 422, repr(bad)
+    assert orders_view(api)["items"] == []  # nothing was saved, nothing reserved
+    zero = {**base, "lines": [{**base["lines"][0], "unit_price": "0"}, base["lines"][1]]}
+    assert api.client.post(ORDERS, json=zero, headers=headers()).status_code == 201  # an explicit zero is a price (as on invoices)
+
+
+def test_the_currency_is_required_must_be_real_and_is_stored_on_the_order(api, priced, acme):
+    payload = body(acme, (priced["bottle"], 1, "2"))
+    del payload["currency_code"]
+    assert api.client.post(ORDERS, json=payload, headers={**api.headers, "Idempotency-Key": "cur-0000001"}).status_code == 422
+    for bad in ["US", "USDX", "XXX", "", "12$", "us d", None, 1]:
+        assert api.client.post(ORDERS, json=body(acme, (priced["bottle"], 1, "2"), currency=bad), headers={**api.headers, "Idempotency-Key": f"cur-{uuid.uuid4()}"}).status_code == 422, repr(bad)
+    made = new_order(api, acme, (priced["bottle"], 1, "2"), currency="eur")
+    assert made["currency_code"] == "EUR"
+
+
+def test_a_price_has_no_influence_on_stock(api, priced, acme, inventory):
+    before = d(inventory.stock[priced["bottle"]])
+    cheap = new_order(api, acme, (priced["bottle"], 10, "0.01"))
+    dear = new_order(api, acme, (priced["bottle"], 10, "9999999.99"))
+    assert d(inventory.stock[priced["bottle"]]) == before  # physical stock untouched
+    for order in (cheap, dear):
+        assert d(order["lines"][0]["stock"]["reserved_for_order"]) == 10
+
+
+def test_the_request_fingerprint_covers_the_currency_and_every_price(api, priced, acme):
+    key = "same-key-0001"
+    first = api.client.post(ORDERS, json=body(acme, (priced["bottle"], 5, "2")), headers={**api.headers, "Idempotency-Key": key})
+    assert first.status_code == 201
+    again = api.client.post(ORDERS, json=body(acme, (priced["bottle"], 5, "2")), headers={**api.headers, "Idempotency-Key": key})
+    assert again.status_code == 200 and again.json()["id"] == first.json()["id"]  # a retry replays: no second order, no second reservation
+    for other in (body(acme, (priced["bottle"], 5, "3")), body(acme, (priced["bottle"], 5, "2"), currency="EUR"), body(acme, (priced["bottle"], 6, "2"))):
+        clash = api.client.post(ORDERS, json=other, headers={**api.headers, "Idempotency-Key": key})
+        assert clash.status_code == 409 and "different request" in str(clash.json()["detail"])
+    assert len(orders_view(api)["items"]) == 1
+
+
+def test_an_edit_keeps_saved_prices_and_totals_follow_quantity_times_that_price(api, priced, acme):
+    order = new_order(api, acme, (priced["bottle"], 10, "5"), (priced["flour"], 2, "4"))
+    edited = edit(api, order, (priced["bottle"], 30), (priced["flour"], 2))  # no price sent: both keep theirs
+    assert edited.status_code == 200, edited.text
+    body_ = edited.json()
+    assert {l["product_sku"]: d(l["unit_price"]) for l in body_["lines"]} == {"P-WATER": d("5"), "P-FLOUR": d("4")}
+    assert d(body_["total_amount"]) == d("158")  # 30 x 5 + 2 x 4
+
+
+def test_a_product_added_in_an_edit_needs_its_own_agreed_price(api, priced, acme):
+    order = new_order(api, acme, (priced["bottle"], 10, "5"))
+    without = api.client.patch(f"{ORDERS}/{order['id']}", json={"version": order["version"], "lines": [
+        {"product_id": priced["bottle"], "quantity": "10"}, {"product_id": priced["flour"], "quantity": "2"}]}, headers=api.headers)
+    assert without.status_code == 422 and "agreed price" in str(without.json()["detail"])
+    assert get(api, order["id"])["product_count"] == 1  # nothing changed
+    ok = edit(api, order, (priced["bottle"], 10), (priced["flour"], 2, "4.5"))
+    assert ok.status_code == 200 and d(ok.json()["total_amount"]) == d("59")
+
+
+def test_a_price_can_be_corrected_before_anything_is_dispatched_but_not_after(api, priced, acme):
+    order = new_order(api, acme, (priced["bottle"], 10, "5"))
+    fixed = edit(api, order, (priced["bottle"], 10, "6"))
+    assert fixed.status_code == 200 and d(fixed.json()["total_amount"]) == d("60")
+    order = get(api, order["id"])
+    assert dispatch(api, order, priced["bottle"], 4).status_code == 200
+    order = get(api, order["id"])
+    locked = edit(api, order, (priced["bottle"], 10, "7"))
+    assert locked.status_code == 409 and locked.json()["detail"]["code"] == "price_locked"
+    same = edit(api, order, (priced["bottle"], 8, "6"))  # the quantity may still change (not below dispatched), at the same price
+    assert same.status_code == 200 and d(same.json()["total_amount"]) == d("48")
+
+
+def test_prices_cannot_be_added_to_an_order_made_before_prices_were_recorded(api, priced, acme, session_factory):
+    order = new_order(api, acme, (priced["bottle"], 5))
+    with session_factory() as db:
+        db.execute(text("UPDATE delivery_list_items SET unit_price = NULL"))
+        db.execute(text("UPDATE sales_orders SET currency_code = NULL"))
+        db.commit()
+    order = get(api, order["id"])
+    refused = api.client.patch(f"{ORDERS}/{order['id']}", json={"version": order["version"], "lines": [{"product_id": priced["bottle"], "quantity": "5", "unit_price": "2"}]}, headers=api.headers)
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "prices_not_supported"
+    quantity_only = api.client.patch(f"{ORDERS}/{order['id']}", json={"version": order["version"], "lines": [{"product_id": priced["bottle"], "quantity": "6"}]}, headers=api.headers)
+    assert quantity_only.status_code == 200 and quantity_only.json()["total_amount"] is None
+
+
+def test_the_database_refuses_a_negative_price_or_a_malformed_currency(engine):
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO delivery_list_items (organization_id, delivery_list_id, product_id, product_sku, product_name, quantity, unit, unit_price) "
+                              "VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'S', 'N', 1, 'pcs', -1)"))
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO sales_orders (organization_id, number, client_id, delivery_list_id, currency_code, created_by, created_by_email) "
+                              "VALUES (gen_random_uuid(), 'X', gen_random_uuid(), gen_random_uuid(), 'usd', gen_random_uuid(), 'a@b.c')"))
 
 
 def test_another_organization_never_sees_these_orders_or_their_totals(api, priced, acme, two_orgs):
-    new_order(api, acme, (priced["bottle"], 5))
+    new_order(api, acme, (priced["bottle"], 5, "2"))
     assert orders_view(two_orgs["beta"])["items"] == []

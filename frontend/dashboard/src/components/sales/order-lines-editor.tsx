@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Tooltip } from "@/components/ui/tooltip";
-import { type OrderRow, type PickerProduct, rowFromProduct } from "@/lib/order-form";
+import { type OrderRow, type PickerProduct, rowFromProduct, rowTotal } from "@/lib/order-form";
+import { formatMoney } from "@/lib/product-validation";
 import { api, qty } from "@/lib/sales-browser";
 import QuantityInput from "@/components/ui/quantity-input";
 
@@ -12,10 +13,13 @@ import QuantityInput from "@/components/ui/quantity-input";
 
 const cell = "px-3 py-2.5 align-top";
 
-export default function OrderLinesEditor({ rows, onChange, errors, disabled = false, showStock = true, showPicker = true, emptyMessage }: {
+export default function OrderLinesEditor({ rows, onChange, errors, disabled = false, showStock = true, showPicker = true, emptyMessage, currency, priceErrors = {} }: {
   rows: OrderRow[];
   onChange: (rows: OrderRow[]) => void;
   errors: Record<string, string>;
+  /** When the order has agreed prices (its currency): shows the price column. A line keeps its saved price; a NEW line must be given one. Absent for an order made before prices were recorded. */
+  currency?: string | null;
+  priceErrors?: Record<string, string>;
   disabled?: boolean;
   showStock?: boolean;
   /** false when the products are chosen somewhere else (Create Order's inventory list): this then only reviews and adjusts the chosen rows. */
@@ -23,6 +27,7 @@ export default function OrderLinesEditor({ rows, onChange, errors, disabled = fa
   emptyMessage?: string;
 }) {
   const setQuantity = (productId: string, quantity: string) => onChange(rows.map((r) => (r.productId === productId ? { ...r, quantity } : r)));
+  const setPrice = (productId: string, unitPrice: string) => onChange(rows.map((r) => (r.productId === productId ? { ...r, unitPrice } : r)));
   const remove = (productId: string) => onChange(rows.filter((r) => r.productId !== productId));
 
   return (
@@ -33,7 +38,7 @@ export default function OrderLinesEditor({ rows, onChange, errors, disabled = fa
         <p className="rounded-2xl border border-dashed border-ix-mist/15 px-4 py-8 text-center text-sm text-ix-muted">{emptyMessage ?? "No products yet. Search above and add the products the client needs."}</p>
       ) : (
         <div className="ix-inset overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-left text-sm">
+          <table className={`w-full text-left text-sm ${currency ? "min-w-[58rem]" : "min-w-[40rem]"}`}>
             <caption className="sr-only">Products required</caption>
             <thead className="text-[11px] uppercase tracking-wide text-ix-muted">
               <tr>
@@ -42,6 +47,8 @@ export default function OrderLinesEditor({ rows, onChange, errors, disabled = fa
                 {showStock && <th scope="col" className={`${cell} text-right font-medium`}>Booked</th>}
                 {showStock && <th scope="col" className={`${cell} text-right font-medium`}>Available to order</th>}
                 <th scope="col" className={`${cell} w-56 font-medium`}>Quantity</th>
+                {currency && <th scope="col" className={`${cell} w-48 font-medium`}>Price per piece ({currency})</th>}
+                {currency && <th scope="col" className={`${cell} text-right font-medium`}>Line total</th>}
                 <th scope="col" className={`${cell} w-12`}><span className="sr-only">Remove</span></th>
               </tr>
             </thead>
@@ -73,6 +80,25 @@ export default function OrderLinesEditor({ rows, onChange, errors, disabled = fa
                       </div>
                       {error && <p id={`${inputId}-error`} role="alert" className="mt-1 text-xs text-red-300">{error}</p>}
                     </td>
+                    {currency && (
+                      <td className={cell}>
+                        <input
+                          id={`price-${row.productId}`}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={row.unitPrice}
+                          disabled={disabled || row.priceLocked}
+                          title={row.priceLocked ? "Part of this line was dispatched: its agreed price is frozen" : undefined}
+                          aria-label={`Per piece price of ${row.name} in ${currency}`}
+                          aria-invalid={priceErrors[row.productId] ? true : undefined}
+                          onChange={(e) => setPrice(row.productId, e.target.value)}
+                          className="block w-full text-right font-mono"
+                        />
+                        {priceErrors[row.productId] && <p role="alert" className="mt-1 text-xs text-red-300">{priceErrors[row.productId]}</p>}
+                      </td>
+                    )}
+                    {currency && <td className={`${cell} text-right font-mono text-xs tabular-nums text-ix-text`}>{(() => { const t = rowTotal(row); return t ? formatMoney(t, currency) : "—"; })()}</td>}
                     <td className={`${cell} text-right`}>
                       <Tooltip label={row.min !== "0" ? "Goods were already dispatched: this line cannot be removed" : `Remove ${row.name}`} side="left">
                         <button

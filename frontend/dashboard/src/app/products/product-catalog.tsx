@@ -199,7 +199,7 @@ export default function ProductCatalog({ list, filters }: Props) {
                       <td className="px-4 py-3 text-xs">{product.unit}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-400">{product.hs_code ?? <span className="text-slate-600">—</span>}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{formatMoney(product.cost_price, product.currency_code)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{formatMoney(product.selling_price, product.currency_code)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{product.selling_price ? formatMoney(product.selling_price, product.currency_code) : <span className="text-slate-600">—</span>}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
                           product.is_active ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-slate-600/40 bg-slate-700/30 text-slate-400"

@@ -33,7 +33,7 @@ from app.auth import TenantContext
 from app.currency import is_known_currency
 from app.delivery import conflict
 from app.models import (
-    Client, DeliveryList, Dispatch, DispatchLine, Invoice, InvoiceAllocation, InvoiceCounter, InvoiceLine, InvoicePayment, InvoiceRequest,
+    Client, DeliveryList, DeliveryListItem, Dispatch, DispatchLine, Invoice, InvoiceAllocation, InvoiceCounter, InvoiceLine, InvoicePayment, InvoiceRequest, SalesOrder,
 )
 from app.schemas import (
     ClientRef, DISCLAIMER, AccountBalance, AllocationResponse, BillableLine, ClientAccount, InvoiceDetail, InvoiceLineInput, InvoiceLineResponse,
@@ -174,9 +174,11 @@ def billable_lines(db: Session, tenant: TenantContext, client_id: uuid.UUID, lis
     get_client_or_404(db, tenant, client_id)
     query = (
         scoped_select(DispatchLine, tenant)
-        .add_columns(Dispatch, DeliveryList)
+        .add_columns(Dispatch, DeliveryList, DeliveryListItem.unit_price, SalesOrder.currency_code, SalesOrder.number)
         .join(Dispatch, and_(Dispatch.organization_id == DispatchLine.organization_id, Dispatch.id == DispatchLine.dispatch_id))
         .join(DeliveryList, and_(DeliveryList.organization_id == Dispatch.organization_id, DeliveryList.id == Dispatch.delivery_list_id))
+        .outerjoin(DeliveryListItem, and_(DeliveryListItem.organization_id == DispatchLine.organization_id, DeliveryListItem.id == DispatchLine.delivery_list_item_id))
+        .outerjoin(SalesOrder, and_(SalesOrder.organization_id == DeliveryList.organization_id, SalesOrder.delivery_list_id == DeliveryList.id))
         .where(Dispatch.client_id == client_id, Dispatch.status == "confirmed")
         .order_by(Dispatch.dispatch_date.desc(), Dispatch.number.desc(), DispatchLine.product_name, DispatchLine.id)
     )
@@ -185,14 +187,16 @@ def billable_lines(db: Session, tenant: TenantContext, client_id: uuid.UUID, lis
     rows = db.execute(query.limit(1000)).all()
     sums = invoiced_quantities(db, tenant, [r[0].id for r in rows])
     out = []
-    for line, dispatch, delivery_list in rows:
+    for line, dispatch, delivery_list, agreed_price, agreed_currency, order_number in rows:
         issued, drafts = sums[line.id]
+        priced = agreed_price is not None and agreed_currency is not None  # a line of an order made before prices were recorded has no agreed price
         out.append(
             BillableLine(
                 dispatch_line_id=line.id, dispatch_id=dispatch.id, dispatch_number=dispatch.number, dispatch_date=dispatch.dispatch_date,
                 delivery_list=ListRef(id=delivery_list.id, number=delivery_list.number, status=delivery_list.status), product_id=line.product_id,
                 product_sku=line.product_sku, product_name=line.product_name, unit=line.unit,
                 dispatched_quantity=line.quantity, invoiced_quantity=issued, in_drafts_quantity=drafts, remaining_quantity=max(line.quantity - issued, ZERO),
+                agreed_unit_price=agreed_price if priced else None, agreed_currency_code=agreed_currency if priced else None, order_number=order_number,
             )
         )
     return out

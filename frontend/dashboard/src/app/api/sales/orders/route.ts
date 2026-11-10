@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { checkUuid, fail, isResponse, NO_STORE, parseOrderLines, readObject, sessionToken, text } from "@/lib/sales-routes";
+import { checkCurrency, checkUuid, fail, isResponse, NO_STORE, parseOrderLines, readObject, sessionToken, text } from "@/lib/sales-routes";
 import { salesFailureResponse, salesRequest } from "@/lib/sales";
 import { IDEMPOTENCY_KEY_RE } from "@/lib/stock-validation";
 
@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result.data, { headers: NO_STORE });
 }
 
-// SAVE an order: a client and the products required. The stock is booked at once (all lines or none) and a linked delivery list is generated.
+// SAVE an order: a client, the order's currency and, for each product, the quantity and the price of ONE unit agreed with this client. The stock is booked at
+// once (all lines or none) and a linked delivery list is generated. The price belongs to the order line; the product's catalog is not consulted.
 // The browser sends an Idempotency-Key per intended order (generated once per form), so a double click or a retry returns the same order and
 // books nothing twice. 201 = created, 200 = this exact request had already been processed, 202 = saved but the booking is not confirmed yet.
 export async function POST(req: NextRequest) {
@@ -34,12 +35,14 @@ export async function POST(req: NextRequest) {
 
   const clientId = checkUuid(body.clientId);
   if (!clientId) return fail("Choose a client.", 400, { fieldErrors: { clientId: "Choose a client." } });
-  const lines = parseOrderLines(body.lines);
+  const currency = checkCurrency(body.currencyCode);
+  if (!currency) return fail("Choose the order's currency.", 400, { fieldErrors: { currencyCode: "Use a 3-letter currency code such as USD, EUR or PKR." } });
+  const lines = parseOrderLines(body.lines, "required"); // every line needs the price agreed with this client
   if (!lines.ok) return fail(lines.message, 400);
   const notes = text(body.notes) ?? "";
   if (notes.length > 2000) return fail("Use 2000 characters or fewer for the notes.", 400, { fieldErrors: { notes: "Use 2000 characters or fewer." } });
 
-  const result = await salesRequest("POST", "/api/v1/sales/orders", token, { client_id: clientId, lines: lines.lines, ...(notes ? { notes } : {}) }, { "Idempotency-Key": key });
+  const result = await salesRequest("POST", "/api/v1/sales/orders", token, { client_id: clientId, currency_code: currency, lines: lines.lines, ...(notes ? { notes } : {}) }, { "Idempotency-Key": key });
   if (!result || ![200, 201, 202].includes(result.status)) return salesFailureResponse(result, "Client not found.");
   return NextResponse.json({ order: result.data, pending: result.status === 202, replayed: result.status === 200 }, { status: result.status, headers: NO_STORE });
 }

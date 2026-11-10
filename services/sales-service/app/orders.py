@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from app import clock, delivery
 from app.auth import TenantContext
+from app.currency import is_known_currency
 from app.delivery import conflict, get_list_or_404, human, list_items
 from app.inventory import InventoryGateway, InventoryUnavailable, ProductInfo, unavailable_error
 from app.models import Client, DeliveryList, DeliveryListItem, Dispatch, DispatchLine, SalesOrder, SalesOrderCounter, SalesOrderRequest
@@ -137,9 +138,16 @@ def _items_with_any_dispatch_line(db: Session, tenant: TenantContext, list_id: u
 
 
 # --- what the Inventory Service is asked / what we trust -----------------------------------------------------------------------------
+def _price_text(price: Optional[Decimal]) -> Optional[str]:
+    return None if price is None else canonical(price)
+
+
 def line_rows(items: List[DeliveryListItem]) -> List[dict]:
+    """The lines as the durable intent keeps them. `unit_price` rides along only so an edit can write it back; the Inventory Service is never told a price
+    (see reservation_body): a price has no influence on stock."""
     return [
-        {"item_id": str(i.id), "product_id": str(i.product_id), "sku": i.product_sku, "name": i.product_name, "unit": i.unit, "quantity": canonical(i.quantity)}
+        {"item_id": str(i.id), "product_id": str(i.product_id), "sku": i.product_sku, "name": i.product_name, "unit": i.unit, "quantity": canonical(i.quantity),
+         "unit_price": _price_text(i.unit_price)}
         for i in items
     ]
 
@@ -367,12 +375,15 @@ def _write_lines(db: Session, tenant: TenantContext, delivery_list: DeliveryList
     db.flush()
     for item_id, r in wanted.items():
         item = existing.get(item_id)
+        price = None if r.get("unit_price") is None else Decimal(r["unit_price"])
         if item is not None:
             item.quantity = Decimal(r["quantity"])
+            if "unit_price" in r:  # an older saved intent has no price key: the line keeps what it has
+                item.unit_price = price
         else:
             db.add(DeliveryListItem(
                 id=item_id, organization_id=tenant.organization_id, delivery_list_id=delivery_list.id, product_id=uuid.UUID(r["product_id"]),
-                product_sku=r["sku"], product_name=r["name"], unit=r["unit"], quantity=Decimal(r["quantity"]),
+                product_sku=r["sku"], product_name=r["name"], unit=r["unit"], quantity=Decimal(r["quantity"]), unit_price=price,
             ))
     db.flush()
 
@@ -390,7 +401,10 @@ def complete_if_delivered(db: Session, tenant: TenantContext, delivery_list: Del
 
 # --- creating ---------------------------------------------------------------------------------------------------------------------------------
 def _request_hash(payload) -> str:
-    body = {"client": str(payload.client_id), "notes": payload.notes or "", "lines": sorted(f"{l.product_id}:{canonical(l.quantity)}" for l in payload.lines)}
+    body = {
+        "client": str(payload.client_id), "currency": payload.currency_code, "notes": payload.notes or "",
+        "lines": sorted(f"{l.product_id}:{canonical(l.quantity)}:{canonical(l.unit_price)}" for l in payload.lines),
+    }
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -414,6 +428,8 @@ def create_order(db: Session, tenant: TenantContext, gateway: InventoryGateway, 
     if db.scalar(scoped_select(SalesOrderRequest, tenant).where(SalesOrderRequest.idempotency_key == key)) is not None:
         return _replay(db, tenant, gateway, key, request_hash), True, Outcome("done")
 
+    if not is_known_currency(payload.currency_code):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Use a real ISO 4217 currency code such as USD, EUR or PKR. Nothing is converted.")
     client = delivery.get_client_or_404(db, tenant, payload.client_id)
     if not client.is_active:
         raise conflict(f"{client.name} is inactive. Reactivate the client before creating an order for them.")
@@ -446,13 +462,13 @@ def create_order(db: Session, tenant: TenantContext, gateway: InventoryGateway, 
             info = infos[line.product_id]
             items.append(DeliveryListItem(
                 id=uuid.uuid4(), organization_id=tenant.organization_id, delivery_list_id=list_id, product_id=info.id, product_sku=info.sku,
-                product_name=info.name, quantity=line.quantity, unit=info.unit,
+                product_name=info.name, quantity=line.quantity, unit=info.unit, unit_price=line.unit_price,
             ))
         db.add_all(items)
         db.flush()
         order = SalesOrder(
             id=order_id, organization_id=tenant.organization_id, number=number, client_id=client.id, delivery_list_id=list_id, status="pending_reservation",
-            reservation_status="pending", origin="order", version=1, pending_action="create", pending_key=f"order-{order_id}-v1",
+            reservation_status="pending", origin="order", currency_code=payload.currency_code, version=1, pending_action="create", pending_key=f"order-{order_id}-v1",
             pending_lines=line_rows(items), pending_since=clock.now(), notes=payload.notes, created_by=_user_id(tenant), created_by_email=tenant.email,
         )
         db.add(order)
@@ -554,6 +570,7 @@ def edit_order(db: Session, tenant: TenantContext, gateway: InventoryGateway, or
         items = {i.product_id: i for i in list_items(db, tenant, delivery_list.id)}
         confirmed = _confirmed_totals(db, tenant, delivery_list.id)
         with_history = _items_with_any_dispatch_line(db, tenant, delivery_list.id)
+        priced = order.currency_code is not None  # False: an order made before prices were recorded (its negotiated prices are unknown)
         rows: List[dict] = []
         changed = False
         for line in payload.lines:
@@ -562,9 +579,14 @@ def edit_order(db: Session, tenant: TenantContext, gateway: InventoryGateway, or
             if info is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found.")
             delivery.check_quantity(info, line.quantity)
+            if not priced and line.unit_price is not None:
+                raise conflict(f"{order.number} was made before prices were recorded, so prices cannot be added to it. Edit its quantities only.", code="prices_not_supported")
             if existing is None:
                 delivery.require_active_product(info)
-                rows.append({"item_id": str(uuid.uuid4()), "product_id": str(info.id), "sku": info.sku, "name": info.name, "unit": info.unit, "quantity": canonical(line.quantity)})
+                if priced and line.unit_price is None:
+                    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Enter the agreed price per {info.unit} for {info.name} before adding it to this order.")
+                rows.append({"item_id": str(uuid.uuid4()), "product_id": str(info.id), "sku": info.sku, "name": info.name, "unit": info.unit, "quantity": canonical(line.quantity),
+                             "unit_price": _price_text(line.unit_price)})
                 changed = True
                 continue
             if info.unit != existing.unit:
@@ -574,7 +596,17 @@ def edit_order(db: Session, tenant: TenantContext, gateway: InventoryGateway, or
                 raise conflict(f"{existing.product_name}: {human(done)} {existing.unit} was already dispatched, so the quantity cannot go below that.", code="below_dispatched")
             if line.quantity != existing.quantity:
                 changed = True
-            rows.append({"item_id": str(existing.id), "product_id": str(existing.product_id), "sku": existing.product_sku, "name": existing.product_name, "unit": existing.unit, "quantity": canonical(line.quantity)})
+            # the line keeps its saved price unless a different one is sent; the totals follow quantity x that price. Once any of the line was dispatched its price
+            # is frozen: goods already delivered (and invoiced from this order) are never re-priced.
+            price = existing.unit_price if line.unit_price is None else line.unit_price
+            if line.unit_price is not None and existing.unit_price is not None and line.unit_price != existing.unit_price:
+                if existing.id in with_history:
+                    raise conflict(f"{existing.product_name}: part of it was already dispatched, so its agreed price can no longer be changed.", code="price_locked")
+                changed = True
+            elif line.unit_price is not None and existing.unit_price is None:
+                changed = True
+            rows.append({"item_id": str(existing.id), "product_id": str(existing.product_id), "sku": existing.product_sku, "name": existing.product_name, "unit": existing.unit,
+                         "quantity": canonical(line.quantity), "unit_price": _price_text(price)})
         wanted_products = {l.product_id for l in payload.lines}
         for product_id, existing in items.items():
             if product_id not in wanted_products:
@@ -709,27 +741,24 @@ def _client_refs(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -
     return {c.id: c for c in db.scalars(scoped_select(Client, tenant).where(Client.id.in_({o.client_id for o in orders})))}
 
 
-def order_totals(db: Session, tenant: TenantContext, gateway: InventoryGateway, list_ids: List[uuid.UUID]) -> Dict[uuid.UUID, Tuple[Decimal, str]]:
-    """delivery list id -> (ordered quantity x CURRENT selling price summed, currency), for the lists that can be totalled. One query for the lines and
-    one batched question to the Inventory Service (the caller's own token). A list whose products use different currencies, or with a product the
-    Inventory Service no longer knows, is left out: no total is better than a wrong one. An Inventory outage leaves every list out and breaks nothing."""
-    rows = db.execute(
-        select(DeliveryListItem.delivery_list_id, DeliveryListItem.product_id, DeliveryListItem.quantity)
-        .where(DeliveryListItem.organization_id == tenant.organization_id, DeliveryListItem.delivery_list_id.in_(list_ids))
-    ).all()
-    try:
-        infos = gateway.products({product_id for _, product_id, _ in rows})
-    except (InventoryUnavailable, HTTPException):
+def order_totals(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -> Dict[uuid.UUID, Tuple[Decimal, str]]:
+    """delivery list id -> (the sum of ordered quantity x the AGREED unit price, the order's currency), for the orders that have their prices recorded. These are
+    the order's own saved snapshots: a change to the product catalog (or to the Inventory Service) never changes them, and no service is asked. An order made
+    before prices were recorded, or with a line whose price is missing, is left out: no total is better than an invented one."""
+    currencies = {o.delivery_list_id: o.currency_code for o in orders if o.currency_code}
+    if not currencies:
         return {}
+    rows = db.execute(
+        select(DeliveryListItem.delivery_list_id, DeliveryListItem.quantity, DeliveryListItem.unit_price)
+        .where(DeliveryListItem.organization_id == tenant.organization_id, DeliveryListItem.delivery_list_id.in_(list(currencies)))
+    ).all()
     sums: Dict[uuid.UUID, Decimal] = {}
-    currencies: Dict[uuid.UUID, str] = {}
     unusable = set()
-    for list_id, product_id, quantity in rows:
-        info = infos.get(product_id)
-        if info is None or info.selling_price is None or not info.currency_code or currencies.setdefault(list_id, info.currency_code) != info.currency_code:
+    for list_id, quantity, price in rows:
+        if price is None:
             unusable.add(list_id)
             continue
-        sums[list_id] = sums.get(list_id, ZERO) + Decimal(quantity) * info.selling_price
+        sums[list_id] = sums.get(list_id, ZERO) + Decimal(quantity) * Decimal(price)
     return {i: (total.quantize(QUANT, rounding=ROUND_HALF_UP), currencies[i]) for i, total in sums.items() if i not in unusable}
 
 
@@ -745,13 +774,13 @@ def summaries(db: Session, tenant: TenantContext, orders: List[SalesOrder], gate
             .group_by(DeliveryListItem.delivery_list_id)
         ).all()
     )
-    totals = order_totals(db, tenant, gateway, list(lists)) if gateway is not None else {}
+    totals = order_totals(db, tenant, orders)  # from the order's own saved prices: the catalog and the Inventory Service are not consulted
     out = []
     for o in orders:
         c, l = clients[o.client_id], lists[o.delivery_list_id]
         total_amount, currency_code = totals.get(l.id, (None, None))
         out.append(OrderSummary(
-            total_amount=total_amount, currency_code=currency_code,
+            total_amount=total_amount, currency_code=o.currency_code or currency_code, prices_recorded=total_amount is not None,
             id=o.id, number=o.number, client=ClientRef(id=c.id, name=c.name, is_active=c.is_active),
             delivery_list=OrderListRef(id=l.id, number=l.number, status=l.status), status=o.status, reservation_status=o.reservation_status,
             origin=o.origin, version=o.version, product_count=counts.get(l.id, 0), created_by_email=o.created_by_email, created_at=o.created_at,
@@ -786,7 +815,8 @@ def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, order:
         lines.append(OrderLineResponse(
             id=i.id, product_id=i.product_id, product_sku=i.product_sku, product_name=i.product_name, unit=i.unit,
             unit_allows_fractions=None if info is None else info.allows_fractions, ordered_quantity=i.quantity, dispatched_quantity=done,
-            pending_quantity=pending, remaining_quantity=remaining,
+            pending_quantity=pending, remaining_quantity=remaining, unit_price=i.unit_price,
+            line_total=None if i.unit_price is None else (i.quantity * i.unit_price).quantize(QUANT, rounding=ROUND_HALF_UP),
             stock=None if info is None else OrderStock(total_quantity=info.total, reserved_quantity=info.reserved, available_quantity=info.available, reserved_for_order=held, product_active=info.is_active),
         ))
     (summary,) = summaries(db, tenant, [order])
