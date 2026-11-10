@@ -11,8 +11,8 @@ import { type OrderRow, orderLines, orderTotal, priceErrors as rowPriceErrors, r
 import { formatMoney, plainDecimal } from "@/lib/product-validation";
 import type { OrderDetail, OrderLine } from "@/lib/sales";
 import { FULFILMENT_LABELS, ORDER_STATUS_LABELS, RESERVATION_LABELS, addDecimal, api, jsonBody, qty } from "@/lib/sales-browser";
+import { useStamp } from "@/components/clock";
 
-export const stamp = (iso: string | null | undefined) => (iso ? `${iso.slice(0, 16).replace("T", " ")} UTC` : "—");
 
 export function orderTone(status: string): "success" | "warning" | "danger" | "neutral" | "muted" | "pending" {
   return status === "active" ? "success" : status === "pending_reservation" ? "warning" : status === "failed" ? "danger" : status === "delivered" || status === "closed" ? "neutral" : "muted";
@@ -67,6 +67,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function ListBody({ order }: { order: OrderDetail }) {
+  const stamp = useStamp();
   const fulfilment = FULFILMENT_LABELS[order.delivery_list.status] ?? order.delivery_list.status;
   return (
     <div className="space-y-5">

@@ -610,3 +610,150 @@ def test_the_existing_ledger_is_untouched_by_the_new_model(api, org, feeds, run_
         assert db.execute(text("SELECT status, journal_entry_id IS NULL FROM sync_events WHERE event_type = 'delivery.confirmed'")).one() == ("posted", True)
     assert api.get(ACCOUNTS).status_code == 200 and api.get(f"{PREFIX}/overview").status_code == 200  # the older API is still served
     assert delivery["key"].startswith("delivery-confirmed:")
+
+
+def test_a_day_and_six_months_are_periods_too(api, org):
+    from app import reporting
+    from zoneinfo import ZoneInfo
+    at = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    assert reporting.period_bounds("1d", at, ZoneInfo("UTC"))[0] == at - timedelta(days=1)
+    assert reporting.period_bounds("6m", at, ZoneInfo("UTC"))[0] == datetime(2026, 2, 28, 12, 0, tzinfo=timezone.utc)  # six calendar months back, the day clamped
+    invest(api, 1 * M, day=today(100))  # before a 6-month period... no: 100 days is INSIDE six months, before a month and a week
+    invest(api, 500_000, day=today(0))
+    assert summary(api, "1d")["period"]["label"] == "1 Day" and summary(api, "6m")["period"]["label"] == "6 Months"
+    day, half = block(api, period="1d"), block(api, period="6m")
+    assert (day["capital"]["opening"], day["capital"]["closing"]) == ("1000000.0000", "1500000.0000")
+    assert (half["capital"]["opening"], half["capital"]["closing"]) == ("0.0000", "1500000.0000") and half["capital"]["change"]["state"] == "new"
+    assert len(day["trend"]) == 25 and len(half["trend"]) == 27
+    assert history(api, period="1d")["total"] == 1 and history(api, period="6m")["total"] == 2
+
+
+# ====================================================================================================== the Profit & Loss trend (diverging bars)
+TREND = f"{PREFIX}/pnl-trend"
+
+
+def trend(api, period="1m"):
+    response = api.get(TREND, params={"period": period})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def trend_block(api, currency="PKR", period="1m"):
+    return trend(api, period)["by_currency"][currency]
+
+
+def test_the_example_delivers_20_laptops_and_pays_50000_of_expenses_net_350000(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = stocked(api, org, feeds, run_sync)
+    deliver(feeds, org, item, "20", "120000")
+    settle(run_sync, org)
+    api.expense(post=True, amount="50000", currency_code="PKR", expense_date=today())
+    chart = trend_block(api, period="1w")
+    assert len(chart["buckets"]) == 7 and chart["totals"]["net"] == "350000.0000"
+    (hit,) = [b for b in chart["buckets"] if b["has_activity"]]
+    assert (hit["revenue"], hit["cost_of_goods_sold"], hit["expenses"], hit["other_costs"], hit["net"]) == ("2400000.0000", "2000000.0000", "50000.0000", "50000.0000", "350000.0000")
+    assert chart["totals"]["profitable_periods"] == 1 and chart["totals"]["loss_periods"] == 0
+
+
+def test_the_buckets_add_up_to_the_summary_in_every_period(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = stocked(api, org, feeds, run_sync)
+    deliver(feeds, org, item, "20", "120000", when=ago(days=2), number="DS-000001")
+    deliver(feeds, org, item, "10", "80000", when=ago(hours=2), number="DS-000002")  # a loss
+    settle(run_sync, org)
+    api.expense(post=True, amount="30000", currency_code="PKR", expense_date=today(4))
+    api.expense(post=True, amount="5000", currency_code="PKR", expense_date=today(0))
+    for period in ("1d", "1w", "1m", "6m", "1y"):
+        chart = trend_block(api, period=period)
+        assert chart["totals"]["net"] == block(api, period=period)["profit_loss"]["net"], period
+        assert sum(D(b["net"]) for b in chart["buckets"]) == D(chart["totals"]["net"])
+    week = trend_block(api, period="1w")
+    nets = [D(b["net"]) for b in week["buckets"]]
+    assert any(n > 0 for n in nets) and any(n < 0 for n in nets)  # a profitable day and a loss-making day
+    assert week["totals"]["profitable_periods"] >= 1 and week["totals"]["loss_periods"] >= 1
+
+
+def test_each_filter_groups_by_its_own_unit_and_the_buckets_are_consecutive(api, org):
+    invest(api, 1000)
+    expected = {"1d": ("hour", 24), "1w": ("day", 7), "6m": ("month", 6), "1y": ("month", 12)}
+    for period, (unit, count) in expected.items():
+        body = trend(api, period)
+        chart = body["by_currency"]["PKR"]
+        assert (body["granularity"], len(chart["buckets"])) == (unit, count), period
+        assert chart["buckets"][0]["start"] == body["period"]["start"] and chart["buckets"][-1]["end"] == body["period"]["end"]
+        assert all(a["end"] == b["start"] for a, b in zip(chart["buckets"], chart["buckets"][1:]))  # no gap, no overlap
+    month = trend(api, "1m")
+    buckets = month["by_currency"]["PKR"]["buckets"]
+    spans = [(datetime.fromisoformat(b["end"]) - datetime.fromisoformat(b["start"])).total_seconds() / 86400 for b in buckets]
+    assert month["granularity"] == "week" and all(s == 7 for s in spans[:-1]) and 0 < spans[-1] <= 7  # consecutive weeks, a shorter final one
+
+
+def test_a_period_with_no_activity_is_not_a_profit_or_a_loss(api, org):
+    invest(api, 1000)
+    chart = trend_block(api, period="1w")
+    assert chart["totals"] == {"net": "0.0000", "profitable_periods": 0, "loss_periods": 0, "has_activity": False, "needs_cost_count": 0}
+    assert all(b["net"] == "0.0000" and b["has_activity"] is False for b in chart["buckets"])
+
+
+def test_zero_net_is_activity_that_balances_out(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = stocked(api, org, feeds, run_sync)
+    deliver(feeds, org, item, "10", "110000")  # 10 x (110,000 - 100,000) = 100,000 profit...
+    settle(run_sync, org)
+    api.expense(post=True, amount="100000", currency_code="PKR", expense_date=today())  # ...fully spent
+    chart = trend_block(api, period="1w")
+    assert chart["totals"]["net"] == "0.0000" and chart["totals"]["has_activity"] is True
+    assert chart["totals"]["profitable_periods"] == 0 and chart["totals"]["loss_periods"] == 0  # a zero net is neither
+
+
+def test_orders_invoices_and_payments_do_not_move_the_chart_and_a_discount_is_an_adjustment(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = stocked(api, org, feeds, run_sync)
+    delivery = deliver(feeds, org, item, "20", "120000")
+    settle(run_sync, org)
+    before = trend_block(api, period="1w")["totals"]["net"]
+    line = delivery["data"]["lines"][0]["dispatch_line_id"]
+    invoice = feeds.invoice_issued(org, currency="PKR", subtotal="2300000", total="2300000", when=ago(minutes=30), allocations=[
+        {"dispatch_line_id": line, "dispatch_confirmed_at": delivery["time"], "quantity": "20", "net_amount": "2300000.0000"}])
+    feeds.payment(org, invoice, amount="2300000", when=ago(minutes=10))
+    settle(run_sync, org)
+    chart = trend_block(api, period="1w")
+    assert before == "400000.0000" and chart["totals"]["net"] == "300000.0000"  # only the 100,000 discount adjustment changed it; the payment added nothing
+    (hit,) = [b for b in chart["buckets"] if b["has_activity"]]
+    assert (hit["revenue"], hit["adjustments"], hit["other_costs"]) == ("2400000.0000", "-100000.0000", "100000.0000")  # a discount is a cost to the business
+
+
+def test_a_delivery_that_needs_a_cost_is_counted_but_never_valued(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = product("OLD-1", "Stock from before Finance")
+    deliver(feeds, org, item, "10", "50000")
+    settle(run_sync, org)
+    body = trend(api, "1w")
+    chart = body["by_currency"]["PKR"]
+    assert chart["totals"]["net"] == "0.0000" and chart["totals"]["has_activity"] is False and chart["totals"]["needs_cost_count"] == 1
+    assert body["incomplete"] == {"needs_price": 0, "needs_cost": 1}
+    assert sum(b["needs_cost_count"] for b in chart["buckets"]) == 1
+
+
+def test_partial_deliveries_land_in_their_own_buckets(api, org, feeds, run_sync):
+    invest(api, 5 * M)
+    item = stocked(api, org, feeds, run_sync)
+    deliver(feeds, org, item, "8", "120000", when=ago(days=3), number="DS-000001")
+    deliver(feeds, org, item, "12", "120000", when=ago(hours=1), number="DS-000002")
+    settle(run_sync, org)
+    chart = trend_block(api, period="1w")
+    nets = [b["net"] for b in chart["buckets"] if b["has_activity"]]
+    assert nets == ["160000.0000", "240000.0000"] and chart["totals"]["net"] == "400000.0000"
+
+
+def test_currencies_are_charted_separately_and_isolated_per_tenant(api, org, two_orgs, feeds, run_sync):
+    beta = two_orgs["beta"]
+    beta.accounts()
+    invest(api, 1000, currency="PKR")
+    api.expense(post=True, amount="5", currency_code="USD", expense_date=today())
+    body = trend(api, "1w")
+    assert sorted(body["currencies"]) == ["PKR", "USD"] and body["combined_available"] is False
+    assert body["by_currency"]["USD"]["totals"]["net"] == "-5.0000" and body["by_currency"]["PKR"]["totals"]["net"] == "0.0000"
+    assert body["by_currency"]["USD"]["totals"]["loss_periods"] == 1
+    empty = trend(beta, "1w")
+    assert empty["currencies"] == [] and empty["by_currency"] == {}

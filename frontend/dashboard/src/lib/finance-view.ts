@@ -1,11 +1,14 @@
 // Browser-safe helpers for the Finance page (Capital, Investment and Profit & Loss). Amounts are exact decimal STRINGS from the Finance Service; nothing here turns
 // them into numbers except for DRAWING the trend line.
+import { formatStamp } from "@/lib/format";
 import { formatMoney } from "@/lib/sales-browser";
 import type { ChangeFigure, CurrencyBlock, HistoryCategory, HistoryRow, PeriodKey } from "@/lib/finance";
 
 export const PERIODS: { key: PeriodKey; label: string }[] = [
+  { key: "1d", label: "1 Day" },
   { key: "1w", label: "1 Week" },
   { key: "1m", label: "1 Month" },
+  { key: "6m", label: "6 Months" },
   { key: "1y", label: "1 Year" },
 ];
 
@@ -51,13 +54,9 @@ export function changeView(change: ChangeFigure, currency: string): ChangeView {
   return { arrow, label, absolute, tone: toneOfDirection(change.direction), aria: `${label}, ${word} of ${absolute} since the start of the period` };
 }
 
-/** A date shown in the organization's own time zone ("12 Nov 2026"). */
+/** A date shown in the organization's own time zone, dd/mm/yyyy ("12/11/2026"). */
 export function formatDay(iso: string, timeZone = "UTC"): string {
-  try {
-    return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone }).format(new Date(iso));
-  } catch {
-    return iso.slice(0, 10);
-  }
+  return formatStamp(iso, timeZone).split(" | ")[0];
 }
 
 /** The page of the portal a history row came from, or null. The Finance Service only says WHAT it came from. */
@@ -99,3 +98,78 @@ export const RECONCILIATION_HELP =
 export const FINANCE_PAGE_NOTE =
   "Capital and Investment are balances at the end of the period compared with the start. Profit & Loss is what happened during it. Buying stock is an investment activity, not new capital; " +
   "profit is recognised once, when goods are delivered. Different currencies are never added together.";
+
+// ---- the Profit & Loss Trend chart -----------------------------------------------------------------------------------------------
+import type { PnlBucket, PnlTrend } from "@/lib/finance";
+
+const num = (value: string) => Number(value);
+
+/** The smallest "nice" number (1, 2, 2.5, 5 x 10^n) that is at least `value`: the axis ends on it. 0 stays 0. */
+export function niceCeil(value: number): number {
+  if (!(value > 0)) return 0;
+  const exponent = Math.floor(Math.log10(value));
+  const base = 10 ** exponent;
+  for (const step of [1, 2, 2.5, 5, 10]) if (step * base >= value * (1 - 1e-12)) return step * base;
+  return 10 * base;
+}
+
+/** "1.2M", "350K", "900" - for the axis only; every figure in a tooltip is written exactly. */
+export function compactNumber(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  const trim = (n: number) => String(Math.round(n * 100) / 100);
+  if (abs >= 1e9) return `${sign}${trim(abs / 1e9)}B`;
+  if (abs >= 1e6) return `${sign}${trim(abs / 1e6)}M`;
+  if (abs >= 1e3) return `${sign}${trim(abs / 1e3)}K`;
+  return `${sign}${trim(abs)}`;
+}
+
+export type PnlBar = { index: number; net: number; kind: "profit" | "loss" | "zero" | "none"; heightPct: number };
+export type PnlScale = { top: number; bottom: number; baselinePct: number; ticks: { value: number; pct: number }[]; bars: PnlBar[] };
+
+/** The vertical scale: profit above the zero baseline, loss below it, each side sized to ITS largest bar. Bars are heights in percent of the plot (display only). */
+export function pnlScale(buckets: PnlBucket[]): PnlScale {
+  const nets = buckets.map((b) => num(b.net));
+  const top = niceCeil(Math.max(0, ...nets));
+  const bottom = niceCeil(Math.max(0, ...nets.map((n) => -n)));
+  const span = top + bottom || 1;
+  const baselinePct = (bottom / span) * 100; // distance of the zero line from the BOTTOM of the plot
+  const bars: PnlBar[] = buckets.map((b, index) => {
+    const net = num(b.net);
+    if (!b.has_activity) return { index, net: 0, kind: "none", heightPct: 0 };
+    if (net === 0) return { index, net, kind: "zero", heightPct: 0 };
+    return { index, net, kind: net > 0 ? "profit" : "loss", heightPct: (Math.abs(net) / span) * 100 };
+  });
+  const ticks = [top, top / 2, -bottom / 2, -bottom].filter((v) => v !== 0).map((value) => ({ value, pct: baselinePct + (value / span) * 100 }));
+  return { top, bottom, baselinePct, ticks, bars };
+}
+
+function localParts(iso: string, timeZone: string, options: Intl.DateTimeFormatOptions): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone, ...options }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+/** The short label under a bar: "3 PM" (an hour), "11 Nov" (a day or a week), "Nov 26" (a month). */
+export function bucketLabel(bucket: PnlBucket, granularity: PnlTrend["granularity"], timeZone: string): string {
+  if (granularity === "hour") return localParts(bucket.start, timeZone, { hour: "numeric", hour12: true }).toUpperCase();
+  if (granularity === "month") return localParts(bucket.start, timeZone, { month: "short", year: "2-digit" });
+  return localParts(bucket.start, timeZone, { day: "numeric", month: "short" });
+}
+
+/** The period of one bar for the tooltip: an hour as its clock range, others as dd/mm/yyyy (to dd/mm/yyyy). The end is exclusive of the next bucket, so it is shown a moment earlier. */
+export function bucketPeriod(bucket: PnlBucket, granularity: PnlTrend["granularity"], timeZone: string): string {
+  if (granularity === "hour") return `${formatStamp(bucket.start, timeZone)} – ${formatStamp(bucket.end, timeZone).split(" | ")[1]}`;
+  const last = new Date(new Date(bucket.end).getTime() - 1000).toISOString();
+  const from = formatDay(bucket.start, timeZone);
+  const to = formatDay(last, timeZone);
+  return from === to ? from : `${from} – ${to}`;
+}
+
+/** "+PKR 350,000.00" / "-PKR 50,000.00" / "PKR 0.00". */
+export function signedWithCurrency(value: string, currency: string): string {
+  if (isZero(value)) return withCurrency("0", currency);
+  return `${isNegative(value) ? "-" : "+"}${currency} ${formatMoney(isNegative(value) ? value.slice(1) : value)}`;
+}

@@ -1,11 +1,12 @@
 import Link from "next/link";
 
+import { Stamp } from "@/components/clock";
+
 import { ENTRY_STATUS_LABELS, ENTRY_STATUS_STYLE, FINANCE_NOTICE, money, SOURCE_LABELS, SYNC_NOTICE } from "@/lib/finance-browser";
 import type { Overview } from "@/lib/finance";
 import SyncPanel from "./sync-panel";
 import { InfoNotice, Pill, primaryButton, secondaryButton } from "./ui";
 
-const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
 
 function Stat({ label, value, href }: { label: string; value: number; href: string }) {
   return (
@@ -112,7 +113,7 @@ export default function OverviewView({ overview }: { overview: Overview }) {
                   {s.status === "error" ? "Not reachable" : s.status === "ok" ? "Up to date" : "Not checked yet"}
                 </Pill>
               </div>
-              <div className="mt-1 text-slate-400">{s.last_success_at ? `Last read ${when(s.last_success_at)}` : "Not read yet"}</div>
+              <div className="mt-1 text-slate-400">{s.last_success_at ? <>Last read <Stamp iso={s.last_success_at} /></> : "Not read yet"}</div>
               {s.status === "error" && (
                 <div role="alert" className="mt-1 text-red-300">
                   {s.last_error ?? "Could not be reached"} — trying again automatically ({s.consecutive_failures} {s.consecutive_failures === 1 ? "attempt" : "attempts"} so far). Nothing is lost.

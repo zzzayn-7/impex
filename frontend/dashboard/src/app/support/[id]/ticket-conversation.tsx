@@ -7,11 +7,13 @@ import { useRouter } from "next/navigation";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { TicketDetail } from "@/lib/support";
-import { CATEGORY_LABELS, MESSAGE_MAX, PRIORITY_LABELS, PRIORITY_STYLE, STATUS_LABELS, STATUS_STYLE, stamp } from "@/lib/support-labels";
+import { CATEGORY_LABELS, MESSAGE_MAX, PRIORITY_LABELS, PRIORITY_STYLE, STATUS_LABELS, STATUS_STYLE } from "@/lib/support-labels";
+import { useStamp } from "@/components/clock";
 
 /** One ticket: its status, the whole conversation as bubbles, and a reply box. Message text is rendered as plain TEXT (React escapes it),
  *  never as HTML, so nothing a person wrote can run in the page. */
 export default function TicketConversation({ ticket: initial, justSent = false }: { ticket: TicketDetail; justSent?: boolean }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [ticket, setTicket] = useState(initial);
   const keyRef = useRef(newIdempotencyKey());

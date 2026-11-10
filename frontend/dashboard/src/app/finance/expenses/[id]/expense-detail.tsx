@@ -8,12 +8,13 @@ import { useConfirm } from "@/components/ui/confirm";
 import { api, EXPENSE_NOTICE, EXPENSE_STATUS_LABELS, EXPENSE_STATUS_STYLE, jsonBody, money } from "@/lib/finance-browser";
 import type { ExpenseDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
+import { useStamp } from "@/components/clock";
 
-const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
 
 /** One expense: what it was, which category, who recorded and posted it, and the journal entries it produced. A draft can be edited, posted or
  *  deleted; a posted one can only be reversed (a mirror entry and a reason). It never implies a bank or a payment. */
 export default function ExpenseDetailView({ expense: initial }: { expense: ExpenseDetail }) {
+  const when = useStamp();
   const router = useRouter();
   const [confirm, confirmDialog] = useConfirm();
   const [expense, setExpense] = useState(initial);

@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext
-from app.models import Product, StockBalance, StockMovement, StockOperation, StockReservation
+from app.models import HiddenMovement, Product, StockBalance, StockMovement, StockOperation, StockReservation
 from app.schemas import (
     MovementList,
     MovementResponse,
@@ -498,7 +498,11 @@ def list_movements(
     limit: int,
     offset: int,
 ) -> MovementList:
-    filters = []
+    # The page shows the movements of products that still exist (a deleted = archived product's movements are not listed) and that were not taken off the page.
+    filters = [
+        StockMovement.product_id.in_(select(Product.id).where(Product.organization_id == tenant.organization_id, Product.is_active.is_(True))),
+        ~StockMovement.id.in_(select(HiddenMovement.movement_id).where(HiddenMovement.organization_id == tenant.organization_id)),
+    ]
     if product_id:
         filters.append(StockMovement.product_id == product_id)
     if movement_type:
@@ -508,6 +512,18 @@ def list_movements(
         _movement_query(tenant).where(*filters).order_by(StockMovement.created_at.desc(), StockMovement.movement_type.desc(), StockMovement.id).limit(limit).offset(offset)
     ).all()
     return MovementList(items=[_to_response(*row) for row in rows], total=total, limit=limit, offset=offset)
+
+
+def hide_movement(db: Session, tenant: TenantContext, movement_id: uuid.UUID, email: str) -> None:
+    """Take a movement off the Stock Movements page. The ledger row is NOT changed or deleted (the ledger is append-only); asking twice is fine."""
+    exists = db.scalar(scoped_select(StockMovement, tenant).where(StockMovement.id == movement_id))
+    if exists is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Movement not found.")
+    db.execute(
+        pg_insert(HiddenMovement).values(organization_id=tenant.organization_id, movement_id=movement_id, hidden_by=_user_id(tenant), hidden_by_email=email)
+        .on_conflict_do_nothing(index_elements=["organization_id", "movement_id"])
+    )
+    db.commit()
 
 
 def stock_items(db: Session, tenant: TenantContext, products: Sequence[Product]) -> List[StockProduct]:

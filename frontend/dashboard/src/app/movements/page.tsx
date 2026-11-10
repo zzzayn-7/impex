@@ -33,7 +33,7 @@ export default async function MovementsPage({ searchParams }: { searchParams: Se
 
   const [list, products] = await Promise.all([
     listMovements(token, filters),
-    listProductChoices(token, "all"),
+    listProductChoices(token, "active"),
   ]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
 

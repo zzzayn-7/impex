@@ -152,7 +152,7 @@ describe("the Help & Support list", () => {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/support/${T_A}"`);
-    expect(html).toContain("2026-11-07 10:00 UTC");
+    expect(html).toContain("07/11/2026 | 10:00 AM");
   });
 
   it("two organizations: each sees only its own tickets", async () => {

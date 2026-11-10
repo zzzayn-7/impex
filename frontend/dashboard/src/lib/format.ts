@@ -76,6 +76,16 @@ export function formatDateTime(input: string | Date, prefs: Preferences = DEFAUL
   return parts ? `${writeDate(parts, prefs.date_format)} ${parts.hour}:${parts.minute}` : String(input);
 }
 
+/** How a moment is written for a person: "11/11/2026 | 03:45 PM" (dd/mm/yyyy | hh:mm AM/PM) in the time zone of the organization's country - never UTC.
+ *  The same text on the server and in the browser. An unreadable value is returned as it was. */
+export function formatStamp(input: string | Date, timeZone: string): string {
+  const parts = partsOf(input, timeZone);
+  if (!parts) return String(input);
+  const hour = Number(parts.hour);
+  const twelve = String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, "0");
+  return `${parts.day}/${parts.month}/${parts.year} | ${twelve}:${parts.minute} ${hour < 12 ? "AM" : "PM"}`;
+}
+
 const SEPARATORS: Record<NumberFormat, { group: string; decimal: string }> = {
   comma_dot: { group: ",", decimal: "." },
   dot_comma: { group: ".", decimal: "," },

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseCostBody, parseInvestmentBody, parseOpeningBody, parseReconcileBody } from "@/lib/finance-routes";
 import { GET as getSummary } from "@/app/api/finance/summary/route";
+import { GET as getPnlTrend } from "@/app/api/finance/pnl-trend/route";
 import { GET as getHistory } from "@/app/api/finance/history/route";
 import { GET as getReconciliation } from "@/app/api/finance/reconciliation/route";
 import { POST as postInvestment } from "@/app/api/finance/investments/route";
@@ -83,7 +84,7 @@ describe("reading: summary, history and reconciliation", () => {
   it("the summary needs a session and a known period, and forwards only the period with the session's token", async () => {
     expect((await getSummary(request("GET", undefined, { cookie: null }))).status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect((await getSummary(request("GET", undefined, { query: "?period=1d" }))).status).toBe(400);
+    expect((await getSummary(request("GET", undefined, { query: "?period=2d" }))).status).toBe(400);
     stub(() => json(200, { period: { key: "1w" } }));
     const response = await getSummary(request("GET", undefined, { query: "?period=1w&organization_id=evil" }));
     expect(response.status).toBe(200);
@@ -242,5 +243,27 @@ describe("reconciling a delivery", () => {
     expect(sentBody()).toEqual({ reason: "Checked the paper order", unit_price: "50", unit_cost: "30", currency_code: "PKR" });
     stub(() => json(409, { detail: { code: "already_recognized", message: "This delivery already has its price and cost, and they are final." } }));
     expect((await reconcileDelivery(request("POST", { unitCost: "5", reason: "again" }), params())).status).toBe(409);
+  });
+});
+
+describe("the Profit & Loss trend", () => {
+  it("needs a session and a known period, and forwards only the period", async () => {
+    expect((await getPnlTrend(request("GET", undefined, { cookie: null }))).status).toBe(401);
+    expect((await getPnlTrend(request("GET", undefined, { query: "?period=2d" }))).status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    stub(() => json(200, { buckets: [] }));
+    const response = await getPnlTrend(request("GET", undefined, { query: "?period=1y&organization_id=evil" }));
+    expect(response.status).toBe(200);
+    expect(upstream().url).toBe(`${FINANCE}/api/v1/finance/pnl-trend?period=1y`);
+    expect(upstream().init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    await getPnlTrend(request("GET"));
+    expect(financeCalls().at(-1)![0]).toBe(`${FINANCE}/api/v1/finance/pnl-trend?period=1m`);
+  });
+
+  it("passes on a refusal or an outage safely", async () => {
+    stub(() => json(403, { detail: { code: "module_disabled", message: "The Finance module is not enabled for your organization." } }));
+    expect((await getPnlTrend(request("GET"))).status).toBe(403);
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("down"); }));
+    expect((await getPnlTrend(request("GET"))).status).toBe(503);
   });
 });

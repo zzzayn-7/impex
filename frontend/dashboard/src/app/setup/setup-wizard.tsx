@@ -4,6 +4,7 @@ import { DragEvent, KeyboardEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CURRENCIES, checkCurrency, currencyLabel } from "@/lib/currencies";
+import { timezoneOptions } from "@/lib/timezones";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { LOGO_ACCEPT, checkCompanyName, checkFullName, checkLogoFile, monogram } from "@/lib/setup-validation";
 
@@ -12,6 +13,7 @@ type Props = {
   setupStatus: string;
   initialCompanyName: string;
   initialCurrency: string; // the organization's default currency right now (the database default until somebody chooses)
+  initialTimezone?: string; // the time zone of the organization's country (or the one it already has): every time on screen is shown in it
   hasLogo: boolean;
   logoVersion: string | null;
   initialFullName: string;
@@ -45,6 +47,7 @@ export default function SetupWizard(props: Props) {
   const [logo, setLogo] = useState({ has: props.hasLogo, version: props.logoVersion });
   const [companyName, setCompanyName] = useState(props.initialCompanyName);
   const [currency, setCurrency] = useState(props.initialCurrency);
+  const [timezone, setTimezone] = useState(props.initialTimezone ?? "UTC");
   const [fullName, setFullName] = useState(props.initialFullName);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -119,7 +122,7 @@ export default function SetupWizard(props: Props) {
     busyRef.current = true;
     setBusy(true);
     setFormError(null);
-    const r = await api("/api/setup/company", { method: "PUT", ...jsonBody({ companyName: cleanCompany.value, defaultCurrency: cleanCurrency.value }) });
+    const r = await api("/api/setup/company", { method: "PUT", ...jsonBody({ companyName: cleanCompany.value, defaultCurrency: cleanCurrency.value, timezone }) });
     busyRef.current = false;
     setBusy(false);
     if (r.status === 401) return expired();
@@ -167,7 +170,7 @@ export default function SetupWizard(props: Props) {
     setFormError(null);
     const r = await api("/api/setup/complete", {
       method: "POST",
-      ...jsonBody({ fullName: cleanName.value, ...(fullFlow && cleanCompany.ok ? { companyName: cleanCompany.value } : {}), ...(fullFlow && cleanCurrency.ok ? { defaultCurrency: cleanCurrency.value } : {}) }),
+      ...jsonBody({ fullName: cleanName.value, ...(fullFlow && cleanCompany.ok ? { companyName: cleanCompany.value } : {}), ...(fullFlow && cleanCurrency.ok ? { defaultCurrency: cleanCurrency.value } : {}), ...(fullFlow ? { timezone } : {}) }),
     });
     if (r.status === 401) {
       busyRef.current = false;
@@ -321,6 +324,13 @@ export default function SetupWizard(props: Props) {
               {errors.defaultCurrency && <p role="alert" className={errorText}>{errors.defaultCurrency}</p>}
             </div>
 
+            <div className="mt-6">
+              <label htmlFor="business-location" className={label}>Location (time zone)</label>
+              <select id="business-location" value={timezone} onChange={(e) => setTimezone(e.target.value)} autoComplete="off" className={input}>
+                {timezoneOptions(timezone).map((zone) => <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>)}
+              </select>
+            </div>
+
             {formError && <p role="alert" className={`${errorText} mt-4`}>{formError}</p>}
             <div className="mt-8 flex justify-end">
               <button type="button" onClick={saveCompanyAndContinue} disabled={busy || uploading} className={primary}>{busy ? "Saving…" : "Continue"}</button>
@@ -365,6 +375,13 @@ export default function SetupWizard(props: Props) {
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Default currency</dt>
                   <dd className="text-[15px] font-medium">{currencyLabel(currency)}</dd>
+                </div>
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+              </div>
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-ix-muted">Location (time zone)</dt>
+                  <dd className="text-[15px] font-medium">{timezone.replace(/_/g, " ")}</dd>
                 </div>
                 <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
               </div>

@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => 
 
 import FinanceView from "@/app/finance/finance-view";
 import { changeView, formatDay, signed, sourceHref, trendPoints } from "@/lib/finance-view";
-import type { CurrencyBlock, FinanceHistory, FinanceSummary, HistoryRow } from "@/lib/finance";
+import type { CurrencyBlock, FinanceHistory, FinanceSummary, HistoryRow, PnlTrend } from "@/lib/finance";
 
 // =====================================================================================================
 // fixtures: what the Finance Service answers, exactly (money is always a string)
@@ -55,6 +55,13 @@ const ROWS: HistoryRow[] = [
 ];
 const history = (items = ROWS, over: Partial<FinanceHistory> = {}): FinanceHistory => ({ items, total: items.length, limit: 25, offset: 0, period: { key: "1m", label: "1 Month", start: "2026-10-11T10:00:00+00:00", end: "2026-11-11T10:00:00+00:00" }, ...over });
 
+export const pnlTrend = (over: Partial<PnlTrend> = {}): PnlTrend => ({
+  period: { key: "1m", label: "1 Month", start: "2026-10-11T10:00:00+00:00", end: "2026-11-11T10:00:00+00:00", timezone: "Asia/Karachi" }, granularity: "week", default_currency: "PKR", currencies: ["PKR"], combined_available: true,
+  by_currency: { PKR: { currency_code: "PKR", totals: { net: "350000.0000", profitable_periods: 1, loss_periods: 0, has_activity: true, needs_cost_count: 0 }, buckets: [
+    { start: "2026-10-11T10:00:00+00:00", end: "2026-11-11T10:00:00+00:00", revenue: "2400000.0000", cost_of_goods_sold: "2000000.0000", expenses: "50000.0000", adjustments: "0.0000", other_costs: "50000.0000", net: "350000.0000", has_activity: true, needs_cost_count: 0 },
+  ] } }, incomplete: { needs_price: 0, needs_cost: 0 }, ...over,
+});
+
 const CATEGORIES = [{ id: "acc-1", code: "5000", name: "General Expenses", account_type: "expense", description: null, is_active: true, is_system: false, system_key: null, has_postings: false, created_at: "", updated_at: "" }] as any;
 
 // =====================================================================================================
@@ -77,6 +84,7 @@ function stubRoutes(overrides: Record<string, (url: string, init: any) => Respon
     for (const [part, fn] of Object.entries(overrides)) if (url.includes(part)) return fn(url, init);
     if (url.startsWith("/api/finance/summary")) { const p = new URL(url, "http://x").searchParams.get("period") as any; return json(200, { ...current(), period: { ...current().period, key: p, label: { "1w": "1 Week", "1m": "1 Month", "1y": "1 Year" }[p as "1w"] } }); }
     if (url.startsWith("/api/finance/history")) return json(200, history());
+    if (url.startsWith("/api/finance/pnl-trend")) return json(200, pnlTrend());
     if (url.startsWith("/api/finance/opening-positions")) return json(200, { items: [] });
     if (url.startsWith("/api/finance/inventory-costs")) return json(200, { items: [] });
     if (url.startsWith("/api/finance/reconciliation")) return json(200, { items: [] });
@@ -85,7 +93,7 @@ function stubRoutes(overrides: Record<string, (url: string, init: any) => Respon
 }
 
 function mount(over: { summary?: FinanceSummary; history?: FinanceHistory } = {}) {
-  return render(<FinanceView initialSummary={over.summary ?? summary()} initialHistory={over.history ?? history()} expenseCategories={CATEGORIES} />);
+  return render(<FinanceView initialSummary={over.summary ?? summary()} initialHistory={over.history ?? history()} expenseCategories={CATEGORIES} initialPnl={pnlTrend()} />);
 }
 
 beforeEach(() => {
@@ -112,12 +120,12 @@ describe("the Finance Overview", () => {
     expect(screen.getByTestId("pnl-expenses").textContent).toBe("-50,000.00");
   });
 
-  it("has exactly 1 Week | 1 Month | 1 Year, in that order, with the month selected", () => {
+  it("has exactly 1 Day | 1 Week | 1 Month | 6 Months | 1 Year, in that order, with the month selected", () => {
     mount();
     const group = screen.getByRole("radiogroup", { name: "Period" });
     const radios = within(group).getAllByRole("radio");
-    expect(radios.map((r) => r.textContent)).toEqual(["1 Week", "1 Month", "1 Year"]);
-    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "true", "false"]);
+    expect(radios.map((r) => r.textContent)).toEqual(["1 Day", "1 Week", "1 Month", "6 Months", "1 Year"]);
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "false", "true", "false", "false"]);
   });
 
   it("the sidebar-less page shows none of the old Finance pages as its own navigation", () => {
@@ -323,8 +331,8 @@ describe("the transaction history", () => {
   });
 
   it("formats dates in the organization's own time zone", () => {
-    expect(formatDay("2026-11-10T20:30:00+00:00", "Asia/Karachi")).toBe("11 Nov 2026"); // already the 11th in Karachi
-    expect(formatDay("2026-11-10T20:30:00+00:00", "UTC")).toBe("10 Nov 2026");
+    expect(formatDay("2026-11-10T20:30:00+00:00", "Asia/Karachi")).toBe("11/11/2026"); // already the 11th in Karachi
+    expect(formatDay("2026-11-10T20:30:00+00:00", "UTC")).toBe("10/11/2026");
     expect(signed("1000.5000")).toBe("+1,000.50");
     expect(signed("-0.5000")).toBe("-0.50");
     expect(signed("0.0000")).toBe("0.00");

@@ -108,7 +108,7 @@ export function badParse(parsed: { ok: false; message: string; fieldErrors?: Fie
 }
 
 // ---- Capital, Investment and Profit & Loss ------------------------------------------------------------------------------------------------
-export const PERIOD_KEYS = ["1w", "1m", "1y"] as const;
+export const PERIOD_KEYS = ["1d", "1w", "1m", "6m", "1y"] as const;
 export const HISTORY_CATEGORIES = ["all", "investments", "profitable_sales", "loss_sales", "expenses_adjustments", "reconciliation"] as const;
 export const INVESTMENT_KINDS = ["contribution", "withdrawal"] as const;
 export const INVESTMENT_TYPES = ["cash", "asset", "inventory"] as const;

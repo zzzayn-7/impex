@@ -17,7 +17,6 @@ import StockForm from "./stock-form";
 //
 // The three buttons at the top are about the WHOLE inventory:
 //   Add Stock         REGISTER A NEW PRODUCT (the dialog "Add Product to Stock"), optionally with the quantity the organization already owns;
-//   Remove Stock      take available stock out of an existing product;
 //   Opening Balance   the starting quantity of an already registered product that has no stock history yet.
 // A row's Actions are exactly two icons: Edit (opens the product dialog on its edit form) and Delete (always asks first). Delete takes the product out of the
 // Stock list and out of everything new (orders, purchases) but ERASES NOTHING: it is the product's archive, so its movements, orders, receipts and invoices
@@ -30,17 +29,19 @@ type Props = {
   list: PagedResult<StockProduct>;
   filters: StockFilters;
   products: Product[]; // active products, for the form
+  totals?: { currency: string; amount: string }[]; // what ALL the products of this filter are worth at cost (never added across currencies)
 };
 
 /** Opened from a button above the table (Remove Stock / Opening Balance: pick the product). */
 type Panel = { action: StockAction; productId?: string; scope: "top" } | null;
 
-const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "out", label: "Remove Stock" }, { action: "opening", label: "Opening Balance" }];
+// There is no "Remove Stock" button: a product's delete icon does that (it takes the product out of Stock).
+const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "opening", label: "Opening Balance" }];
 
 /** A price with its currency, or a dash when the service did not send one. */
 const money = (amount?: string | null, currency?: string | null) => (amount && currency ? formatMoney(amount, currency) : "—");
 
-export default function StockOverview({ list, filters, products }: Props) {
+export default function StockOverview({ list, filters, products, totals = [] }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<Panel>(null);
@@ -168,12 +169,22 @@ export default function StockOverview({ list, filters, products }: Props) {
           key={`${panel.scope}-${panel.action}-${panel.productId ?? ""}`}
           initialAction={panel.action}
           initialProductId={panel.productId}
-          actions={["out", "opening"]}
+          actions={["opening"]}
           products={products}
           onDone={done}
           onCancel={() => setPanel(null)}
         />
       )}
+
+      <section aria-label="Total cost of stock" data-testid="stock-total-cost" className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-xl border border-slate-800 bg-slate-900/30 px-5 py-4">
+        <span className="text-xs font-medium uppercase text-slate-400">Total cost</span>
+        {totals.length === 0 ? (
+          <span className="font-mono text-lg font-semibold text-white" data-testid="stock-total-cost-value">0.00</span>
+        ) : (
+          totals.map((t) => <span key={t.currency} className="font-mono text-lg font-semibold text-white" data-testid={`stock-total-cost-${t.currency}`}>{formatMoney(t.amount, t.currency)}</span>)
+        )}
+        <span className="text-xs text-slate-400">pieces on hand x cost, for all {total} {total === 1 ? "product" : "products"}</span>
+      </section>
 
       <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/30 p-5">
         <div className="flex flex-wrap items-end gap-3">

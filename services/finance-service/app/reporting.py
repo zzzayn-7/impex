@@ -8,7 +8,7 @@ THE DEFINITIONS (the page shows exactly these; docs/finance.md repeats them):
                        Deliveries that need a price or a cost reconciliation are NOT in it: they are counted and listed instead.
   Capital              Investment + the net profit accumulated since the opening position (or since the beginning when there is none).
                        So: contributing 5,000,000 and buying stock with it leaves Capital at 5,000,000; delivering part of it at a profit raises it by exactly that profit.
-  Period               1 Week / 1 Month / 1 Year ROLLING, ending now, measured in the organization's time zone. Capital and Investment are balances AS OF the end of the
+  Period               1 Day / 1 Week / 1 Month / 6 Months / 1 Year ROLLING, ending now, measured in the organization's time zone. Capital and Investment are balances AS OF the end of the
                        period compared with the same balance at its start; Profit & Loss is what happened DURING it.
   Change               ((closing - opening) / |opening|) x 100. A zero opening is "New" (with the absolute change) - never a percentage of zero. Never infinity.
 
@@ -29,8 +29,8 @@ from sqlalchemy.orm import Session
 from app.models import CapitalRecord, CostEntry, Expense, JournalEntry, OpeningPosition, TradeAdjustment, TradeDelivery
 from app.trading import ZERO, q4, start_of_day
 
-PERIODS = {"1w": "1 Week", "1m": "1 Month", "1y": "1 Year"}
-TREND_STEPS = {"1w": 7, "1m": 30, "1y": 12}
+PERIODS = {"1d": "1 Day", "1w": "1 Week", "1m": "1 Month", "6m": "6 Months", "1y": "1 Year"}
+TREND_STEPS = {"1d": 24, "1w": 7, "1m": 30, "6m": 26, "1y": 12}
 CATEGORIES = ("all", "investments", "profitable_sales", "loss_sales", "expenses_adjustments", "reconciliation")
 
 
@@ -43,9 +43,9 @@ def _minus_months(moment: datetime, months: int) -> datetime:
 
 
 def period_bounds(key: str, now: datetime, zone: ZoneInfo) -> Tuple[datetime, datetime]:
-    """The rolling period ending at `now`: 1 week = 7 days back, 1 month / 1 year = the same moment one calendar month / year earlier, in the organization's time zone."""
+    """The rolling period ending at `now`: 1 day = 24 hours back, 1 week = 7 days back, 1 / 6 / 12 months = the same moment that many calendar months earlier, in the organization's time zone."""
     local = now.astimezone(zone)
-    start = local - timedelta(days=7) if key == "1w" else _minus_months(local, 1 if key == "1m" else 12)
+    start = {"1d": lambda: local - timedelta(days=1), "1w": lambda: local - timedelta(days=7), "1m": lambda: _minus_months(local, 1), "6m": lambda: _minus_months(local, 6), "1y": lambda: _minus_months(local, 12)}[key]()
     return start.astimezone(timezone.utc), now.astimezone(timezone.utc)
 
 
@@ -328,3 +328,95 @@ def reconciliation_list(ds: Dataset) -> List[dict]:
          "revenue": _money(d.revenue), "note": d.note}
         for d in ds.deliveries if d.status != "recognized"
     ]
+
+
+# --- the profit & loss trend (the diverging bar chart) ----------------------------------------------------------------------------------------------
+GRANULARITY = {"1d": "hour", "1w": "day", "1m": "week", "6m": "month", "1y": "month"}
+
+
+def bucket_edges(period: str, start: datetime, end: datetime, zone: ZoneInfo) -> List[datetime]:
+    """The consecutive buckets of the period, as edges (the first is `start`, the last is `end`): 1 Day = hours, 1 Week = days, 1 Month = consecutive 7-day weeks from
+    the start with a shorter final one, 6 Months / 1 Year = calendar months. Days, weeks and months are counted on the organization's local calendar."""
+    local_start = start.astimezone(zone)
+    edges = [start]
+    index = 1
+    while True:
+        if period == "1d":
+            nxt = start + timedelta(hours=index)
+        elif period == "1w":
+            nxt = (local_start + timedelta(days=index)).astimezone(timezone.utc)
+        elif period == "1m":
+            nxt = (local_start + timedelta(days=7 * index)).astimezone(timezone.utc)
+        else:
+            nxt = _minus_months(local_start, -index).astimezone(timezone.utc)
+        if nxt >= end:
+            edges.append(end)
+            return edges
+        edges.append(nxt)
+        index += 1
+
+
+def pnl_events(ds: Dataset, currency: str) -> List[Tuple[datetime, str, Decimal]]:
+    """Every dated effect on net profit in one currency, split into its parts: revenue and cost of goods sold of RECOGNISED deliveries, expenses (a reversal is negative) and the
+    signed adjustments of recognised deliveries. Net profit = revenue - cost of goods sold - expenses + adjustments (the same figures profit_items() adds up)."""
+    status = {d.id: d.status for d in ds.deliveries}
+    events: List[Tuple[datetime, str, Decimal]] = []
+    for d in ds.deliveries:
+        if d.status == "recognized" and d.currency_code == currency:
+            events.append((d.delivered_at, "revenue", d.revenue))
+            events.append((d.delivered_at, "cogs", d.cogs))
+    for a in ds.adjustments:
+        if a.currency_code == currency and status.get(a.delivery_id) == "recognized":
+            events.append((a.effective_at, "adjustment", a.amount))
+    for e, reversal_date in ds.expenses:
+        if e.currency_code != currency:
+            continue
+        events.append((ds.at(e.expense_date), "expense", e.amount))
+        if e.status == "reversed" and reversal_date is not None:
+            events.append((ds.at(reversal_date), "expense", -e.amount))
+    return events
+
+
+def pnl_trend(ds: Dataset, period: str, now: datetime, default_currency: str) -> dict:
+    """Net profit or loss per bucket of the period, per currency, from the SAME recognised facts as the summary (so the buckets add up to its Profit & Loss exactly).
+    A bucket with no activity is reported as such (never a profit or a loss); deliveries that need a price or a cost are counted, not valued."""
+    start, end = period_bounds(period, now, ds.zone)
+    edges = bucket_edges(period, start, end, ds.zone)
+    ordered = sorted(currencies(ds), key=lambda c: (c != default_currency, c))
+    by_currency = {}
+    for currency in ordered:
+        events = pnl_events(ds, currency)
+        pending = [d for d in ds.deliveries if d.status == "needs_cost" and d.currency_code == currency and _in(d.delivered_at, start, end)]
+        buckets = []
+        for lo, hi in zip(edges, edges[1:]):
+            parts = {"revenue": ZERO, "cogs": ZERO, "expense": ZERO, "adjustment": ZERO}
+            active = False
+            for at, kind, amount in events:
+                if lo < at <= hi:
+                    parts[kind] += amount
+                    active = True
+            net = parts["revenue"] - parts["cogs"] - parts["expense"] + parts["adjustment"]
+            buckets.append({
+                "start": lo.isoformat(), "end": hi.isoformat(), "revenue": _money(parts["revenue"]), "cost_of_goods_sold": _money(parts["cogs"]), "expenses": _money(parts["expense"]),
+                "adjustments": _money(parts["adjustment"]), "other_costs": _money(parts["expense"] - parts["adjustment"]), "net": _money(net), "has_activity": active,
+                "needs_cost_count": sum(1 for d in pending if lo < d.delivered_at <= hi), "_net": net,
+            })
+        total = sum((b["_net"] for b in buckets), ZERO)
+        for b in buckets:
+            del b["_net"]
+        nets = [D_(b["net"]) for b in buckets]
+        by_currency[currency] = {
+            "currency_code": currency, "buckets": buckets,
+            "totals": {"net": _money(total), "profitable_periods": sum(1 for b, n in zip(buckets, nets) if b["has_activity"] and n > 0), "loss_periods": sum(1 for b, n in zip(buckets, nets) if b["has_activity"] and n < 0),
+                       "has_activity": any(b["has_activity"] for b in buckets), "needs_cost_count": len(pending)},
+        }
+    missing_price = sum(1 for d in ds.deliveries if d.status == "needs_price" and _in(d.delivered_at, start, end))
+    return {
+        "period": {"key": period, "label": PERIODS[period], "start": start.isoformat(), "end": end.isoformat(), "timezone": str(ds.zone)}, "granularity": GRANULARITY[period],
+        "default_currency": default_currency, "currencies": ordered, "combined_available": len(ordered) <= 1, "by_currency": by_currency,
+        "incomplete": {"needs_price": missing_price, "needs_cost": sum(c["totals"]["needs_cost_count"] for c in by_currency.values())},
+    }
+
+
+def D_(value: str) -> Decimal:
+    return Decimal(value)

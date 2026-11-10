@@ -1,11 +1,15 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { useStamp } from "@/components/clock";
+import { useConfirm } from "@/components/ui/confirm";
+import { Tooltip } from "@/components/ui/tooltip";
+import { subtractMoney, sumMoney } from "@/lib/sales-browser";
 import type { MovementFilters, PagedResult } from "@/lib/inventory";
 import type { Product } from "@/lib/product-validation";
-import { MOVEMENT_LABELS, MOVEMENT_TYPES, Movement, MovementType, formatQuantity, isDebit } from "@/lib/stock-validation";
+import { MOVEMENT_TYPES, Movement, MovementType, formatQuantity, isDebit } from "@/lib/stock-validation";
 
 type Props = {
   list: PagedResult<Movement>;
@@ -19,14 +23,34 @@ const BADGE: Record<MovementType, string> = {
   out: "border-red-500/20 bg-red-500/10 text-red-300",
 };
 
-const when = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
-};
+// What a movement is called on this page: In or Out (an opening balance puts stock IN).
+const ACTIVITY: Record<MovementType, string> = { opening: "In", in: "In", out: "Out" };
+
+/** The stock the product had just BEFORE this movement: after minus what came in, or after plus what went out (exact decimals). */
+const before = (m: Movement) => (isDebit(m.movement_type) ? sumMoney([m.balance_after, m.quantity]) : subtractMoney(m.balance_after, m.quantity));
 
 export default function MovementHistory({ list, filters, products }: Props) {
   const router = useRouter();
+  const stamp = useStamp();
   const [isPending, startTransition] = useTransition();
+  const [confirm, confirmDialog] = useConfirm();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // The bin icon takes a movement off this page. The stock ledger itself is permanent and is not changed (balances stay exactly as they are).
+  async function remove(m: Movement) {
+    const ok = await confirm({
+      title: "Remove this movement from the list?",
+      message: `${ACTIVITY[m.movement_type]} ${formatQuantity(m.quantity)} ${m.product_unit} of ${m.product_name}. It disappears from this page only: the stock ledger keeps it and your quantities do not change.`,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
+    setProblem(null);
+    const res = await fetch(`/api/stock/movements/${m.id}/hide`, { method: "POST" });
+    const body = await res.json().catch(() => null);
+    if (res.status === 401) return router.replace("/login");
+    if (!res.ok) return setProblem(body?.error ?? "The movement could not be removed. Please try again.");
+    startTransition(() => router.refresh());
+  }
 
   function navigate(next: Partial<MovementFilters>) {
     const merged = { ...filters, page: 1, ...next };
@@ -49,7 +73,7 @@ export default function MovementHistory({ list, filters, products }: Props) {
       <div>
         <h2 className="text-xl font-semibold text-white">Stock Movements</h2>
         <p className="text-xs text-slate-400">
-          Every change to your stock, newest first. The history is permanent: movements can never be edited or deleted.
+          Every change to your stock, newest first.
         </p>
       </div>
 
@@ -63,10 +87,10 @@ export default function MovementHistory({ list, filters, products }: Props) {
             </select>
           </label>
           <label className="text-xs font-medium text-slate-400">
-            Type
+            Activity
             <select value={filters.type} onChange={(e) => navigate({ type: e.target.value as MovementFilters["type"] })} className={selectClass}>
-              <option value="">All types</option>
-              {MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
+              <option value="">All activity</option>
+              {MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY[t]}{t === "opening" ? " (opening balance)" : ""}</option>)}
             </select>
           </label>
           {filtered && (
@@ -75,6 +99,8 @@ export default function MovementHistory({ list, filters, products }: Props) {
             </button>
           )}
         </div>
+
+        {problem && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">{problem}</p>}
 
         <div aria-busy={isPending} className={`transition-opacity ${isPending ? "opacity-50" : "opacity-100"}`}>
           {isPending && <p role="status" className="mb-2 text-xs text-slate-400">Updating…</p>}
@@ -94,32 +120,40 @@ export default function MovementHistory({ list, filters, products }: Props) {
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">When</th>
-                    <th className="px-4 py-3 font-semibold">Type</th>
                     <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 font-semibold text-right">Quantity</th>
-                    <th className="px-4 py-3 font-semibold text-right">Balance after</th>
-                    <th className="px-4 py-3 font-semibold">Reason</th>
-                    <th className="px-4 py-3 font-semibold">By</th>
+                    <th className="px-4 py-3 text-center font-semibold">Quantity before</th>
+                    <th className="px-4 py-3 text-center font-semibold">Quantity after</th>
+                    <th className="px-4 py-3 text-center font-semibold">Order</th>
+                    <th className="px-4 py-3 text-center font-semibold">Activity</th>
+                    <th className="px-4 py-3 text-center font-semibold">Date and time</th>
+                    <th className="px-4 py-3 text-center font-semibold">User</th>
+                    <th className="px-4 py-3 text-center font-semibold"><span className="sr-only">Remove</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {list.items.map((m) => (
                     <tr key={m.id} className="transition-colors hover:bg-slate-800/30">
-                      <td className="px-4 py-3 text-xs whitespace-nowrap text-slate-400">{when(m.created_at)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap ${BADGE[m.movement_type]}`}>{MOVEMENT_LABELS[m.movement_type]}</span>
-                      </td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-white">{m.product_name}</div>
                         <div className="font-mono text-xs text-indigo-300">{m.product_sku}</div>
                       </td>
-                      <td className={`px-4 py-3 text-right font-mono text-xs whitespace-nowrap ${isDebit(m.movement_type) ? "text-red-300" : "text-emerald-400"}`}>
-                        {isDebit(m.movement_type) ? "−" : "+"}{formatQuantity(m.quantity)} <span className="text-slate-500">{m.product_unit}</span>
+                      <td className="px-4 py-3 text-center font-mono text-xs whitespace-nowrap" data-testid={`before-${m.id}`}>{formatQuantity(before(m))}</td>
+                      <td className="px-4 py-3 text-center font-mono text-xs whitespace-nowrap" data-testid={`after-${m.id}`}>{formatQuantity(m.balance_after)}</td>
+                      <td className="px-4 py-3 text-center font-mono text-xs whitespace-nowrap" data-testid={`order-${m.id}`}>
+                        {formatQuantity(m.quantity)} <span className="text-slate-500">{m.product_unit}</span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{formatQuantity(m.balance_after)}</td>
-                      <td className="px-4 py-3 text-xs">{m.reason}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{m.created_by_email}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap ${BADGE[m.movement_type]}`}>{ACTIVITY[m.movement_type]}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-xs whitespace-nowrap text-slate-400">{stamp(m.created_at)}</td>
+                      <td className="px-4 py-3 text-center text-xs text-slate-400">{m.created_by_email}</td>
+                      <td className="px-4 py-3 text-center">
+                        <Tooltip label="Remove from list">
+                          <button type="button" onClick={() => void remove(m)} aria-label={`Remove the movement of ${m.product_name} from the list`} className="p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:text-red-300 focus-visible:outline-none">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+                          </button>
+                        </Tooltip>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -138,6 +172,7 @@ export default function MovementHistory({ list, filters, products }: Props) {
           </div>
         )}
       </section>
+      {confirmDialog}
     </div>
   );
 }

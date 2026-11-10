@@ -16,6 +16,7 @@ touched. Passwords and tokens are random, kept in memory and never printed.
 """
 import http.client
 import json
+import re
 import os
 import secrets
 import shutil
@@ -241,7 +242,7 @@ def main() -> int:
 
         print("\n== 6. the movement history")
         status, html, _ = page("a", "/movements")
-        check("the Movements page shows type, quantities, balance, reason and who", status == 200 and all(x in html for x in ("Opening balance", "Stock in", "Stock out", "Supplier delivery #1", "Order 7", emails["a"])), status)
+        check("the Movements page shows product, quantity before/after, order, activity (In/Out), date and time (AM/PM), and who - and no Reason column", status == 200 and all(x in html for x in ("Quantity before", "Quantity after", "Activity", "Date and time", "User", ">In<", ">Out<", emails["a"])) and bool(re.search(r"\d\d/\d\d/\d{4} \| \d\d:\d\d (AM|PM)", html)) and "Reason" not in html and " UTC" not in html, status)
         check("...with no warehouse column and no transfer type", "Warehouse" not in html and "Transfer" not in html)
         check("...and none of B's", "StockB" not in html)
         status, html, _ = page("a", "/movements", f"?product={bolt['id']}&type=in")

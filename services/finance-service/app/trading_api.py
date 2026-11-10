@@ -89,15 +89,23 @@ def delivery_out(d: TradeDelivery) -> dict:
 # The Finance page
 # =====================================================================================================
 @router.get("/summary", tags=["Finance page"])
-def summary(period: Literal["1w", "1m", "1y"] = "1m", tenant: TenantContext = Tenant, db: Session = Depends(get_db), now: datetime = Depends(clock)):
+def summary(period: Literal["1d", "1w", "1m", "6m", "1y"] = "1m", tenant: TenantContext = Tenant, db: Session = Depends(get_db), now: datetime = Depends(clock)):
     """Capital, Investment and Profit & Loss for a rolling period (1 Week, 1 Month or 1 Year), per currency, with the trend. Reading changes nothing."""
     ds = reporting.load(db, tenant.organization_id, trading.zone_of(tenant.timezone))
     return reporting.summary(ds, period, now, tenant.default_currency)
 
 
+@router.get("/pnl-trend", tags=["Finance page"])
+def pnl_trend(period: Literal["1d", "1w", "1m", "6m", "1y"] = "1m", tenant: TenantContext = Tenant, db: Session = Depends(get_db), now: datetime = Depends(clock)):
+    """Net profit or loss per bucket of the period (hours, days, weeks or months), per currency, for the Profit & Loss Trend chart. Computed from the same recognised facts as
+    /summary, so the buckets add up to its Profit & Loss. Reading changes nothing."""
+    ds = reporting.load(db, tenant.organization_id, trading.zone_of(tenant.timezone))
+    return reporting.pnl_trend(ds, period, now, tenant.default_currency)
+
+
 @router.get("/history", tags=["Finance page"])
 def history(
-    period: Literal["1w", "1m", "1y"] = "1m", category: Literal["all", "investments", "profitable_sales", "loss_sales", "expenses_adjustments", "reconciliation"] = "all",
+    period: Literal["1d", "1w", "1m", "6m", "1y"] = "1m", category: Literal["all", "investments", "profitable_sales", "loss_sales", "expenses_adjustments", "reconciliation"] = "all",
     currency: Optional[str] = Query(default=None, min_length=3, max_length=3), limit: int = Query(default=25, ge=1, le=200), offset: int = Query(default=0, ge=0),
     tenant: TenantContext = Tenant, db: Session = Depends(get_db), now: datetime = Depends(clock),
 ):

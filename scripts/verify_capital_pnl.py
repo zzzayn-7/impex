@@ -364,6 +364,20 @@ def main() -> int:
         check("everything was recorded today, so against a zero baseline every period reports 'New' with the absolute change (never a percentage of zero)",
               all(pkr(period=p)["investment"]["change"]["state"] == "new" and pkr(period=p)["investment"]["opening"] == "0.0000" for p in ("1w", "1m", "1y")) and y["change"]["percent"] is None, y["change"])
 
+        print("\n== 9b. The Profit & Loss Trend chart reconciles with the summary")
+        for period, unit, count in (("1d", "hour", 24), ("1w", "day", 7), ("1m", "week", None), ("6m", "month", 6), ("1y", "month", 12)):
+            s_, body = api("a", "GET", f"/api/finance/pnl-trend?period={period}")
+            chart = body.get("by_currency", {}).get("PKR", {})
+            ok = s_ == 200 and body.get("granularity") == unit and (count is None or len(chart.get("buckets", [])) == count)
+            ok = ok and chart["totals"]["net"] == pkr(period=period)["profit_loss"]["net"] and sum(D(b["net"]) for b in chart["buckets"]) == D(chart["totals"]["net"])
+            check(f"{period}: {unit} buckets add up to the Profit & Loss card exactly ({chart.get('totals', {}).get('net')})", ok, (s_, body.get("granularity")))
+        week = api("a", "GET", "/api/finance/pnl-trend?period=1w")[1]["by_currency"]["PKR"]
+        active = [b for b in week["buckets"] if b["has_activity"]]
+        check("per bar: revenue - cost of goods sold - expenses and adjustments = net, from the service's own figures", len(active) >= 1 and all(D(b["revenue"]) - D(b["cost_of_goods_sold"]) - D(b["other_costs"]) == D(b["net"]) for b in week["buckets"]), active[:1])
+        check("nothing waits for reconciliation any more, so the chart is complete", api("a", "GET", "/api/finance/pnl-trend?period=1w")[1]["incomplete"] == {"needs_price": 0, "needs_cost": 0})
+        check("B has no chart data (tenant isolation) and a bad period is refused", api("b", "GET", "/api/finance/pnl-trend?period=1w")[1]["by_currency"] == {} and api("a", "GET", "/api/finance/pnl-trend?period=2d")[0] == 400)
+        check("the Finance page carries the Profit & Loss Trend chart", "Profit &amp; Loss Trend" in portal("a", "GET", "/finance")[1].replace("<!-- -->", ""))
+
         print("\n== 10. Currencies are never added together")
         invest("a", 20_000, currency="USD")
         body = summary()

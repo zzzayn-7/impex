@@ -175,7 +175,7 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
   }
 
   function field(id: keyof ProductFormValues, label: string, props: React.InputHTMLAttributes<HTMLInputElement> & { hint?: string; optional?: boolean }) {
-    const { hint, optional, ...inputProps } = props;
+    const { hint, optional, ...inputProps } = props; // (a field's descriptive hint is no longer shown under the box - only the reason a box is LOCKED is)
     const error = errors[id];
     return (
       <div>
@@ -189,15 +189,11 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
           onChange={(e) => update(id, e.target.value)}
           disabled={loading}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `product-${id}-error` : hint ? `product-${id}-hint` : undefined}
+          aria-describedby={error ? `product-${id}-error` : undefined}
           className={`${fieldClass} ${error ? bad : ""}`}
           {...inputProps}
         />
-        {error ? (
-          <p id={`product-${id}-error`} className="mt-1.5 text-xs text-red-300">{error}</p>
-        ) : (
-          hint && <p id={`product-${id}-hint`} className="mt-1.5 text-xs text-ix-muted/80">{hint}</p>
-        )}
+        {error ? <p id={`product-${id}-error`} className="mt-1.5 text-xs text-red-300">{error}</p> : inputProps.disabled && !loading && hint && <p className="mt-1.5 text-xs text-ix-muted/80">{hint}</p>}
       </div>
     );
   }
@@ -265,10 +261,9 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
               maxLength={200}
               placeholder="Type, or scan into this box"
               aria-invalid={barcodeError ? true : undefined}
-              aria-describedby="product-barcode-hint"
               className={`${fieldClass} font-mono ${barcodeError ? bad : ""}`}
             />
-            <p id="product-barcode-hint" className={`mt-1.5 text-xs ${barcodeError ? "text-red-300" : "text-ix-muted/80"}`}>{barcodeError ?? "The manufacturer's barcode, so scanning it finds this product."}</p>
+            {barcodeError && <p id="product-barcode-hint" className="mt-1.5 text-xs text-red-300">{barcodeError}</p>}
           </div>
         )}
         {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "What it normally costs you. Up to 4 decimals. The price you charge is agreed with each client when you create their order." })}
@@ -277,16 +272,12 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
       {withOpeningQuantity && !editing && (
         <section aria-labelledby="opening-quantity-heading" className="space-y-2 rounded-2xl border border-ix-mist/15 bg-ix-mist/5 p-4">
           <h3 id="opening-quantity-heading" className="text-sm font-semibold text-ix-text">Existing Stock / Opening Quantity</h3>
-          <p id="opening-quantity-help" className="text-xs text-ix-muted">
-            Enter a quantity only if your organization already owns these goods. For new purchases, quantities are added when Goods Receipts are confirmed.
-          </p>
           <label htmlFor="product-opening-quantity" className="block text-xs font-medium text-ix-muted">
             Opening quantity <span className="ml-1 text-ix-muted/70">(optional{values.unit.trim() ? `, counted in ${values.unit.trim()}` : ""})</span>
           </label>
           <QuantityInput
             id="product-opening-quantity"
             aria-label="Opening quantity"
-            aria-describedby="opening-quantity-help"
             aria-invalid={openingError ? true : undefined}
             value={opening}
             onChange={(v) => { setOpening(v); setOpeningError(undefined); }}
@@ -294,11 +285,7 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
             disabled={loading}
             className="w-full max-w-xs"
           />
-          {openingError ? (
-            <p role="alert" className="text-xs text-red-300">{openingError}</p>
-          ) : (
-            <p className="text-xs text-ix-muted/80">Leave it at 0 and no stock movement is recorded: the product is simply ready for purchasing and sales.</p>
-          )}
+          {openingError && <p role="alert" className="text-xs text-red-300">{openingError}</p>}
         </section>
       )}
       <datalist id="unit-options">{COMMON_UNITS.map((u) => <option key={u} value={u} />)}</datalist>

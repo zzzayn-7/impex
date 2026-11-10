@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { TicketFilters, TicketPage } from "@/lib/support";
-import { CATEGORIES, CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_STYLE, STATUSES, STATUS_LABELS, STATUS_STYLE, stamp } from "@/lib/support-labels";
+import { CATEGORIES, CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_STYLE, STATUSES, STATUS_LABELS, STATUS_STYLE } from "@/lib/support-labels";
+import { useStamp } from "@/components/clock";
 
 const selectClass = "mt-1.5 block max-w-[14rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
 
 export default function SupportIndex({ list, filters }: { list: TicketPage; filters: TicketFilters }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);

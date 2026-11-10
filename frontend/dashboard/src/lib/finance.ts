@@ -262,7 +262,7 @@ export function financeFailureResponse(result: FinanceResult, notFound?: string)
 }
 
 // ---- Capital, Investment and Profit & Loss (the Finance page) -------------------------------------------------------------
-export type PeriodKey = "1w" | "1m" | "1y";
+export type PeriodKey = "1d" | "1w" | "1m" | "6m" | "1y";
 export type ChangeFigure = { absolute: string; percent: string | null; state: "value" | "new"; direction: "up" | "down" | "flat" };
 export type CurrencyBlock = {
   currency_code: string;
@@ -323,4 +323,24 @@ export async function getFinanceHistory(token: string, period: PeriodKey, catego
   const result = await financeRequest("GET", `/api/v1/finance/history?${params}`, token);
   if (!result || result.status !== 200) return failure(result);
   return { ok: true, history: result.data };
+}
+
+// ---- the Profit & Loss trend (diverging bars) -----------------------------------------------------------------------------
+export type PnlBucket = {
+  start: string; end: string; revenue: string; cost_of_goods_sold: string; expenses: string; adjustments: string; other_costs: string; net: string; has_activity: boolean; needs_cost_count: number;
+};
+export type PnlTrend = {
+  period: { key: PeriodKey; label: string; start: string; end: string; timezone: string };
+  granularity: "hour" | "day" | "week" | "month";
+  default_currency: string;
+  currencies: string[];
+  combined_available: boolean;
+  by_currency: Record<string, { currency_code: string; buckets: PnlBucket[]; totals: { net: string; profitable_periods: number; loss_periods: number; has_activity: boolean; needs_cost_count: number } }>;
+  incomplete: { needs_price: number; needs_cost: number };
+};
+
+export async function getPnlTrend(token: string, period: PeriodKey): Promise<{ ok: true; trend: PnlTrend } | Failure> {
+  const result = await financeRequest("GET", `/api/v1/finance/pnl-trend?period=${period}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, trend: result.data };
 }

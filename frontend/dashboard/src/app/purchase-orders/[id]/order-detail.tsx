@@ -14,10 +14,12 @@ import { lookupOnServer, normalizeScanned, type ScanResult } from "@/lib/scan";
 import { validateQuantity } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, Supplier } from "@/lib/purchasing";
 import QuantityInput from "@/components/ui/quantity-input";
+import { useStamp } from "@/components/clock";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
 export default function OrderDetail({ order, suppliers }: { order: PurchaseOrderDetail; suppliers: Supplier[] }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -92,8 +94,8 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             Created by {order.created_by_email}
-            {order.ordered_at && ` · placed by ${order.ordered_by_email} on ${order.ordered_at.slice(0, 16).replace("T", " ")} UTC`}
-            {order.cancelled_at && ` · cancelled by ${order.cancelled_by_email} on ${order.cancelled_at.slice(0, 16).replace("T", " ")} UTC`}
+            {order.ordered_at && ` · placed by ${order.ordered_by_email} on ${stamp(order.ordered_at)}`}
+            {order.cancelled_at && ` · cancelled by ${order.cancelled_by_email} on ${stamp(order.cancelled_at)}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Order actions">

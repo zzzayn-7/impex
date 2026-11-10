@@ -7,10 +7,11 @@ import { useRouter } from "next/navigation";
 
 import { DISPATCH_NOTICE, DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, api, qty } from "@/lib/sales-browser";
 import type { DispatchDetail } from "@/lib/sales";
+import { useStamp } from "@/components/clock";
 
-const stamp = (value: string) => value.slice(0, 16).replace("T", " ") + " UTC";
 
 export default function DispatchDetailView({ dispatch: initial }: { dispatch: DispatchDetail }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [dispatch, setDispatch] = useState(initial);
   const [busy, setBusy] = useState(false);

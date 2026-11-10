@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { StockFilters, listProductChoices, listStock } from "@/lib/inventory";
+import { stockTotals } from "@/lib/stock-totals";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
 import StockOverview from "./stock-overview";
 
@@ -29,11 +30,12 @@ export default async function StockPage({ searchParams }: { searchParams: Search
   const token = getTenantToken() ?? "";
   const filters = parseFilters(searchParams ?? {});
 
-  const [list, products] = await Promise.all([
+  const [list, products, totals] = await Promise.all([
     listStock(token, filters),
     listProductChoices(token, "active"),
+    stockTotals(token, filters),
   ]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
 
-  return <StockOverview list={list} filters={filters} products={products} />;
+  return <StockOverview list={list} filters={filters} products={products} totals={totals} />;
 }

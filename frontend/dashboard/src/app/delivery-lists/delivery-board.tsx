@@ -13,7 +13,8 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { Client, DeliveryListSummary, OrderSummary, Paged } from "@/lib/sales";
 import { formatMoney } from "@/lib/product-validation";
 import { BOOKING_LABELS, FULFILMENT_LABELS, ORDER_STATUS_LABELS, STATUS_LABELS, api, jsonBody } from "@/lib/sales-browser";
-import { EditOrderModal, ViewListModal, orderTone, stamp } from "./order-modals";
+import { EditOrderModal, ViewListModal, orderTone } from "./order-modals";
+import { useStamp } from "@/components/clock";
 
 type Modal = { kind: "view" | "edit"; id: string } | null;
 
@@ -30,6 +31,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
   clients: Client[];
   created: string | null;
 }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [modal, setModal] = useState<Modal>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(created ? { ok: true, text: `${created} was saved. Its stock is reserved and its delivery list is ready for dispatch.` } : null);

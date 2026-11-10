@@ -647,3 +647,31 @@ def test_choosing_a_currency_here_is_not_a_settings_change(client, session_facto
 def test_a_second_organization_is_untouched(client, session_factory, tenants):
     client.put(COMPANY, json={"name": "Alpha Trading", "default_currency": "CHF"}, headers=bearer("alpha-1"))
     assert org(session_factory, tenants, "beta").default_currency == "USD"
+
+
+# --- the location (time zone) chosen at setup: every time on screen is shown in it -----------------------------------------------------------------------
+@pytest.mark.parametrize("zone", ["Asia/Karachi", "America/New_York", "Europe/Berlin", "UTC", "Pacific/Auckland"])
+def test_the_company_step_saves_the_chosen_location(client, session_factory, tenants, zone):
+    assert client.put(COMPANY, json={"name": "Alpha Trading", "timezone": zone}, headers=bearer("alpha-1")).status_code == 200
+    assert org(session_factory, tenants, "alpha").timezone == zone
+
+
+def test_completing_setup_saves_the_confirmed_location_in_the_same_transaction(client, session_factory, tenants):
+    upload(client, "alpha-1", *FILES["png"])
+    assert client.post(COMPLETE, json={"company_name": "Alpha Trading", "timezone": "Asia/Karachi"}, headers=bearer("alpha-1")).status_code == 200
+    row = org(session_factory, tenants, "alpha")
+    assert (row.timezone, row.setup_status) == ("Asia/Karachi", "completed")
+
+
+def test_not_sending_a_location_leaves_it_alone(client, session_factory, tenants):
+    client.put(COMPANY, json={"name": "Alpha Trading", "timezone": "Asia/Karachi"}, headers=bearer("alpha-1"))
+    assert client.put(COMPANY, json={"name": "Alpha Trading GmbH"}, headers=bearer("alpha-1")).status_code == 200
+    assert org(session_factory, tenants, "alpha").timezone == "Asia/Karachi"
+
+
+@pytest.mark.parametrize("bad", ["", "Mars/Olympus", "asia/karachi ", " Asia/Karachi", "../../etc/passwd", "<script>", 5, True, ["UTC"], "x" * 80])
+def test_anything_that_is_not_a_real_zone_is_refused_and_nothing_changes(client, session_factory, tenants, bad):
+    response = client.put(COMPANY, json={"name": "New Name", "timezone": bad}, headers=bearer("alpha-1"))
+    assert response.status_code == 422, response.text
+    row = org(session_factory, tenants, "alpha")
+    assert (row.name, row.timezone, row.setup_status) == ("Alpha Trading", "UTC", "pending")

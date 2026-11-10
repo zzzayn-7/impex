@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
   const period = p.get("period") ?? "1m";
   const category = p.get("category") ?? "all";
-  if (!(PERIOD_KEYS as readonly string[]).includes(period)) return fail("Choose 1 Week, 1 Month or 1 Year.", 400);
+  if (!(PERIOD_KEYS as readonly string[]).includes(period)) return fail("Choose 1 Day, 1 Week, 1 Month, 6 Months or 1 Year.", 400);
   if (!(HISTORY_CATEGORIES as readonly string[]).includes(category)) return fail("Unknown category.", 400);
   const params = new URLSearchParams({ period, category });
   const currency = (p.get("currency") ?? "").trim().toUpperCase();

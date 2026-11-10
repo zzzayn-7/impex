@@ -6,11 +6,12 @@ import { useCallback, useRef, useState } from "react";
 import { GlassCard } from "@/components/dashboard/glass";
 import { buttonClass } from "@/components/ui/controls";
 import { PageHeader, SectionHeader, StatusBadge } from "@/components/ui/page";
-import type { Account, CurrencyBlock, FinanceHistory, FinanceSummary, HistoryCategory, HistoryRow, PeriodKey } from "@/lib/finance";
+import type { Account, CurrencyBlock, FinanceHistory, FinanceSummary, HistoryCategory, HistoryRow, PeriodKey, PnlTrend } from "@/lib/finance";
 import { api } from "@/lib/finance-browser";
 import { FINANCE_PAGE_NOTE, PERIODS, RECONCILIATION_HELP, SUBTITLE, TITLE } from "@/lib/finance-view";
 import { ExpenseModal, OpeningPositionModal, RecordInvestmentModal, ReconcileModal, ReverseModal, StockCostModal } from "./finance-modals";
 import HistoryPanel from "./history-panel";
+import PnlChart, { type PnlState } from "./pnl-chart";
 import { SummaryCards, TrendChart } from "./summary-cards";
 
 type Modal = null | { kind: "investment" } | { kind: "expense" } | { kind: "opening" } | { kind: "stock" } | { kind: "reconcile"; focus: string | null } | { kind: "reverse"; row: HistoryRow };
@@ -26,12 +27,13 @@ function emptyBlock(currency: string): CurrencyBlock {
 }
 
 /** The Finance page: three summary cards (Capital, Investment, Profit & Loss), one trend line and the transaction history, for a rolling period. */
-export default function FinanceView({ initialSummary, initialHistory, expenseCategories }: { initialSummary: FinanceSummary; initialHistory: FinanceHistory; expenseCategories: Account[] }) {
+export default function FinanceView({ initialSummary, initialHistory, expenseCategories, initialPnl = null }: { initialSummary: FinanceSummary; initialHistory: FinanceHistory; expenseCategories: Account[]; initialPnl?: PnlTrend | null }) {
   const [summary, setSummary] = useState(initialSummary);
   const [history, setHistory] = useState(initialHistory);
   const [period, setPeriod] = useState<PeriodKey>(initialSummary.period.key);
   const [category, setCategory] = useState<HistoryCategory>("all");
   const [currency, setCurrency] = useState<string | null>(null);
+  const [pnl, setPnl] = useState<PnlState>(initialPnl ? { status: "ready", trend: initialPnl } : { status: "error", message: "The profit and loss chart could not be loaded." });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -47,8 +49,13 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
     setError(null);
     const params = new URLSearchParams({ period: next.period, category: next.category, offset: String(next.offset), limit: "25" });
     if (next.currency) params.set("currency", next.currency);
-    const [s, h] = await Promise.all([what === "both" ? api<FinanceSummary>(`/api/finance/summary?period=${next.period}`) : Promise.resolve(null), api<FinanceHistory>(`/api/finance/history?${params}`)]);
+    if (what === "both") setPnl((current) => (current.status === "ready" ? current : { status: "loading" }));
+    const [s, h, t] = await Promise.all([
+      what === "both" ? api<FinanceSummary>(`/api/finance/summary?period=${next.period}`) : Promise.resolve(null), api<FinanceHistory>(`/api/finance/history?${params}`),
+      what === "both" ? api<PnlTrend>(`/api/finance/pnl-trend?period=${next.period}`) : Promise.resolve(null),
+    ]);
     if (ticket !== latest.current) return;
+    if (t) setPnl(t.ok && t.data ? { status: "ready", trend: t.data } : { status: "error", message: t.error }); // (the chart reports its own failure: the figures above stay)
     setBusy(false);
     if (s && !s.ok) return setError(s.status === 401 ? "Your session has expired. Please sign in again." : s.error);
     if (!h.ok) return setError(h.status === 401 ? "Your session has expired. Please sign in again." : h.error);
@@ -56,6 +63,11 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
     if (h.data) setHistory(h.data);
   }, []);
 
+  const retryPnl = async () => {
+    setPnl({ status: "loading" });
+    const t = await api<PnlTrend>(`/api/finance/pnl-trend?period=${period}`);
+    setPnl(t.ok && t.data ? { status: "ready", trend: t.data } : { status: "error", message: t.error });
+  };
   const choosePeriod = (next: PeriodKey) => { if (next === period || busy) return; setPeriod(next); void fetchAll({ period: next, category, currency, offset: 0 }); };
   const chooseCategory = (next: HistoryCategory) => { setCategory(next); void fetchAll({ period, category: next, currency, offset: 0 }, "history"); };
   const chooseCurrency = (next: string) => { setCurrency(next); void fetchAll({ period, category, currency: next, offset: 0 }, "history"); };
@@ -78,7 +90,7 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
         title={TITLE}
         subtitle={SUBTITLE}
         actions={
-          <div role="radiogroup" aria-label="Period" className="inline-flex rounded-xl border border-ix-mist/20 bg-ix-mist/5 p-1" data-testid="period-selector">
+          <div role="radiogroup" aria-label="Period" className="inline-flex max-w-full overflow-x-auto rounded-xl border border-ix-mist/20 bg-ix-mist/5 p-1" data-testid="period-selector">
             {PERIODS.map((p) => (
               <button
                 key={p.key} type="button" role="radio" aria-checked={period === p.key} disabled={busy && period !== p.key} onClick={() => choosePeriod(p.key)}
@@ -134,6 +146,8 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
         <SectionHeader title="Capital trend" subtitle={`${summary.period.label}, ${active}`} />
         <TrendChart block={block} currency={active} timeZone={timeZone} />
       </GlassCard>
+
+      <PnlChart state={pnl} currency={active} onRetry={() => void retryPnl()} />
 
       <HistoryPanel
         history={history} category={category} busy={busy} timeZone={timeZone} onCategory={chooseCategory} onPage={choosePage}

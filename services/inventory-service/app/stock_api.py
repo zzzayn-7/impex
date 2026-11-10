@@ -94,6 +94,13 @@ def list_movements(
     )
 
 
+@router.post("/stock/movements/{movement_id}/hide", status_code=status.HTTP_204_NO_CONTENT, tags=["Stock"])
+def hide_movement(movement_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """Take a movement off the Stock Movements page. The ledger is NOT changed: the movement stays in it (append-only), balances are unchanged."""
+    stock.hide_movement(db, tenant, movement_id, tenant.email)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # =====================================================================================================
 # Stock: changing it (every request needs an Idempotency-Key)
 # =====================================================================================================

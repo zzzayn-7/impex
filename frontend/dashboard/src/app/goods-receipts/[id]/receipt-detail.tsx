@@ -8,10 +8,11 @@ import { useRouter } from "next/navigation";
 import { RECEIPT_NOTICE, RECEIPT_STATUS_LABELS, RECEIPT_STATUS_STYLE } from "@/lib/purchasing-browser";
 import { api, qty } from "@/lib/sales-browser";
 import type { ReceiptDetail } from "@/lib/purchasing";
+import { useStamp } from "@/components/clock";
 
-const stamp = (value: string) => value.slice(0, 16).replace("T", " ") + " UTC";
 
 export default function ReceiptDetailView({ receipt: initial }: { receipt: ReceiptDetail }) {
+  const stamp = useStamp();
   const router = useRouter();
   const [receipt, setReceipt] = useState(initial);
   const [busy, setBusy] = useState(false);

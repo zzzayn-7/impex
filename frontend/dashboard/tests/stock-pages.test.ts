@@ -119,9 +119,10 @@ describe("Stock page", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(StockPage as Page);
-    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add Stock", "Remove Stock", "Opening Balance"]) {
+    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add Stock", "Opening Balance", "Total cost"]) {
       expect(html, expected).toContain(expected);
     }
+    expect(html).not.toContain("Remove Stock");
     expect(html.toLowerCase()).not.toContain("warehouse");
     expect(html).not.toContain("Transfer");
     expect(html).not.toContain("0.1000"); // trailing zeros are not shown, and nothing is rounded to 0
@@ -133,7 +134,6 @@ describe("Stock page", () => {
     const html = await render(StockPage as Page);
     expect(html).toContain("No products yet");
     expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Add Stock/); // registering the first product is always possible
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Remove Stock/);
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Opening Balance/);
   });
 
@@ -152,9 +152,12 @@ describe("Movements page", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(MovementsPage as Page);
-    for (const expected of ["Stock Movements", "Stock in", "Stock out", "+1,234", "−34", "1,200", "alpha supplier delivery", "alpha damaged", "alpha@example.org", "2026-11-04 10:15 UTC", "can never be edited or deleted"]) {
+    for (const expected of ["Stock Movements", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", ">In<", ">Out<", "1,234", "34", "1,200", "alpha@example.org", "04/11/2026 | 10:15 AM"]) {
       expect(html, expected).toContain(expected);
     }
+    const headings = [...html.matchAll(/<th[^>]*>(?:<span[^>]*>)?([^<]*)/g)].map((m) => m[1]).filter(Boolean);
+    expect(headings).toEqual(["Product", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", "Remove"]); // in this order, the bin icon last
+    for (const gone of ["Reason", "alpha supplier delivery", "alpha damaged", "UTC", "can never be edited or deleted"]) expect(html, gone).not.toContain(gone);
   });
 
   it("offers filters for product and type, and sends them (validated) to the service", async () => {
@@ -163,7 +166,7 @@ describe("Movements page", () => {
     const pid = "11111111-1111-4111-8111-111111111111";
     const wid = "22222222-2222-4222-8222-222222222222";
     const html = await render(MovementsPage as Page, { product: pid, warehouse: wid, type: "out", page: "3" });
-    for (const label of ["All products", "All types", "Stock out", "Opening balance"]) expect(html, label).toContain(label);
+    for (const label of ["All products", "All activity", "Activity", "Out", "In (opening balance)"]) expect(html, label).toContain(label);
     expect(html.toLowerCase()).not.toContain("warehouse");
     expect(html).not.toContain("Transfer");
     const call = inventoryCalls().find((c) => new URL(c.url).pathname.endsWith("/stock/movements"))!;

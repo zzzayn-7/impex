@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { loadWorkspace, requireTenantAdmin } from "@/lib/tenant-session";
+import { startingTimezone } from "@/lib/timezones";
 import SetupWizard from "./setup-wizard";
 
 export const metadata: Metadata = {
@@ -45,6 +46,7 @@ export default async function SetupPage() {
       hasLogo={Boolean(organization.has_logo)}
       logoVersion={organization.logo_version ?? null}
       initialCurrency={organization.default_currency ?? "USD"}
+      initialTimezone={startingTimezone(organization.timezone, organization.country_code)}
       initialFullName={admin.full_name}
       email={admin.email}
     />

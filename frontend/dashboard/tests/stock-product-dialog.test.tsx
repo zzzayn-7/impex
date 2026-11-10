@@ -97,9 +97,10 @@ describe("the Stock page shows the product inventory", () => {
     expect(screen.getByRole("table").textContent).not.toContain("2.50 USD");
   });
 
-  it("has exactly three actions at the top (Add Stock, Remove Stock, Opening Balance); no standalone Products link or category", () => {
+  it("has exactly two actions at the top (Add Stock, Opening Balance); no Remove Stock, no standalone Products link or category", () => {
     mount();
-    for (const name of ["Add Stock", "Remove Stock", "Opening Balance"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Add Stock", "Opening Balance"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove Stock" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New product" })).toBeNull(); // the old, redundant button is gone
     expect(screen.queryByRole("link", { name: /products/i })).toBeNull();
     expect(screen.queryByText(/categor/i)).toBeNull();

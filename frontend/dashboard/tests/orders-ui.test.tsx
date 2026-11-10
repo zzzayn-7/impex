@@ -680,7 +680,7 @@ describe("Delivery Lists board", () => {
   it("shows each active order as a card with client, number, date, product count, fulfilment and reservation, and EXACTLY Edit, Remove, View List", () => {
     board();
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
-    for (const text of ["Acme Ltd", "SO-000001", "DL-000001", "2026-11-09 10:00 UTC", "Ready for dispatch", "No. of items", "Cost", "1,250.00 USD"]) expect(card.textContent, text).toContain(text);
+    for (const text of ["Acme Ltd", "SO-000001", "DL-000001", "09/11/2026 | 10:00 AM", "Ready for dispatch", "No. of items", "Cost", "1,250.00 USD"]) expect(card.textContent, text).toContain(text);
     expect(card.textContent).not.toContain("Reservation"); // replaced by the cost
     expect(card.textContent).not.toContain("Stock reserved");
     expect(card.textContent).not.toMatch(/Products\d/); // "Products" became "No. of items"
@@ -747,7 +747,7 @@ describe("Delivery Lists board", () => {
     board({ view: "history", orders: done as any, others: null });
     const card = screen.getByText("SO-000001").closest("[data-order]") as HTMLElement;
     expect(within(card).getAllByRole("button").map((b) => b.textContent)).toEqual(["View List", "Generate Invoice"]);
-    expect(card.textContent).toContain("2026-11-10 12:00 UTC");
+    expect(card.textContent).toContain("10/11/2026 | 12:00 PM");
     expect(card.textContent).toContain("Dispatched on 2026-11-09");
     expect(screen.getByText(/stay here for 24 hours/)).toBeTruthy();
     expect(screen.queryByText("Draft and older lists")).toBeNull();

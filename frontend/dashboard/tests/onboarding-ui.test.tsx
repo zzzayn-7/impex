@@ -173,7 +173,7 @@ describe("Step 1: company identity", () => {
     await u.type(screen.getByLabelText("Company name"), "  Alpha   Trading AG ");
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(heading()).toBe("Tell us about yourself"));
-    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading AG", defaultCurrency: "USD" }); // only the name and the currency: no slug, no ids
+    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading AG", defaultCurrency: "USD", timezone: "UTC" }); // only the name, the currency and the location: no slug, no ids
     expect(screen.getByRole("list", { name: "Setup progress" }).querySelector('[aria-current="step"]')!.textContent).toBe("2You");
   });
 
@@ -221,7 +221,7 @@ describe("Step 1: the default currency", () => {
     await u.selectOptions(select(), "USD");
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(heading()).toBe("Tell us about yourself"));
-    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading GmbH", defaultCurrency: "USD" });
+    expect(made("PUT", "/api/setup/company")[0].body).toEqual({ companyName: "Alpha Trading GmbH", defaultCurrency: "USD", timezone: "UTC" });
     server["PUT /api/setup/profile"] = () => json(200, { user: { full_name: "Olivia Owner" } });
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await screen.findByText("Review and complete");
@@ -245,7 +245,7 @@ describe("Step 1: the default currency", () => {
     await u.click(screen.getByRole("button", { name: "Complete Setup & Enter Dashboard" }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
     expect(made("PUT", "/api/setup/company")[0].body.defaultCurrency).toBe("JPY");
-    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "JPY" });
+    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "JPY", timezone: "UTC" });
   });
 
   it("the review's Edit for the currency goes back to step 1, and a change there is what completes", async () => {
@@ -384,8 +384,8 @@ describe("Step 3: review and complete", () => {
   it("lets you return to either earlier step to correct something", async () => {
     const u = await atReview();
     const edits = screen.getAllByRole("button", { name: "Edit" });
-    expect(edits).toHaveLength(3); // company, currency, administrator
-    await u.click(edits[2]);
+    expect(edits).toHaveLength(4); // company, currency, location, administrator
+    await u.click(edits[3]);
     expect(heading()).toBe("Tell us about yourself");
     await u.click(screen.getByRole("button", { name: "Continue" }));
     await screen.findByText("Review and complete");
@@ -399,7 +399,7 @@ describe("Step 3: review and complete", () => {
     await u.click(screen.getByRole("button", { name: "Complete Setup & Enter Dashboard" }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
     expect(router.refresh).toHaveBeenCalled();
-    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "USD" });
+    expect(made("POST", "/api/setup/complete")[0].body).toEqual({ fullName: "Olivia Owner", companyName: "Alpha Trading GmbH", defaultCurrency: "USD", timezone: "UTC" });
   });
 
   it("a double click submits once, and the button stays disabled while the browser moves on", async () => {
@@ -536,5 +536,17 @@ describe("the portal shell shows the company identity", () => {
     expect(links).toContainEqual(["Sales Invoice", "/invoices/sales"]);
     expect(links).toContainEqual(["Suppliers Invoice", "/invoices/suppliers"]);
     expect(links).toContainEqual(["Help & Support", "/support"]);
+  });
+});
+
+describe("Step 1: the location (time zone)", () => {
+  it("starts from the zone of the organization's country, is a dropdown of locations, and is saved with the company step and shown on the review", async () => {
+    const user = userEvent.setup();
+    mount({ initialTimezone: "Asia/Karachi" });
+    const select = screen.getByLabelText("Location (time zone)") as HTMLSelectElement;
+    expect(select.value).toBe("Asia/Karachi");
+    expect(within(select).getAllByRole("option").length).toBeGreaterThan(50);
+    await user.selectOptions(select, "Asia/Dubai");
+    expect((screen.getByLabelText("Location (time zone)") as HTMLSelectElement).value).toBe("Asia/Dubai");
   });
 });

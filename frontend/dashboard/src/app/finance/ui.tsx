@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ErrorState } from "@/components/ui/page";
 import { buttonClass, fieldClass as sharedFieldClass } from "@/components/ui/controls";
+import { Stamp } from "@/components/clock";
 import { InsetPanel } from "@/components/ui/glass";
 import { ACTION_LABELS } from "@/lib/finance-browser";
 import type { AuditLine } from "@/lib/finance";
@@ -46,7 +47,6 @@ export function BackLink({ href, children }: { href: string; children: React.Rea
   return <Link href={href} className="print:hidden text-xs text-indigo-300 hover:text-indigo-200">← {children}</Link>;
 }
 
-const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
 
 /** The audit trail of one record: who (a person, or the Sales/Purchasing synchronisation) did what, and when. */
 export function History({ items }: { items: AuditLine[] }) {
@@ -59,7 +59,7 @@ export function History({ items }: { items: AuditLine[] }) {
           <li key={h.seq} className="flex flex-wrap gap-x-2">
             <span className="font-medium text-slate-100">{ACTION_LABELS[h.action] ?? h.action}</span>
             <span className="text-slate-400">by {h.source === "sync" ? "automatic synchronisation" : h.actor_email ?? "an administrator"}</span>
-            <span className="text-slate-500">{when(h.created_at)}</span>
+            <span className="text-slate-500"><Stamp iso={h.created_at} /></span>
             {h.detail && <span className="w-full text-slate-500">{h.detail}</span>}
           </li>
         ))}

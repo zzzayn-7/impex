@@ -23,6 +23,7 @@ import logging
 import unicodedata
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
@@ -75,6 +76,20 @@ def clean_default_currency(value: object) -> Optional[str]:
     return code
 
 
+def clean_timezone(value: object) -> Optional[str]:
+    """None means "not sent" (leave the current time zone alone). Anything sent must be a real IANA zone name ("Asia/Karachi"): it is the time of the country the business is in."""
+    if value is None:
+        return None
+    name = value if isinstance(value, str) else ""
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        raise fail(422, "invalid_timezone", "Choose a valid location from the list.")
+    if not name or name != name.strip() or len(name) > 64:
+        raise fail(422, "invalid_timezone", "Choose a valid location from the list.")
+    return name
+
+
 # --- schemas ------------------------------------------------------------------------------------------------------
 class CompanyUpdate(BaseModel):
     """Only the name. Slug, id, country, tax id, contact e-mail and ownership are not accepted (422)."""
@@ -83,6 +98,7 @@ class CompanyUpdate(BaseModel):
 
     name: str
     default_currency: Optional[str] = None  # an ISO 4217 code; omitted = leave the organization's current default as it is
+    timezone: Optional[str] = None  # the time zone of the country the business is in (IANA name); omitted = leave it as it is
 
 
 class CompleteSetup(BaseModel):
@@ -90,6 +106,7 @@ class CompleteSetup(BaseModel):
 
     company_name: str  # the name the administrator confirmed; saved in the same transaction as the completion
     default_currency: Optional[str] = None  # the currency the administrator confirmed (same rules as above); saved in the same transaction
+    timezone: Optional[str] = None  # the location (time zone) the administrator confirmed; saved in the same transaction
 
 
 class OnboardingStatus(BaseModel):
@@ -152,12 +169,15 @@ def get_onboarding(tenant: TenantContext = Depends(require_tenant_admin), db: Se
 def save_company(payload: CompanyUpdate, tenant: TenantContext = Depends(require_tenant_admin), db: Session = Depends(get_db)):
     name = clean_company_name(payload.name)
     currency = clean_default_currency(payload.default_currency)
+    zone = clean_timezone(payload.timezone)
     org = get_org(db, tenant, lock=True)
     try:
         require_open(org)
         org.name = name
         if currency is not None:
             org.default_currency = currency
+        if zone is not None:
+            org.timezone = zone
         begin(org)
         db.commit()
     except HTTPException:
@@ -263,6 +283,7 @@ def complete_setup(
     administrator arriving at the same moment) changes nothing and answers with the completed state."""
     name = clean_company_name(payload.company_name)
     currency = clean_default_currency(payload.default_currency)
+    zone = clean_timezone(payload.timezone)
     org = get_org(db, tenant, lock=True)
     try:
         if org.setup_status == "completed":
@@ -279,6 +300,8 @@ def complete_setup(
         org.name = name
         if currency is not None:
             org.default_currency = currency
+        if zone is not None:
+            org.timezone = zone
         org.setup_status = "completed"
         org.setup_completed_at = datetime.now(timezone.utc)
         org.setup_completed_by = uuid.UUID(tenant.user_id)

@@ -16,6 +16,23 @@ export const TIMEZONES: string[] = [
   "Pacific/Auckland", "Pacific/Honolulu",
 ];
 
+/** The time zone of the country a business is in, for the countries organizations register under (the setup form starts from it; the person can change it). Anything not listed starts at UTC. */
+export const COUNTRY_TIMEZONES: Record<string, string> = {
+  PK: "Asia/Karachi", IN: "Asia/Kolkata", BD: "Asia/Dhaka", LK: "Asia/Colombo", NP: "Asia/Kathmandu", AE: "Asia/Dubai", SA: "Asia/Riyadh", QA: "Asia/Riyadh", KW: "Asia/Riyadh", IQ: "Asia/Baghdad",
+  IR: "Asia/Tehran", IL: "Asia/Jerusalem", TR: "Europe/Istanbul", CN: "Asia/Shanghai", HK: "Asia/Hong_Kong", JP: "Asia/Tokyo", KR: "Asia/Seoul", SG: "Asia/Singapore", MY: "Asia/Kuala_Lumpur",
+  ID: "Asia/Jakarta", TH: "Asia/Bangkok", PH: "Asia/Manila", UZ: "Asia/Tashkent", EG: "Africa/Cairo", MA: "Africa/Casablanca", NG: "Africa/Lagos", KE: "Africa/Nairobi", ZA: "Africa/Johannesburg",
+  GB: "Europe/London", IE: "Europe/Dublin", DE: "Europe/Berlin", FR: "Europe/Paris", ES: "Europe/Madrid", PT: "Europe/Lisbon", IT: "Europe/Rome", NL: "Europe/Amsterdam", BE: "Europe/Brussels",
+  CH: "Europe/Zurich", AT: "Europe/Vienna", SE: "Europe/Stockholm", PL: "Europe/Warsaw", GR: "Europe/Athens", RU: "Europe/Moscow", IS: "Atlantic/Reykjavik",
+  US: "America/New_York", CA: "America/Toronto", MX: "America/Mexico_City", BR: "America/Sao_Paulo", AR: "America/Argentina/Buenos_Aires", CL: "America/Santiago", CO: "America/Bogota", PE: "America/Lima",
+  AU: "Australia/Sydney", NZ: "Pacific/Auckland",
+};
+
+/** Where the setup form starts: the zone the organization already has, or the one of its country, or UTC. */
+export const startingTimezone = (current: string | null | undefined, countryCode: string | null | undefined): string =>
+  current && current !== "UTC" ? current : COUNTRY_TIMEZONES[(countryCode ?? "").toUpperCase()] ?? "UTC";
+
+export const isKnownTimezone = (value: unknown): value is string => typeof value === "string" && TIMEZONES.includes(value);
+
 /** The offered zones, plus the organization's current one if it is a valid zone that is not in the list (so it is never lost). */
 export function timezoneOptions(current: string): string[] {
   return TIMEZONES.includes(current) ? TIMEZONES : [current, ...TIMEZONES];

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Numeric,
@@ -196,6 +197,18 @@ class StockMovement(TenantOwnedMixin, Base):
     source_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. the receipt number GR-000001 or the dispatch number DS-000001
     source_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)  # the receipt / dispatch line in the other service
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class HiddenMovement(TenantOwnedMixin, Base):
+    """A movement the organization took off its Stock Movements page. The ledger row itself is never touched (it stays append-only); this only hides it from the list."""
+
+    __tablename__ = "hidden_movements"
+
+    movement_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("stock_movements.id", ondelete="RESTRICT"), primary_key=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, index=True)
+    hidden_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    hidden_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    hidden_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ProductIdentifier(TenantOwnedMixin, Base):

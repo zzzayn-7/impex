@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ClockProvider } from "@/components/clock";
 import ModuleAccessDenied from "@/components/module-access-denied";
 import PortalShell from "@/components/dashboard/frame";
 import { GlassPanel } from "@/components/ui/glass";
 import type { PageKey } from "@/lib/dashboard-nav";
+import { normalizePreferences } from "@/lib/format";
 import { NAV_MODULE, canUse } from "@/lib/modules";
 import { loadWorkspace, requireTenantAdmin } from "@/lib/tenant-session";
 
@@ -36,6 +38,7 @@ export default async function PortalFrame({
   const module = NAV_MODULE[current];
   const denied = workspace.kind === "ready" && organization !== null && module !== undefined && !canUse(organization.modules, module);
   return (
+    <ClockProvider timeZone={normalizePreferences(organization).timezone}>
     <PortalShell admin={admin} organization={organization} current={current} width={width}>
       {workspace.kind === "unavailable" && !pageHandlesOutage ? (
         <GlassPanel role="alert" className="mx-auto max-w-xl space-y-3 p-6 text-center">
@@ -56,5 +59,6 @@ export default async function PortalFrame({
         </>
       )}
     </PortalShell>
+    </ClockProvider>
   );
 }

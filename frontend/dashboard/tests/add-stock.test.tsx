@@ -69,10 +69,10 @@ async function fill(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElemen
 const submit = (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => user.click(within(dialog).getByRole("button", { name: "Add product" }));
 
 describe("the buttons on the Stock page", () => {
-  it("are Add Stock, Remove Stock and Opening Balance, in that order, and no redundant New product button", () => {
+  it("are Add Stock and Opening Balance, in that order: no Remove Stock button (a product's delete icon does that) and no redundant New product button", () => {
     mount();
     const top = screen.getAllByRole("button").map((b) => b.textContent).filter((t) => ["Add Stock", "Remove Stock", "Opening Balance", "New product"].includes(t ?? ""));
-    expect(top).toEqual(["Add Stock", "Remove Stock", "Opening Balance"]);
+    expect(top).toEqual(["Add Stock", "Opening Balance"]);
   });
 
   it("a product's row has no Stock In / Stock Out buttons any more: its Actions are only the Edit and Delete icons", () => {
@@ -104,7 +104,8 @@ describe("Add Stock opens a form for a NEW product", () => {
     mount();
     const dialog = await openDialog(user);
     expect(within(dialog).getByRole("heading", { name: "Existing Stock / Opening Quantity" })).toBeTruthy();
-    expect(dialog.textContent).toContain("Enter a quantity only if your organization already owns these goods. For new purchases, quantities are added when Goods Receipts are confirmed.");
+    expect(dialog.textContent).not.toContain("Enter a quantity only if your organization already owns these goods"); // no descriptions under the text boxes
+    expect(dialog.textContent).not.toContain("Leave it at 0");
   });
 
   it("validates the required fields inline and sends nothing until they are right", async () => {
@@ -339,26 +340,18 @@ describe("when the product is created but recording the quantity fails (partial 
 });
 
 describe("Opening Balance and the existing-product actions stay separate", () => {
-  it("Opening Balance still lets the administrator select an existing product (and offers only Remove Stock / Opening Balance)", async () => {
+  it("Opening Balance still lets the administrator select an existing product (and offers only Opening Balance)", async () => {
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByRole("button", { name: "Opening Balance" }));
     const form = await screen.findByRole("form", { name: "Opening Balance" });
-    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Remove Stock", "Opening Balance"]);
+    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening Balance"]);
     expect(within(form).getByRole("combobox", { name: "Product" })).toBeTruthy(); // select an existing product here, unlike Add Stock
     expect(form.textContent).toContain("Only possible before any other movement");
   });
 
-  it("Remove Stock (the button above the table) takes available stock out of an existing product the administrator selects, and posts to the existing endpoint", async () => {
-    const user = userEvent.setup();
+  it("there is no Remove Stock button above the table any more", () => {
     mount();
-    await user.click(screen.getByRole("button", { name: "Remove Stock" }));
-    const form = await screen.findByRole("form", { name: "Remove Stock" });
-    expect(form.textContent).toContain("stock reserved for customer orders cannot be taken");
-    await user.selectOptions(within(form).getByRole("combobox", { name: "Product" }), P1);
-    await user.type(within(form).getByLabelText(/^Quantity/), "5");
-    await user.click(within(form).getByRole("button", { name: "Remove stock" }));
-    await screen.findByText(/Stock removed\./);
-    expect(writes()[0]).toMatchObject({ url: "/api/stock/out", body: { product_id: P1, quantity: "5" } });
+    expect(screen.queryByRole("button", { name: "Remove Stock" })).toBeNull();
   });
 });

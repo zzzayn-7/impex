@@ -8,12 +8,13 @@ import { useConfirm } from "@/components/ui/confirm";
 import { api, ENTRY_STATUS_LABELS, ENTRY_STATUS_STYLE, FINANCE_NOTICE, jsonBody, money, SOURCE_LABELS } from "@/lib/finance-browser";
 import type { EntryDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
+import { useStamp } from "@/components/clock";
 
-const when = (iso: string) => iso.replace("T", " ").slice(0, 16) + " UTC";
 
 /** One journal entry: its lines, who created and posted it, and what can be done in its state. A posted entry is shown exactly as posted and can only
  *  be reversed (a new mirror entry, with a reason); a draft can be edited, posted or discarded. */
 export default function EntryDetailView({ entry: initial }: { entry: EntryDetail }) {
+  const when = useStamp();
   const router = useRouter();
   const [confirm, confirmDialog] = useConfirm();
   const [entry, setEntry] = useState(initial);
