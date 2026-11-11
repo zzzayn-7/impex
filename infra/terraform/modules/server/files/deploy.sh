@@ -37,6 +37,9 @@ cd "$APP"
 git checkout -q "$REPO_BRANCH"
 git reset --hard "origin/$REPO_BRANCH"   # the server never has local edits; the .env file is git-ignored
 echo "code: $(git log -1 --format='%h %s')"
+# keep this script itself current: the next deploy runs the version that is in the repository
+repo_script="$APP/infra/terraform/modules/server/files/deploy.sh"
+if [ -f "$repo_script" ] && ! cmp -s "$repo_script" /opt/impex-deploy/deploy.sh; then install -m 700 "$repo_script" /opt/impex-deploy/deploy.sh; echo "deploy script updated for the next run"; fi
 
 # --- the configuration -------------------------------------------------------------------------------------------------------------------------------------------
 umask 077
@@ -69,6 +72,6 @@ docker image prune -f >/dev/null
 
 echo "--- containers ---"
 docker compose ps --format 'table {{.Name}}\t{{.Status}}'
-failed="$(docker compose ps --all --format '{{.Name}} {{.Status}}' | grep -E 'migrate' | grep -v 'Exited \(0\)' || true)"
+failed="$(docker compose ps --all --format '{{.Name}} {{.Status}}' | grep -E 'migrate' | grep -vF 'Exited (0)' || true)"
 if [ -n "$failed" ]; then echo "A MIGRATION DID NOT SUCCEED:"; echo "$failed"; exit 1; fi
 echo "=== deploy finished $(date -u +%FT%TZ) ==="
