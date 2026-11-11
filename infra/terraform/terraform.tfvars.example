@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. Everything has a default.
+aws_region    = "us-east-1"
+environment   = "prod"
+instance_type = "t3.small"   # t3.medium (4 GB) if 2 GB is too tight
+
+# Who may open the portals. Narrow this while you test, e.g. ["203.0.113.7/32"].
+allowed_cidrs = ["0.0.0.0/0"]
+
+repo_url    = "https://github.com/zzzayn-7/impex"
+repo_branch = "main"
+
+# The user name of the password in front of both portals (the password is generated; read it with the `get_front_door_password` output).
+basic_auth_user = "impex"
+
+# Refuse to terminate the server through the API.
+termination_protection = true

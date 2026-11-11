@@ -63,6 +63,7 @@ starting and the data in the `postgres_data` volume is never reset. See [`docs/d
 - **Support Service Docs**: [http://localhost:8005/docs](http://localhost:8005/docs) (Help & Support: see [`docs/support.md`](docs/support.md))
 - **Organization Settings** (company profile, branding, your own name, business preferences): see [`docs/settings.md`](docs/settings.md)
 - **Module management** (which business modules each organization can use): see [`docs/modules.md`](docs/modules.md)
+- **Deploying on AWS** (Terraform + SSM, one EC2 server running this Compose stack): see [`docs/aws-deployment.md`](docs/aws-deployment.md)
 - **Lock and delete an organization** (the Super Admin: restrict one whose payment is late, or delete one that left the CRM): see [`docs/organization-lock-and-delete.md`](docs/organization-lock-and-delete.md)
 
 ---

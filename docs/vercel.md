@@ -1,3 +1,5 @@
+> **Historical.** `vercel.json` and `scripts/check_vercel_config.py` were removed: Impex is deployed on AWS with Terraform and SSM (see [`aws-deployment.md`](aws-deployment.md)). This page describes the abandoned Vercel layout and is kept only for reference.
+
 # Deploying Impex on Vercel (one project, several services)
 
 `vercel.json` at the repository root declares **nine services** in one Vercel project. Docker Compose stays the way to run Impex locally; nothing in it changed.

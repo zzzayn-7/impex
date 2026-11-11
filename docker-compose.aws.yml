@@ -1,0 +1,47 @@
+# The AWS production overlay:   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
+# (infra/terraform/modules/server/files/deploy.sh does exactly that.)
+#
+# Local development publishes every service's port on the machine. On the server NOTHING is published except the edge: the services, the portals and the nginx gateway
+# live on the private Docker network only. The edge (gateway/Caddyfile.aws) is HTTPS plus a password in front of the two portals. PostgreSQL stays bound to localhost.
+# `!reset` needs Docker Compose 2.24 or newer (the server installs 2.29).
+services:
+  gateway:
+    ports: !reset []
+  auth-service:
+    ports: !reset []
+  organization-service:
+    ports: !reset []
+  inventory-service:
+    ports: !reset []
+  sales-service:
+    ports: !reset []
+  purchasing-service:
+    ports: !reset []
+  support-service:
+    ports: !reset []
+  finance-service:
+    ports: !reset []
+  super-admin:
+    ports: !reset []
+  dashboard:
+    ports: !reset []
+
+  edge:
+    image: caddy:2-alpine
+    container_name: impex-edge
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "3001:3001"
+    environment:
+      - PUBLIC_HOST=${PUBLIC_HOST:?PUBLIC_HOST must be set}
+      - EDGE_USER=${EDGE_USER:?EDGE_USER must be set}
+      - EDGE_PASSWORD_HASH=${EDGE_PASSWORD_HASH:?EDGE_PASSWORD_HASH must be set}
+    volumes:
+      - ./gateway/Caddyfile.aws:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - super-admin
+      - dashboard
+    networks:
+      - impex-network
