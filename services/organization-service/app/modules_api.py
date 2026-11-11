@@ -43,7 +43,12 @@ def stored_state(db: Session, organization_id: uuid.UUID) -> Dict[str, bool]:
 
 
 def usable_modules(db: Session, organization_id: uuid.UUID) -> List[str]:
-    """The module keys the organization can use right now (enabled, available, with every requirement also usable)."""
+    """The module keys the organization can use right now (enabled, available, with every requirement also usable).
+
+    A LOCKED organization (the Super Admin's decision, see app/lifecycle.py) can use none: this one answer is what the other services enforce and what the portal shows,
+    so a lock cuts every module everywhere at once. The stored entitlements are untouched, so unlocking restores exactly what the organization had."""
+    if db.scalar(select(Organization.is_locked).where(Organization.id == organization_id)):
+        return []
     return sorted(effective(stored_state(db, organization_id)))
 
 

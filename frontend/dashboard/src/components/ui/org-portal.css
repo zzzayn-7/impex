@@ -1,0 +1,15 @@
+/* Styling that belongs to the ORGANIZATION portal only (its tables, its Finance chart and its dropdown enhancer). It lives here, not in globals.css, so that globals.css stays
+   identical in both portals. */
+/* Tables: the first column (the product, the client, the description) stays on the left; the VALUES of every other column - and its heading - are centred, so the
+   numbers, statuses and actions line up in the middle of their columns. Row actions (icon buttons in a flex row) are centred too. */
+.ix-dash table :is(th, td):not(:first-child) { text-align: center; }
+.ix-dash table td:not(:first-child) > div.flex { justify-content: center; }
+
+/* The Profit & Loss chart: profit is GREEN (the portal's palette has no green of its own - its accent is chosen by the person), loss is the theme's red. Two stops, one for
+   dark and one for light backgrounds, so both keep an accessible contrast against the glass. */
+:root { --ix-profit-rgb: 74 222 128; }
+:root[data-ix-scheme="light"] { --ix-profit-rgb: 21 128 61; }
+
+/* Every dropdown is drawn by components/ui/select-enhancer.tsx (a search box, five options at a time). The real <select> stays in the page - it is what the form and the page
+   read - but is not shown. */
+select[data-ix-enhanced="1"] { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; overflow: hidden !important; clip-path: inset(50%) !important; }

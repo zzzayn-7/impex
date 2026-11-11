@@ -590,7 +590,7 @@ class TestInternalEntitlements:
         apply(client, org, {"finance": True})
         monkeypatch.setenv("MODULE_INTERNAL_API_KEY", "worker-secret")
         body = client.get(self.URL.format(org), headers={"X-Internal-Key": "worker-secret"}).json()
-        assert body == {"organization_id": org, "is_active": False or body["is_active"], "setup_completed": False, "modules": ["finance", "inventory"], "default_currency": "USD"}
+        assert body == {"organization_id": org, "is_active": False or body["is_active"], "is_locked": False, "setup_completed": False, "modules": ["finance", "inventory"], "default_currency": "USD"}
         assert body["is_active"] is True
         for headers in ({}, {"X-Internal-Key": "wrong"}, bearer("super")):
             assert client.get(self.URL.format(org), headers=headers).status_code == 401

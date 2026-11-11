@@ -142,7 +142,7 @@ describe("Stock Movements page", () => {
 
 describe("tables and periods", () => {
   it("every other column of every table is centred; the first stays on the left", () => {
-    const css = readFileSync(join(__dirname, "..", "src", "app", "globals.css"), "utf8");
+    const css = readFileSync(join(__dirname, "..", "src", "components", "ui", "org-portal.css"), "utf8");
     expect(css).toMatch(/\.ix-dash table :is\(th, td\):not\(:first-child\) \{ text-align: center; \}/);
     expect(css).toMatch(/td:not\(:first-child\) > div\.flex \{ justify-content: center; \}/);
   });

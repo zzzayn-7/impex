@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ClockProvider } from "@/components/clock";
+import { LockedBanner, LockedNotice } from "@/components/locked-notice";
 import ModuleAccessDenied from "@/components/module-access-denied";
 import PortalShell from "@/components/dashboard/frame";
 import { GlassPanel } from "@/components/ui/glass";
@@ -35,6 +36,9 @@ export default async function PortalFrame({
   if (workspace.kind === "setup" && !allowIncompleteSetup) redirect("/setup");
   const organization = workspace.kind === "unavailable" ? null : workspace.organization;
   const module = NAV_MODULE[current];
+  // LOCKED (the Impex team's decision): nothing but Settings and Help & Support. The page is not rendered at all; the services refuse its requests on their own.
+  const locked = organization?.is_locked === true;
+  const restricted = locked && current !== "settings" && current !== "support";
   const denied = workspace.kind === "ready" && organization !== null && module !== undefined && !canUse(organization.modules, module);
   return (
     <ClockProvider timeZone={normalizePreferences(organization).timezone}>
@@ -44,6 +48,8 @@ export default async function PortalFrame({
           <p className="text-sm font-medium text-white">We couldn&apos;t load your workspace just now.</p>
           <p className="text-xs text-slate-400">Nothing was lost. Please refresh in a moment. You can sign out at any time.</p>
         </GlassPanel>
+      ) : restricted ? (
+        <LockedNotice />
       ) : denied && module ? (
         <ModuleAccessDenied module={module} />
       ) : (
@@ -54,6 +60,7 @@ export default async function PortalFrame({
               <Link href="/setup" className="font-medium text-amber-50 underline hover:text-white">Back to setup</Link>
             </p>
           )}
+          {locked && <LockedBanner />}
           {children}
         </>
       )}

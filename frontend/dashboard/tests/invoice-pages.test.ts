@@ -152,7 +152,7 @@ describe("Invoices page", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(InvoicesPage({ searchParams: {} }));
-    for (const expected of ["Invoices", "INV-000001", "INV-000002", "Draft", "Alpha Metals", "2026-11-01", "25.00", "Issued", "Paid", "All statuses", "Any payment status", "All clients", "New Invoice", "Showing 1–3 of 3", "never changes your stock"]) {
+    for (const expected of ["Invoices", "INV-000001", "INV-000002", "Draft", "Alpha Metals", "2026-11-01", "25.00", "Issued", "Paid", "All statuses", "All payment statuses", "All clients", "New Invoice", "Showing 1–3 of 3", "never changes your stock"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).toContain(`href="/invoices/${A_ISSUED}"`);

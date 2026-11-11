@@ -24,7 +24,7 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
   const [, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState<"order" | "cancel" | null>(null);
+  const [confirming, setConfirming] = useState<"order" | "cancel" | "delete" | null>(null);
   const [editing, setEditing] = useState<{ id: string; quantity: string; price: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -53,6 +53,22 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
       : `${order.number} was cancelled. It is kept for history; no stock was involved.`;
     await call(`/api/purchasing/purchase-orders/${order.id}/${action}`, { method: "POST" }, text);
     setConfirming(null);
+  }
+
+  // DELETE for good: a draft, placed or cancelled order that has no goods receipt. The Purchasing Service refuses (and says why) when goods were received.
+  async function deleteOrder() {
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    const r = await api(`/api/purchasing/purchase-orders/${order.id}`, { method: "DELETE" });
+    setBusy(false);
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok) {
+      setConfirming(null);
+      return setMessage({ ok: false, text: r.error });
+    }
+    router.replace("/purchase-orders");
+    router.refresh();
   }
 
   async function saveLine(line: OrderLine) {
@@ -102,25 +118,30 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
           {draft && <button type="button" disabled={busy || order.lines.length === 0} onClick={() => setConfirming("order")} className="min-h-11 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Mark as Ordered</button>}
           {order.can_receive && <Link href={`/purchase-orders/${order.id}/receive`} className="inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Receive goods</Link>}
           {(order.status === "draft" || order.status === "ordered") && <button type="button" disabled={busy} onClick={() => setConfirming("cancel")} className="min-h-11 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-red-300 hover:bg-slate-800 disabled:opacity-50">Cancel order</button>}
+          {(order.status === "draft" || order.status === "ordered" || order.status === "cancelled") && <button type="button" disabled={busy} onClick={() => setConfirming("delete")} className="min-h-11 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50">Delete order</button>}
         </div>
       </div>
 
       {confirming && (
-        <div role="alertdialog" aria-label={confirming === "order" ? "Confirm placing the order" : "Confirm cancelling the order"} className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+        <div role="alertdialog" aria-label={confirming === "order" ? "Confirm placing the order" : confirming === "delete" ? "Confirm deleting the order" : "Confirm cancelling the order"} className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
           <p className="text-sm font-medium text-amber-200">
             {confirming === "order"
               ? `Place ${order.number} with ${order.supplier.name} for ${money(order.total_amount)}?`
-              : `Cancel ${order.number}?`}
+              : confirming === "delete"
+                ? `Delete ${order.number} for good?`
+                : `Cancel ${order.number}?`}
           </p>
           <p className="text-xs text-amber-300/80">
             {confirming === "order"
               ? "Once placed, the supplier, dates, currency, products, quantities and prices are frozen and can no longer be changed. This does not add any stock."
-              : "The order is kept for history and cannot be reactivated. No stock is involved."}
+              : confirming === "delete"
+                ? "The order and its lines are removed and cannot be recovered. Its number is not used again. No stock is involved. An order that already has goods received, or any goods receipt, cannot be deleted."
+                : "The order is kept for history and cannot be reactivated. No stock is involved."}
           </p>
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setConfirming(null)} disabled={busy} className="min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-60">Back</button>
-            <button type="button" onClick={() => changeStatus(confirming)} disabled={busy} className={`min-h-10 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 ${confirming === "order" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"}`}>
-              {busy ? "Saving…" : confirming === "order" ? "Place order" : "Yes, cancel it"}
+            <button type="button" onClick={() => (confirming === "delete" ? deleteOrder() : changeStatus(confirming))} disabled={busy} className={`min-h-10 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 ${confirming === "order" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"}`}>
+              {busy ? "Saving…" : confirming === "order" ? "Place order" : confirming === "delete" ? "Yes, delete it" : "Yes, cancel it"}
             </button>
           </div>
         </div>

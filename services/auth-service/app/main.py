@@ -26,6 +26,7 @@ from app.organization_admins import (
     update_organization_admin,
 )
 from app.profile import complete_profile, update_profile
+from app.purge import purge_organization_users
 from app.security import hash_password, verify_password
 from app.theme import set_theme, theme_of
 
@@ -322,6 +323,13 @@ def update_admin(payload: OrganizationAdminUpdate, db: Session = Depends(get_db)
         new_full_name=payload.new_full_name,
     )
     return {"email": user.email, "full_name": user.full_name}
+
+
+@app.post("/internal/organizations/{organization_id}/purge", include_in_schema=False, dependencies=[Depends(require_internal_key)])
+def purge_organization_accounts(organization_id: uuid.UUID, db: Session = Depends(get_db)):
+    """The organization is being deleted from the CRM: delete its administrators' accounts (never a Super Admin: they belong to no organization). Safe to repeat."""
+    deleted = purge_organization_users(db, organization_id)
+    return {"service": "auth", "organization_id": str(organization_id), "deleted": deleted, "total": sum(deleted.values())}
 
 
 @app.post("/internal/organization-admins/delete", include_in_schema=False, dependencies=[Depends(require_internal_key)])

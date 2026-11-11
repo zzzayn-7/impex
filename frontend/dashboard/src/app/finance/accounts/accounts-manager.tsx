@@ -144,7 +144,7 @@ export default function AccountsManager({ initial }: { initial: Account[] }) {
           </label>
           <label className="text-xs font-medium text-slate-400">Status
             <select value={state} onChange={(e) => setState(e.target.value as "" | "active" | "inactive")} className={selectClass}>
-              <option value="">Active and inactive</option>
+              <option value="">All (active and inactive)</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>

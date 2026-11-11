@@ -431,10 +431,11 @@ describe("the goods receipts list", () => {
     expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?q=dn-7");
   });
 
-  it("clears filters and shows the right empty state", async () => {
+  it("shows the right empty state, and the 'All statuses' option (not a Clear filters button) shows everything again", async () => {
     render(<ReceiptIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, status: "draft" }} suppliers={[]} />);
     expect(screen.getByText("No goods receipts match these filters.")).toBeTruthy();
-    await user().click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    await user().selectOptions(screen.getByLabelText("Status"), "");
     expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers");
   });
 });

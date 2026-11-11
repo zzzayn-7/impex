@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Identity, Index, Integer, String, Text, Uuid, func, text
+from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Identity, Index, Integer, String, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -18,6 +18,8 @@ class Organization(Base):
         CheckConstraint("date_format IN ('DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD')", name="date_format_valid"),
         CheckConstraint("number_format IN ('comma_dot', 'dot_comma', 'space_comma', 'indian')", name="number_format_valid"),
         CheckConstraint("settings_version >= 1", name="settings_version_positive"),
+        CheckConstraint("NOT is_locked OR locked_at IS NOT NULL", name="locked_has_a_time"),
+        CheckConstraint("deletion_requested_at IS NULL OR is_locked", name="deleting_means_locked"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -61,6 +63,14 @@ class Organization(Base):
     settings_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
     settings_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     settings_updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    # LOCKED (the Super Admin's decision, e.g. the monthly payment is late): the administrators can still sign in, but no module can be used: only Settings and Help & Support.
+    # The stored module entitlements are NOT changed by a lock, so unlocking restores exactly what the organization had (see app/lifecycle.py).
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    lock_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # the Super Admin's own note: never shown to the organization
+    # Set when the Super Admin starts deleting the organization. A deletion that failed half way leaves the organization locked and marked like this, so it can be retried.
+    deletion_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OrganizationInvitation(Base):
@@ -163,4 +173,29 @@ class OrganizationSettingsHistory(Base):
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="settings", server_default=text("'settings'"))
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     batch_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrganizationLifecycleEvent(Base):
+    """Append-only record that an organization was locked, unlocked or deleted, and by whom. It has NO foreign key to the organization: the proof that an
+    organization was deleted (who, when, what was removed) outlives the organization. It holds no business data, only the name and slug at the time. A trigger refuses
+    UPDATE and DELETE."""
+
+    __tablename__ = "organization_lifecycle_events"
+    __table_args__ = (
+        CheckConstraint("action IN ('locked', 'unlocked', 'deletion_started', 'deletion_failed', 'deleted')", name="action_valid"),
+        Index("ix_organization_lifecycle_events_organization_id_seq", "organization_id", "seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), nullable=False)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    organization_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    organization_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    actor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    actor_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -8,6 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.purge_api import router as purge_router
 from app.db_migrations import verify_database_schema
 from app.auth import TenantContext, create_auth_client, create_org_client, require_active_tenant
 from app.database import get_db
@@ -42,6 +43,7 @@ app = FastAPI(
 app.include_router(stock_router)  # stock
 app.include_router(reservations_router)  # stock booked for sales orders (written by the Sales Service only)
 app.include_router(scan_router)  # scannable codes, labels and scan lookup
+app.include_router(purge_router)  # internal: delete everything one organization owns here (the Super Admin deleting an organization)
 
 # Every product endpoint depends on this: an ACTIVE organization administrator whose organization is active.
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.

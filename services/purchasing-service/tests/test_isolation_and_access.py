@@ -129,7 +129,7 @@ ENDPOINTS = [
     ("get", SUPPLIERS, None), ("post", SUPPLIERS, {"name": "X"}), ("get", f"{SUPPLIERS}/{SID}", None), ("patch", f"{SUPPLIERS}/{SID}", {"name": "Y"}),
     ("get", ORDERS, None), ("post", ORDERS, {"supplier_id": SID, "currency_code": "USD"}), ("get", f"{ORDERS}/{OID}", None),
     ("post", f"{ORDERS}/{OID}/order", None), ("post", f"{ORDERS}/{OID}/lines", {"product_id": PID, "quantity": "1", "unit_price": "1"}),
-    ("delete", f"{ORDERS}/{OID}/lines/{PID}", None),
+    ("delete", f"{ORDERS}/{OID}/lines/{PID}", None), ("delete", f"{ORDERS}/{OID}", None),
 ]
 
 

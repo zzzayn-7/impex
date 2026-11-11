@@ -166,7 +166,7 @@ describe("the header", () => {
     expect(within(header).queryByRole("searchbox")).toBeNull(); // no decorative search or notification bell
     expect(within(header).queryByRole("button", { name: /search|notification/i })).toBeNull();
     // the only controls: the phone menu button (hidden on large screens), the avatar and Sign out
-    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", null, "Sign out"]);
+    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", "Edit profile picture", "Sign out"]);
   });
 
   it("every page's name is preceded by its own icon, in yellow, the same drawing its sidebar entry uses", () => {
@@ -193,13 +193,17 @@ describe("the header", () => {
     expect(seen.size).toBeGreaterThan(10); // the pages do not all share one icon
   });
 
-  it("the avatar's card holds the name, the role, the user id and the organization, and shows on hover, focus and tap", async () => {
+  it("the avatar's card holds the picture, name, e-mail, role, user id and organization, and opens on a CLICK (hovering only blurs the avatar)", async () => {
     const user = userEvent.setup();
     render(<DashboardFrame admin={admin} organization={organization as any}>content</DashboardFrame>);
     const card = screen.getByRole("group", { name: "Account details", hidden: true });
     expect(card.className).toContain("invisible"); // closed: not seen and not read out
     for (const text of ["Olivia Owner", "owner@acme.example", "Organization Admin", "u", "Alpha Trading GmbH"]) expect(within(card).getAllByText(text, { exact: true }).length, text).toBeGreaterThan(0);
     // "Label : value" lines, all left aligned (nothing pushed to the right edge), the labels in the accent colour
+    // the order: the picture, then the name and the e-mail, then the other details
+    const order = [card.querySelector("[data-picture-editor]")!, within(card).getByText("Olivia Owner"), within(card).getByText("owner@acme.example"), within(card).getAllByTestId("profile-detail")[0]];
+    for (let i = 1; i < order.length; i++) expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING, `part ${i}`).toBeTruthy();
+    expect(within(card).getByText("Olivia Owner").parentElement!.className).toContain("text-center"); // centred under the picture
     const rows = within(card).getAllByTestId("profile-detail");
     expect(rows.map((r) => r.textContent)).toEqual(["Role :Organization Admin", "User ID :u", "Organization :Alpha Trading GmbH"]);
     for (const row of rows) {
@@ -208,16 +212,25 @@ describe("the header", () => {
     }
     const avatar = screen.getByRole("button", { name: "Account: Olivia Owner" });
     await user.hover(avatar);
-    expect(card.className).toContain("visible");
-    expect(card.className).not.toContain("invisible");
+    expect(card.className).toContain("invisible"); // hovering does NOT open it ...
+    expect(avatar.className).toContain("group"); // ... it blurs the avatar (the picture reacts to the hover)
+    expect(avatar.querySelector("[aria-hidden], img")!.className).toContain("group-hover:blur");
+    await user.click(avatar);
+    expect(card.className).not.toContain("invisible"); // clicking opens it
+    expect(avatar.getAttribute("aria-expanded")).toBe("true");
     await user.unhover(avatar);
-    expect(card.className).toContain("invisible");
-    act(() => avatar.focus()); // the keyboard
-    expect(document.activeElement).toBe(avatar);
-    expect(card.className).not.toContain("invisible");
+    expect(card.className).not.toContain("invisible"); // and moving the pointer away does not close it
     await user.keyboard("{Escape}");
     expect(card.className).toContain("invisible");
     expect(avatar.getAttribute("aria-expanded")).toBe("false");
+    await user.click(avatar);
+    await user.click(avatar); // clicking again closes it
+    expect(card.className).toContain("invisible");
+    await user.click(avatar);
+    await user.click(document.body); // a click elsewhere closes it
+    expect(card.className).toContain("invisible");
+    act(() => avatar.focus()); // focusing alone does not open it either
+    expect(card.className).toContain("invisible");
   });
 
   it("does NOT put the company's logo (or monogram) in the account card: the logo lives at the top of the sidebar", () => {

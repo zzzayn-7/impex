@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
+from app.purge_api import router as purge_router
 from app.db_migrations import verify_database_schema
 from app.auth import create_auth_client, create_org_client
 from app.inventory import create_inventory_client
@@ -42,6 +43,7 @@ app.include_router(receipts_router)
 app.include_router(module_usage_router)
 # Read-only financial events, pulled by the Finance Service's worker (shared secret; see app/finance_feed_api.py).
 app.include_router(finance_feed_router)
+app.include_router(purge_router)  # internal: delete everything one organization owns here (the Super Admin deleting an organization)
 
 PREFIX = "/api/v1/purchasing"
 

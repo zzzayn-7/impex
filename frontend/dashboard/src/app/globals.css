@@ -583,16 +583,50 @@ body {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 
-/* Tables: the first column (the product, the client, the description) stays on the left; the VALUES of every other column - and its heading - are centred, so the
-   numbers, statuses and actions line up in the middle of their columns. Row actions (icon buttons in a flex row) are centred too. */
-.ix-dash table :is(th, td):not(:first-child) { text-align: center; }
-.ix-dash table td:not(:first-child) > div.flex { justify-content: center; }
+/* ============================================================================================================================================================
+   MOTION. Nothing on the portal just appears: pages, cards, notices, dropdowns and dialogs ease or slide in, and hover / focus changes fade. The page itself is a fixed size:
+   the scrollbar's space is always reserved (so a page that grows past the screen never shifts sideways) and nothing can widen it. Reduced-motion users get none of it.
+   The animations use the `translate` / `scale` / `opacity` properties (not `transform`), so they never fight a component's own transform.
+   This block is identical in frontend/dashboard and frontend/super-admin.
+   ============================================================================================================================================================ */
+html { scrollbar-gutter: stable; overflow-x: clip; }
+body { overflow-x: clip; }
+:root { --ix-ease: cubic-bezier(0.22, 1, 0.36, 1); }
 
-/* The Profit & Loss chart: profit is GREEN (the portal's palette has no green of its own - its accent is chosen by the person), loss is the theme's red. Two stops, one for
-   dark and one for light backgrounds, so both keep an accessible contrast against the glass. */
-:root { --ix-profit-rgb: 74 222 128; }
-:root[data-ix-scheme="light"] { --ix-profit-rgb: 21 128 61; }
+@keyframes ix-page-in { from { opacity: 0; translate: 0 12px; } }
+@keyframes ix-pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
+@keyframes ix-notice-in { from { opacity: 0; translate: 0 -6px; } }
+@keyframes ix-fade-only { from { opacity: 0; } }
 
-/* Every dropdown is drawn by components/ui/select-enhancer.tsx (a search box, five options at a time). The real <select> stays in the page - it is what the form and the page
-   read - but is not shown. */
-select[data-ix-enhanced="1"] { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; overflow: hidden !important; clip-path: inset(50%) !important; }
+/* A page (or the login / setup screen) slides up and fades in as it is shown: the loading skeleton first, then the page that replaces it. */
+.ix-page > * { animation: ix-page-in 360ms var(--ix-ease) backwards; }
+/* A dropdown list, menu or card opens with a small pop. */
+.ix-pop { animation: ix-pop-in 170ms var(--ix-ease) backwards; transform-origin: top center; }
+.ix-overlay-in { animation: ix-fade-only 200ms ease backwards; }
+.ix-dialog-in { animation: ix-pop-in 220ms var(--ix-ease) backwards; }
+/* Messages (a saved / failed notice, an alert) ease in instead of appearing. */
+[role="alert"], [role="status"] { animation: ix-notice-in 260ms var(--ix-ease) backwards; }
+
+/* Hover, focus and pressed states fade (an element that sets its own transition keeps it). */
+@layer base {
+  a, button, input, select, textarea, summary, label, [role="button"], [role="menuitem"], [role="option"] {
+    transition-property: color, background-color, border-color, box-shadow, opacity, filter, text-decoration-color;
+    transition-duration: 180ms;
+    transition-timing-function: ease;
+  }
+}
+
+/* The platform's own dialogs (confirmations, forms): fade and grow in, fade out. Browsers that cannot animate a dialog just show it. */
+dialog { opacity: 0; scale: 0.96; transition: opacity 220ms ease, scale 220ms var(--ix-ease), overlay 220ms allow-discrete, display 220ms allow-discrete; }
+dialog[open] { opacity: 1; scale: 1; }
+dialog::backdrop { opacity: 0; transition: opacity 220ms ease, overlay 220ms allow-discrete, display 220ms allow-discrete; }
+dialog[open]::backdrop { opacity: 1; }
+@starting-style {
+  dialog[open] { opacity: 0; scale: 0.96; }
+  dialog[open]::backdrop { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-page > *, .ix-pop, .ix-overlay-in, .ix-dialog-in, [role="alert"], [role="status"] { animation: none !important; }
+  dialog, dialog::backdrop { transition: none !important; }
+}

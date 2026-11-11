@@ -4,6 +4,9 @@ import { FormEvent, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useConfirm } from "@/components/ui/confirm";
+import { Tooltip } from "@/components/ui/tooltip";
+
 import { ORDER_STATUS_LABELS, ORDER_STATUS_STYLE } from "@/lib/purchasing-browser";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
@@ -17,6 +20,23 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
   const [isPending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState(filters.q);
+  const [confirm, confirmDialog] = useConfirm();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // The bin deletes an order for good: a draft, placed or cancelled order that has no goods receipt (the Purchasing Service refuses, and says why, when goods were received).
+  async function remove(order: PurchaseOrderSummary) {
+    const ok = await confirm({
+      title: `Delete ${order.number} for good?`,
+      message: "The order and its lines are removed and cannot be recovered. Its number is not used again. No stock is involved. An order that already has goods received, or any goods receipt, cannot be deleted.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    setProblem(null);
+    const r = await api(`/api/purchasing/purchase-orders/${order.id}`, { method: "DELETE" });
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok) return setProblem(r.error);
+    router.refresh();
+  }
 
   function navigate(next: Partial<OrderFilters>) {
     const merged = { ...filters, page: 1, ...next };
@@ -73,9 +93,9 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
               {(Object.keys(ORDER_STATUS_LABELS) as OrderStatus[]).map((s) => <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>)}
             </select>
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", supplierId: "", status: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
+        {problem && <div role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">{problem}</div>}
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>
           {!list.ok ? (
             <div role="alert" className="rounded-lg border border-slate-700 bg-slate-950/50 px-4 py-3 text-sm text-slate-300">
@@ -92,6 +112,7 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
                   <tr>
                     <th className="px-4 py-3 font-semibold">Order</th><th className="px-4 py-3 font-semibold">Supplier</th><th className="px-4 py-3 font-semibold">Date</th>
                     <th className="px-4 py-3 font-semibold text-right">Lines</th><th className="px-4 py-3 font-semibold text-right">Total</th><th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="w-12 px-2 py-3"><span className="sr-only">Delete</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -106,6 +127,15 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
                       <td className="px-4 py-3 text-right font-mono text-xs">{order.line_count}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{formatMoney(order.total_amount, order.currency_code)}</td>
                       <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${ORDER_STATUS_STYLE[order.status]}`}>{ORDER_STATUS_LABELS[order.status]}</span></td>
+                      <td className="px-2 py-3 text-right">
+                        {(order.status === "draft" || order.status === "ordered" || order.status === "cancelled") && (
+                          <Tooltip label="Delete order">
+                            <button type="button" onClick={() => void remove(order)} aria-label={`Delete ${order.number}`} className="p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:text-red-300 focus-visible:outline-none">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+                            </button>
+                          </Tooltip>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -124,6 +154,7 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
           </div>
         )}
       </section>
+      {confirmDialog}
     </div>
   );
 }

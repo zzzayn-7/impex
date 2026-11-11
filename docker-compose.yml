@@ -121,6 +121,11 @@ services:
       - MODULE_INTERNAL_API_KEY=${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}
       - PURCHASING_SERVICE_URL=http://purchasing-service:8004
       - SALES_SERVICE_URL=http://sales-service:8003
+      # Deleting an organization (Super Admin): it asks EVERY service to delete everything the organization owns. See docs/organization-lock-and-delete.md.
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}
+      - INVENTORY_SERVICE_URL=http://inventory-service:8002
+      - SUPPORT_SERVICE_URL=http://support-service:8005
+      - FINANCE_SERVICE_URL=http://finance-service:8006
       - ACTIVATION_API_KEY=${ORG_ACTIVATION_API_KEY:?ORG_ACTIVATION_API_KEY must be set in .env}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
       - SMTP_HOST=${SMTP_HOST:-mailpit}
@@ -199,6 +204,7 @@ services:
       - "8002:8002"
     environment:
       - PORT=8002
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # lets ONLY the Organization Service delete an organization's data here (Super Admin deleting an organization)
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${INVENTORY_DB_NAME:-impex_inventory}
@@ -251,6 +257,7 @@ services:
       - "8003:8003"
     environment:
       - PORT=8003
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # lets ONLY the Organization Service delete an organization's data here (Super Admin deleting an organization)
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${SALES_DB_NAME:-impex_sales}
@@ -304,6 +311,7 @@ services:
       - "8004:8004"
     environment:
       - PORT=8004
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # lets ONLY the Organization Service delete an organization's data here (Super Admin deleting an organization)
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${PURCHASING_DB_NAME:-impex_purchasing}
@@ -356,6 +364,7 @@ services:
       - "8005:8005"
     environment:
       - PORT=8005
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # lets ONLY the Organization Service delete an organization's data here (Super Admin deleting an organization)
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${SUPPORT_DB_NAME:-impex_support}
@@ -428,6 +437,7 @@ services:
       - "8006:8006"
     environment:
       - PORT=8006
+      - PURGE_API_KEY=${PURGE_API_KEY:-${MODULE_INTERNAL_API_KEY:-${AUTH_INTERNAL_API_KEY}}}  # lets ONLY the Organization Service delete an organization's data here (Super Admin deleting an organization)
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${FINANCE_DB_NAME:-impex_finance}

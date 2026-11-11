@@ -51,7 +51,7 @@ export type HistoryPage = { items: HistoryItem[]; total: number };
 export type ModulesResult<T> = { ok: true; data: T } | { ok: false; reason: "unauthorized" | "forbidden" | "not-found" | "unavailable" };
 export type ServiceResult = { status: number; data: any } | null; // null = the service could not be reached
 
-export async function orgRequest(method: "GET" | "POST" | "PUT", path: string, token: string, body?: unknown): Promise<ServiceResult> {
+export async function orgRequest(method: "GET" | "POST" | "PUT", path: string, token: string, body?: unknown, timeoutMs = 20000): Promise<ServiceResult> {
   try {
     const res = await fetch(`${orgServiceUrl()}${path}`, {
       method,
@@ -59,7 +59,7 @@ export async function orgRequest(method: "GET" | "POST" | "PUT", path: string, t
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       // a preview asks the Purchasing and Sales services what is in progress: allow for that
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return { status: res.status, data: await res.json().catch(() => null) };
   } catch {

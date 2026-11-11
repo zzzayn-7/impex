@@ -101,7 +101,6 @@ export default function DispatchIndex({ list, filters, clients, dispatchable }: 
             To
             <input type="date" value={filters.dateTo} onChange={(e) => navigate({ dateTo: e.target.value })} className={selectClass} />
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", clientId: "", listId: "", dateFrom: "", dateTo: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

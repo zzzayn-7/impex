@@ -16,7 +16,7 @@ import { MenuButton, NavProvider, Sidebar } from "./sidebar";
 // portal is rendered inside it (through PortalFrame), so there is exactly one navigation and one header. The content column keeps a constant left
 // padding for the 76px rail, so the sidebar expanding (an overlay) never moves anything. The accent is the same on every page (pale butter yellow).
 
-export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null; modules?: string[] };
+export type HeaderOrganization = { name: string; has_logo?: boolean; logo_version?: string | null; modules?: string[]; is_locked?: boolean };
 
 const initialsOf = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "OA";
@@ -32,11 +32,11 @@ export default function PortalShell({
   children: React.ReactNode;
   current?: PageKey;
 }) {
-  const groups = navGroups(organization?.modules);
+  const groups = navGroups(organization?.modules, organization?.is_locked === true);
   const page = PAGE_META[current];
   // The home page (and only the home page) can be customised: the provider holds which cards are shown and in what order, for the header's Add Widgets
   // button and the cards alike. Which cards this administrator may use is decided here, on the server, from the organization's enabled modules.
-  const home = current === "dashboard";
+  const home = current === "dashboard" && organization?.is_locked !== true; // a locked organization has no widgets to arrange
   const widgets = home ? availableOrgWidgets(organization?.modules, organization !== null) : [];
   return (
     <div className="ix-dash">
@@ -61,7 +61,7 @@ export default function PortalShell({
               </div>
             </div>
           </header>
-          <main className={`mx-auto w-full ${WIDTH} px-4 pb-12 pt-5 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
+          <main className={`ix-page mx-auto w-full ${WIDTH} px-4 pb-12 pt-5 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
         </div>
       </Customizable>
       </NavProvider>

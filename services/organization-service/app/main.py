@@ -31,6 +31,8 @@ from app.database import get_db
 from app.invitations import invitation_status, issue_invitation
 from app.models import Organization, OrganizationInvitation
 from app.module_usage import UsageClient
+from app.lifecycle import router as lifecycle_router
+from app.purge_client import PurgeClient
 from app.modules_api import router as modules_router, seed_new_organization, usable_modules
 from app.onboarding import logo_version, router as onboarding_router
 from app.internal_api import router as internal_router
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
     app.state.auth_client = create_auth_client()
     app.state.internal_auth_client = create_internal_auth_client()
     app.state.usage_client = UsageClient()
+    app.state.purge_client = PurgeClient()
     yield
     app.state.usage_client.close()
     await app.state.auth_client.aclose()
@@ -73,6 +76,7 @@ app.include_router(settings_router)
 
 # Read-only entitlement answers for the other services' background workers (shared secret; see app/internal_api.py).
 app.include_router(internal_router)
+app.include_router(lifecycle_router)  # lock / unlock / delete an organization (Super Admin)
 
 # CORS Middleware
 app.add_middleware(
@@ -106,6 +110,11 @@ class OrganizationResponse(BaseModel):
     primary_admin_email: Optional[str] = None
     is_active: bool
     created_at: str
+    # LOCKED by the Super Admin (e.g. the monthly payment is late): the administrators can sign in but only Settings and Help & Support work. See app/lifecycle.py.
+    is_locked: bool = False
+    locked_at: Optional[str] = None
+    lock_reason: Optional[str] = None  # the Super Admin's own note
+    deletion_pending: bool = False  # a deletion was started and has not finished: it can be retried
 
 
 def to_response(org: Organization) -> OrganizationResponse:
@@ -119,6 +128,10 @@ def to_response(org: Organization) -> OrganizationResponse:
         primary_admin_email=org.primary_admin_email,
         is_active=org.is_active,
         created_at=org.created_at.isoformat(),
+        is_locked=org.is_locked,
+        locked_at=org.locked_at.isoformat() if org.locked_at else None,
+        lock_reason=org.lock_reason,
+        deletion_pending=org.deletion_requested_at is not None,
     )
 
 
@@ -140,6 +153,8 @@ class TenantOrganizationResponse(BaseModel):
     # The business modules the organization can use right now (Super Admin decides; see app/modules.py). The other services enforce
     # exactly this list, so it is part of the answer they already ask for: one call says active, which organization, and which modules.
     modules: List[str] = []
+    # LOCKED by the Super Admin: `modules` is then empty and the portal offers only Settings and Help & Support. (The reason is the Super Admin's own note and is never sent here.)
+    is_locked: bool = False
     # Business preferences (defaults and presentation only; see app/settings_api.py): the portal formats dates and numbers with them and
     # starts new documents in the default currency. They never change a stored record.
     default_currency: str = "USD"
@@ -164,6 +179,7 @@ def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -
         has_logo=bool(org.logo_storage_key),
         logo_version=logo_version(org),
         modules=modules or [],
+        is_locked=org.is_locked,
         default_currency=org.default_currency,
         timezone=org.timezone,
         date_format=org.date_format,

@@ -33,6 +33,7 @@ def require_internal_key(x_internal_key: Optional[str] = Header(default=None)) -
 class Entitlements(BaseModel):
     organization_id: str
     is_active: bool
+    is_locked: bool = False
     setup_completed: bool
     modules: List[str]
     default_currency: str
@@ -44,7 +45,7 @@ def entitlements(organization_id: uuid.UUID, db: Session = Depends(get_db)):
     if organization is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
     return Entitlements(
-        organization_id=str(organization.id), is_active=organization.is_active, setup_completed=organization.setup_status == "completed",
+        organization_id=str(organization.id), is_active=organization.is_active, is_locked=organization.is_locked, setup_completed=organization.setup_status == "completed",
         modules=usable_modules(db, organization.id), default_currency=organization.default_currency,
     )
 

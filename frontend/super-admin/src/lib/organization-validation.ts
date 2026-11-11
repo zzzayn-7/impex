@@ -20,6 +20,11 @@ export type Organization = {
   primary_admin_email: string | null;
   is_active: boolean;
   created_at: string;
+  // LOCKED by the Super Admin (the monthly payment is late): the administrators can sign in but only Settings and Help & Support work.
+  is_locked?: boolean;
+  locked_at?: string | null;
+  lock_reason?: string | null; // the Super Admin's own note
+  deletion_pending?: boolean; // a deletion started and did not finish: run it again
 };
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

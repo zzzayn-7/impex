@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -61,6 +61,40 @@ describe("every dropdown is compact and searchable", () => {
     render(<><select data-native aria-label="Plain"><option>a</option></select><SelectEnhancer /></>);
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByRole("button", { name: "Plain" })).toBeNull();
+  });
+});
+
+describe("a dropdown never leaves the page", () => {
+  function place(left: number, hostWidth: number, panelWidth: number, viewport: number) {
+    Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: viewport });
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const isHost = this.hasAttribute("data-ix-dropdown");
+      return { left: isHost ? left : 0, right: isHost ? left + hostWidth : 0, top: 0, bottom: 40, width: hostWidth, height: 40, x: left, y: 0, toJSON() {} } as DOMRect;
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return this.getAttribute("role") === null && this.className.includes("ix-pop") ? panelWidth : 0; } });
+    return rect;
+  }
+  afterEach(() => { vi.restoreAllMocks(); Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth"); });
+
+  it("opens to the right where there is room: not moved", async () => {
+    place(100, 200, 200, 1360);
+    render(<Form />);
+    await userEvent.click(await screen.findByRole("button", { name: "Currency" }));
+    expect(document.querySelector<HTMLElement>(".ix-pop")!.style.left).toBe("0px");
+  });
+
+  it("near the right edge it opens to the LEFT of the button's right edge instead, so the page is not pushed sideways", async () => {
+    place(1200, 140, 192, 1360); // the button ends at 1340; 192px from its left edge would reach 1392
+    render(<Form />);
+    await userEvent.click(await screen.findByRole("button", { name: "Currency" }));
+    expect(document.querySelector<HTMLElement>(".ix-pop")!.style.left).toBe("-52px"); // the list's right edge lines up with the button's (1340)
+  });
+
+  it("a button right at the edge is moved just enough to fit, so the page is not pushed sideways", async () => {
+    place(1250, 160, 192, 1360); // the button ends at 1410: it would run 50px past the right edge (plus an 8px margin)
+    render(<Form />);
+    await userEvent.click(await screen.findByRole("button", { name: "Currency" }));
+    expect(document.querySelector<HTMLElement>(".ix-pop")!.style.left).toBe("-90px"); // 1250 + 192 = 1442 would pass the 1352 limit (viewport 1360 - an 8px margin): moved left by 90
   });
 });
 

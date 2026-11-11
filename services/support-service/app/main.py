@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 
 from app import api
+from app.purge_api import router as purge_router
 from app.db_migrations import verify_database_schema
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
@@ -46,6 +47,7 @@ app = FastAPI(
 app.include_router(api.router)
 app.include_router(api.admin)
 app.include_router(worker_router)  # one outbox pass for a scheduler (shared secret; not in the OpenAPI document)
+app.include_router(purge_router)  # internal: delete everything one organization owns here (the Super Admin deleting an organization)
 
 
 @app.get("/health", tags=["Health"])

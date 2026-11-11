@@ -60,7 +60,7 @@ export default function PortalShell({
               </div>
             </div>
           </header>
-          <main className={`mx-auto w-full ${WIDTH[width]} space-y-8 px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
+          <main className={`ix-page mx-auto w-full ${WIDTH[width]} space-y-8 px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:p-0`}>{children}</main>
         </div>
       </Customizable>
       </NavProvider>

@@ -79,7 +79,6 @@ export default function EntryIndex({ list, filters, accounts }: { list: Paged<En
           <label className="text-xs font-medium text-slate-400">To
             <input type="date" value={filters.dateTo} onChange={(e) => navigate({ dateTo: e.target.value })} className={selectClass} />
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", source: "", currency: "", accountId: "", dateFrom: "", dateTo: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

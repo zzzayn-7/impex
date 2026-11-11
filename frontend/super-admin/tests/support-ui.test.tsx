@@ -76,15 +76,16 @@ describe("SupportInbox", () => {
     expect(router.push).toHaveBeenLastCalledWith("/support?unread=true");
   });
 
-  it("paginates, and clears every filter", async () => {
+  it("paginates, and the \"All\" options replace a Clear filters button", async () => {
     render(<SupportInbox list={{ ...page([summary()]), total: 60, offset: 25 }} filters={{ ...noFilters, status: "open", priority: "high", page: 2 }} />);
     expect(screen.getByText("Showing 26–26 of 60")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(router.push).toHaveBeenLastCalledWith("/support?status=open&priority=high&page=3");
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(router.push).toHaveBeenLastCalledWith("/support?status=open&priority=high");
-    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(router.push).toHaveBeenLastCalledWith("/support");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText(/^Status/), "");
+    expect(router.push).toHaveBeenLastCalledWith("/support?priority=high");
   });
 
   it("empty and error states", () => {

@@ -92,7 +92,6 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
               <option value="all">All</option>
             </select>
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

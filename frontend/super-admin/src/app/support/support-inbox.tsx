@@ -88,7 +88,6 @@ export default function SupportInbox({ list, filters }: { list: InboxPage; filte
             <input type="checkbox" checked={filters.unread} onChange={(e) => navigate({ unread: e.target.checked })} className="h-4 w-4 rounded border-slate-700 bg-slate-950" />
             Unread only
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", category: "", priority: "", unread: false }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

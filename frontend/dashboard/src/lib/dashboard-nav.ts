@@ -22,8 +22,13 @@ const ICON_BY_HREF: Record<string, IconName> = {
 // there exactly when the organization can use Suppliers Invoice (Purchasing) or Sales Invoice (Sales), and lists only the tabs it may use.
 const GROUP_ORDER: (ModuleKey | "invoices")[] = ["inventory", "purchasing", "sales", "invoices", "finance"];
 
-export function navGroups(modules: unknown): NavGroup[] {
+export function navGroups(modules: unknown, locked = false): NavGroup[] {
   const enabled = usableModules(modules);
+  // A LOCKED organization (the Impex team's decision) has no Dashboard and no module: the sidebar lists only Settings and Help & Support.
+  if (locked) return [{ id: "workspace", label: "Workspace", items: [
+    { key: "support", label: "Help & Support", href: "/support", icon: "support" },
+    { key: "settings", label: "Settings", href: "/settings", icon: "settings" },
+  ] }];
   const groups: NavGroup[] = [{ id: "main", label: "Main", items: [{ key: "dashboard", label: "Dashboard", href: "/", icon: "dashboard" }] }];
   const item = (page: { label: string; href: string }): NavItem => ({ key: page.href, label: page.label, href: page.href, icon: ICON_BY_HREF[page.href] ?? "dashboard" });
   // the pages of the ENABLED modules that are listed under Invoices (in module order: Purchasing's, then Sales')

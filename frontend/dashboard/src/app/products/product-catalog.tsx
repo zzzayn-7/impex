@@ -155,11 +155,6 @@ export default function ProductCatalog({ list, filters }: Props) {
               <option value="all">All</option>
             </select>
           </label>
-          {filtered && (
-            <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "active" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
-              Clear filters
-            </button>
-          )}
         </div>
 
         <div aria-busy={isPending} className={`transition-opacity ${isPending ? "opacity-50" : "opacity-100"}`}>

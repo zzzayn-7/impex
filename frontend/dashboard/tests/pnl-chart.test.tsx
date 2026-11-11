@@ -201,7 +201,7 @@ describe("the chart", () => {
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(source).not.toMatch(/\b(?:bg|text|border)-(?:white|black|slate-\d+|gray-\d+|zinc-\d+)\b/);
     expect(source).not.toMatch(/mock|demo|sample data/i);
-    const css = readFileSync(join(__dirname, "..", "src", "app", "globals.css"), "utf8");
+    const css = readFileSync(join(__dirname, "..", "src", "components", "ui", "org-portal.css"), "utf8");
     expect(css).toMatch(/:root \{ --ix-profit-rgb: \d+ \d+ \d+; \}/);
     expect(css).toMatch(/:root\[data-ix-scheme="light"\] \{ --ix-profit-rgb: \d+ \d+ \d+; \}/); // a darker green on the light background
     const { container } = show();

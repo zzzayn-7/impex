@@ -153,17 +153,18 @@ describe("Invoices index", () => {
   it("lists every status, payment status and client (inactive ones marked)", () => {
     mount(page([summary()]));
     expect(within(screen.getByLabelText("Status")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All statuses", "Draft", "Issued", "Partially paid", "Paid", "Void"]);
-    expect(within(screen.getByLabelText("Payment")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Any payment status", "Unpaid", "Partially paid", "Paid", "Overdue"]);
+    expect(within(screen.getByLabelText("Payment")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All payment statuses", "Unpaid", "Partially paid", "Paid", "Overdue"]);
     expect(within(screen.getByLabelText("Client")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All clients", "Acme Ltd", "Zenith Ltd", "Dormant Ltd (inactive)"]);
   });
 
-  it("paging and clearing the filters", async () => {
+  it("paging, and showing everything again with the \"All\" options (there is no Clear filters button)", async () => {
     mount(page([summary()], { total: 80 }), { page: 2, status: "paid", q: "x" });
     const u = user();
     await u.click(screen.getByRole("button", { name: "Next" }));
     expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=x&status=paid&page=3");
-    await u.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    await u.selectOptions(screen.getByLabelText("Status"), "");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=x");
   });
 
   it("says what to do when there are none, and when a search finds none", () => {

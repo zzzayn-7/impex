@@ -23,7 +23,7 @@ export default function SetupLayout({ children }: { children: React.ReactNode })
           <LogoutButton variant="glass" />
         </div>
       </header>
-      <main className="mx-auto w-full max-w-3xl px-5 pb-16 sm:px-8">{children}</main>
+      <main className="ix-page mx-auto w-full max-w-3xl px-5 pb-16 sm:px-8">{children}</main>
     </div>
   );
 }

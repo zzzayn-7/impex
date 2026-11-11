@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // EDIT the header of a DRAFT order (the Purchasing Service refuses it once the order is placed). Status changes have their
-// own routes; there is no delete.
+// own routes; DELETE is below.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const token = sessionToken(req);
   if (!token) return fail("You are not signed in.", 401);
@@ -61,4 +61,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const result = await purchasingRequest("PATCH", `/api/v1/purchasing/purchase-orders/${params.id}`, token, change);
   if (!result || result.status !== 200) return purchasingFailureResponse(result, "Purchase order not found.");
   return NextResponse.json({ order: result.data }, { headers: NO_STORE });
+}
+
+// DELETE an order for good: a draft, placed or cancelled order that has no goods receipt. The Purchasing Service decides (it refuses, 409, an order with goods received or any
+// receipt) and never touches inventory. Nothing is read from the browser but the order in the address.
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = sessionToken(req);
+  if (!token) return fail("You are not signed in.", 401);
+  if (!checkUuid(params.id)) return fail("Purchase order not found.", 404);
+  const result = await purchasingRequest("DELETE", `/api/v1/purchasing/purchase-orders/${params.id}`, token);
+  if (!result || result.status !== 204) return purchasingFailureResponse(result, "Purchase order not found.");
+  return NextResponse.json({ deleted: true }, { headers: NO_STORE });
 }

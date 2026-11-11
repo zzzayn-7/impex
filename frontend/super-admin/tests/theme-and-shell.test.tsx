@@ -128,17 +128,21 @@ describe("the Super Admin shell", () => {
     }
   });
 
-  it("hovering the avatar opens the card, leaving closes it, and Escape closes it for the keyboard", () => {
+  it("clicking the avatar opens the card (hovering only blurs it), and Escape or a click elsewhere closes it", () => {
     shell();
     const avatar = screen.getByRole("button", { name: /^Account: / });
     const card = screen.getByRole("group", { name: "Account details", hidden: true });
     fireEvent.pointerEnter(avatar.parentElement!);
+    fireEvent.focus(avatar);
+    expect(card.className).toContain("invisible"); // neither hovering nor focusing opens it
+    fireEvent.click(avatar);
     expect(card.className).not.toContain("invisible");
     fireEvent.pointerLeave(avatar.parentElement!);
-    expect(card.className).toContain("invisible");
-    fireEvent.focus(avatar);
-    expect(card.className).not.toContain("invisible");
+    expect(card.className).not.toContain("invisible"); // and moving away does not close it
     fireEvent.keyDown(document, { key: "Escape" });
+    expect(card.className).toContain("invisible");
+    fireEvent.click(avatar);
+    fireEvent.mouseDown(document.body);
     expect(card.className).toContain("invisible");
   });
 });

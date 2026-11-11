@@ -75,7 +75,7 @@ export default function InvoiceIndex({ list, filters, clients, generated = null 
           <label className="text-xs font-medium text-slate-400">
             Payment
             <select value={filters.paymentStatus} onChange={(e) => navigate({ paymentStatus: e.target.value as InvoiceFilters["paymentStatus"] })} className={selectClass}>
-              <option value="">Any payment status</option>
+              <option value="">All payment statuses</option>
               {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentStatusFilter[]).map((s) => <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>)}
             </select>
           </label>
@@ -94,7 +94,6 @@ export default function InvoiceIndex({ list, filters, clients, generated = null 
             To
             <input type="date" value={filters.dateTo} onChange={(e) => navigate({ dateTo: e.target.value })} className={selectClass} />
           </label>
-          {filtered && <button type="button" onClick={() => { setSearch(""); navigate({ q: "", status: "", paymentStatus: "", clientId: "", dateFrom: "", dateTo: "" }); }} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">Clear filters</button>}
         </div>
 
         <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>

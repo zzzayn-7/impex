@@ -5,6 +5,7 @@ import SelectEnhancer from "@/components/ui/select-enhancer";
 import { THEME_COOKIE } from "@/lib/session";
 import { decodeThemeCookie, themeAttributes, themeCss } from "@/lib/theme";
 import "./globals.css";
+import "@/components/ui/org-portal.css";
 
 export const metadata: Metadata = {
   title: "Impex | Organization Portal",

@@ -11,20 +11,21 @@ The rules that matter most:
 """
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import TenantContext
 from app.inventory import InventoryGateway, InventoryUnavailable, ProductInfo, unavailable_error
-from app.models import PurchaseOrder, PurchaseOrderCounter, PurchaseOrderLine, PurchaseOrderRequest, Supplier
+from app.models import GoodsReceipt, PurchaseOrder, PurchaseOrderCounter, PurchaseOrderLine, PurchaseOrderRequest, Supplier
 from app.schemas import (
     LineRemoved,
     LineResponse,
@@ -35,6 +36,7 @@ from app.schemas import (
 )
 from app.tenancy import get_scoped, get_scoped_or_404, scoped_select
 
+logger = logging.getLogger("impex.purchasing")
 ZERO = Decimal("0")
 CENT = Decimal("0.0001")
 MAX_LINES = 500
@@ -357,6 +359,33 @@ def remove_line(db: Session, tenant: TenantContext, order_id: uuid.UUID, line_id
     db.commit()
     count = db.scalar(select(func.count()).select_from(PurchaseOrderLine).where(PurchaseOrderLine.organization_id == tenant.organization_id, PurchaseOrderLine.purchase_order_id == order_id))
     return LineRemoved(line_count=count, total_amount=order_total(db, tenant, order_id), currency_code=order.currency_code)
+
+
+# --- delete ------------------------------------------------------------------------------------------------------------------------------------------
+def delete_order(db: Session, tenant: TenantContext, order_id: uuid.UUID) -> None:
+    """Delete a purchase order FOR GOOD (the organization's administrator asked for it, having been shown a confirmation).
+
+    Allowed while no goods were ever received against it: a draft, a placed (ordered) or a cancelled order that has NO goods receipt of any kind. Its lines go with it, and so do
+    the remembered create-requests (so the Idempotency-Key is free again). Refused (409) when the order is partially received or received, or has any goods receipt:
+    the goods arrived, stock moved and Finance may have posted it, and receipts are never deleted, so the order they name must stay. The database refuses the same
+    cases on its own, and only lets a delete through inside this one transaction. It never touches inventory, stock or prices. The order number is NOT reused.
+    """
+    order = get_order_or_404(db, tenant, order_id, lock=True)
+    if order.status in ("partially_received", "received"):
+        raise conflict(f"{order.number} has goods received against it, so it cannot be deleted: the goods arrived and the receipts stay as the record.")
+    receipts = db.scalar(select(func.count()).select_from(GoodsReceipt).where(GoodsReceipt.organization_id == tenant.organization_id, GoodsReceipt.purchase_order_id == order.id))
+    if receipts:
+        raise conflict(
+            f"{order.number} has goods receipts ({receipts}), so it cannot be deleted: receipts are never deleted, so the order they name stays."
+            + ("" if order.status == "cancelled" else " You can cancel the order instead.")
+        )
+    number = order.number
+    db.execute(text("SET LOCAL app.deleting_purchase_order = 'on'"))  # for this transaction only; the database checks the rules above again
+    db.execute(delete(PurchaseOrderLine).where(PurchaseOrderLine.organization_id == tenant.organization_id, PurchaseOrderLine.purchase_order_id == order.id))
+    db.execute(delete(PurchaseOrderRequest).where(PurchaseOrderRequest.organization_id == tenant.organization_id, PurchaseOrderRequest.purchase_order_id == order.id))
+    db.execute(delete(PurchaseOrder).where(PurchaseOrder.organization_id == tenant.organization_id, PurchaseOrder.id == order.id))
+    db.commit()
+    logger.info("purchase order %s (%s) deleted by %s", number, order_id, tenant.email)
 
 
 # --- status ------------------------------------------------------------------------------------------------------------------------------------------

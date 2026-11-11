@@ -541,7 +541,8 @@ describe("the dispatches list", () => {
     await user().click(screen.getByRole("button", { name: "New Dispatch" }));
     expect(screen.getByText(/No delivery list is ready for dispatch/)).toBeTruthy();
     expect(screen.getByText("No dispatches match these filters.")).toBeTruthy();
-    await user().click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull(); // no Clear filters button: the "All statuses" option shows everything again
+    await user().selectOptions(screen.getByLabelText("Status"), "");
     expect(router.push).toHaveBeenLastCalledWith("/dispatches");
   });
 });

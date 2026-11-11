@@ -342,7 +342,7 @@ describe("Purchase order detail: placing and cancelling", () => {
     expect(screen.getByRole("button", { name: "Cancel order" })).toBeTruthy();
     unmount();
     render(<OrderDetail order={order({ status: "cancelled", frozen: true, cancelled_at: now, cancelled_by_email: "a@b.c" }) as any} suppliers={[]} />);
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Delete order"]); // nothing but the delete (a cancelled order can no longer be changed)
   });
 
   it("warns when the supplier is inactive", () => {
@@ -507,5 +507,99 @@ describe("Suppliers", () => {
     render(<SupplierManager list={{ ok: true, items: [{ ...acme, is_active: false }], total: 1, limit: 25, offset: 0 }} filters={filters} />);
     await user.click(screen.getByRole("button", { name: "Reactivate Acme Supplies" }));
     await screen.findByText(/was reactivated/);
+  });
+});
+
+describe("Purchase order detail: deleting", () => {
+  it.each(["draft", "ordered", "cancelled"])("a %s order offers Delete order", (status) => {
+    render(<OrderDetail order={order({ status, frozen: status !== "draft" }) as any} suppliers={[]} />);
+    expect(screen.getByRole("button", { name: "Delete order" })).toBeTruthy();
+  });
+
+  it.each(["partially_received", "received"])("a %s order does NOT (goods arrived: it stays as the record)", (status) => {
+    render(<OrderDetail order={order({ status, frozen: true }) as any} suppliers={[]} />);
+    expect(screen.queryByRole("button", { name: "Delete order" })).toBeNull();
+  });
+
+  it("asks first, says what is lost, deletes with one DELETE, and goes back to the list", async () => {
+    const user = setup();
+    server["DELETE /api/purchasing/purchase-orders/:id"] = () => json(200, { deleted: true });
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
+    await user.click(screen.getByRole("button", { name: "Delete order" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm deleting the order" });
+    expect(dialog.textContent).toContain("Delete PO-000001 for good?");
+    expect(dialog.textContent).toContain("cannot be recovered");
+    expect(dialog.textContent).toContain("No stock is involved");
+    expect(writes()).toHaveLength(0); // nothing is sent until it is confirmed
+    await user.click(within(dialog).getByRole("button", { name: "Yes, delete it" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/purchase-orders"));
+    expect(writes()).toEqual([{ url: `/api/purchasing/purchase-orders/${O1}`, method: "DELETE", headers: expect.anything(), body: undefined }]);
+    expect(inventoryWrites()).toHaveLength(0);
+  });
+
+  it("'Back' deletes nothing", async () => {
+    const user = setup();
+    render(<OrderDetail order={order() as any} suppliers={[]} />);
+    await user.click(screen.getByRole("button", { name: "Delete order" }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("shows the reason when the Purchasing Service refuses (goods receipts exist) and stays on the order", async () => {
+    const user = setup();
+    router.replace.mockClear();
+    server["DELETE /api/purchasing/purchase-orders/:id"] = () => json(409, { error: "PO-000001 has goods receipts (1), so it cannot be deleted: receipts are never deleted, so the order they name stays." });
+    render(<OrderDetail order={order({ status: "ordered", frozen: true }) as any} suppliers={[]} />);
+    await user.click(screen.getByRole("button", { name: "Delete order" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete it" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("has goods receipts");
+    expect(router.replace).not.toHaveBeenCalledWith("/purchase-orders");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("Purchase order list: the bin on each row", () => {
+  const summary = (id: string, number: string, status: string) => ({ ...order({ status }), id, number, lines: undefined });
+  const rows = [summary("a0000000-0000-4000-8000-0000000000a1", "PO-000001", "draft"), summary("a0000000-0000-4000-8000-0000000000a2", "PO-000002", "ordered"), summary("a0000000-0000-4000-8000-0000000000a3", "PO-000003", "cancelled"),
+    summary("a0000000-0000-4000-8000-0000000000a4", "PO-000004", "partially_received"), summary("a0000000-0000-4000-8000-0000000000a5", "PO-000005", "received")];
+  const list = (items = rows) => <OrderIndex list={{ ok: true, items: items as any, total: items.length, limit: 25, offset: 0 }} filters={{ q: "", supplierId: "", status: "", page: 1 }} suppliers={[]} />;
+
+  it("is on every order that can be deleted (draft, ordered, cancelled) and on none where goods arrived", () => {
+    render(list());
+    expect(screen.getAllByRole("button", { name: /^Delete PO-/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Delete PO-000001", "Delete PO-000002", "Delete PO-000003"]);
+  });
+
+  it("asks first, and deletes nothing when declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(list());
+    await setup().click(screen.getByRole("button", { name: "Delete PO-000001" }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]).toContain("cannot be recovered");
+    expect(writes()).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it("sends one DELETE for that order when confirmed, and refreshes the list", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    router.refresh.mockClear();
+    server["DELETE /api/purchasing/purchase-orders/:id"] = () => json(200, { deleted: true });
+    render(list());
+    await setup().click(screen.getByRole("button", { name: "Delete PO-000002" }));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    expect(writes()).toEqual([{ url: "/api/purchasing/purchase-orders/a0000000-0000-4000-8000-0000000000a2", method: "DELETE", headers: expect.anything(), body: undefined }]);
+    expect(inventoryWrites()).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it("shows the reason when the service refuses, and does not refresh", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    router.refresh.mockClear();
+    server["DELETE /api/purchasing/purchase-orders/:id"] = () => json(409, { error: "PO-000002 has goods receipts (1), so it cannot be deleted: receipts are never deleted, so the order they name stays." });
+    render(list());
+    await setup().click(screen.getByRole("button", { name: "Delete PO-000002" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("has goods receipts");
+    expect(router.refresh).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

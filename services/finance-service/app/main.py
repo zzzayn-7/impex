@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
+from app.purge_api import router as purge_router
 from app.db_migrations import verify_database_schema
 from app.api import router as finance_router
 from app.auth import create_auth_client, create_org_client
@@ -52,6 +53,7 @@ app = FastAPI(
 app.include_router(finance_router)
 app.include_router(trading_router)  # Capital, Investment and Profit & Loss (the Finance page)
 app.include_router(worker_router)  # one synchronisation pass for a scheduler (shared secret; not in the OpenAPI document)
+app.include_router(purge_router)  # internal: delete everything one organization owns here (the Super Admin deleting an organization)
 
 PREFIX = "/api/v1/finance"
 

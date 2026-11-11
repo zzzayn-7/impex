@@ -19,6 +19,8 @@ export type TenantOrganization = {
   logo_version?: string | null;
   // The business modules the organization can use (the Super Admin decides). Missing or malformed = none: never "all".
   modules?: string[];
+  // LOCKED by the Impex team (e.g. a payment is overdue): `modules` is then empty and only Settings and Help & Support work. Missing = not locked.
+  is_locked?: boolean;
   // Business preferences (Settings): defaults and presentation only.
   default_currency?: string;
   timezone?: string;

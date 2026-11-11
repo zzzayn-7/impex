@@ -67,14 +67,15 @@ describe("SupportIndex", () => {
     expect(router.push).toHaveBeenLastCalledWith("/support?category=change_request");
   });
 
-  it("paginates and can clear filters", async () => {
+  it("paginates, and the \"All\" options replace a Clear filters button", async () => {
     render(<SupportIndex list={{ ...page([summary()]), total: 45, offset: 20 }} filters={{ ...noFilters, status: "open", page: 2 }} />);
     expect(screen.getByText("Showing 21–21 of 45")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(router.push).toHaveBeenLastCalledWith("/support?status=open&page=3");
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(router.push).toHaveBeenLastCalledWith("/support?status=open");
-    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText(/^Status/), "");
     expect(router.push).toHaveBeenLastCalledWith("/support");
   });
 

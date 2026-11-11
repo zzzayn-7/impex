@@ -7,7 +7,7 @@ import { GET as listSuppliers, POST as createSupplier } from "@/app/api/purchasi
 import { GET as getSupplier, PATCH as editSupplier } from "@/app/api/purchasing/suppliers/[id]/route";
 import { POST as supplierAction } from "@/app/api/purchasing/suppliers/[id]/[action]/route";
 import { GET as listOrders, POST as createOrder } from "@/app/api/purchasing/purchase-orders/route";
-import { GET as getOrder, PATCH as editOrder } from "@/app/api/purchasing/purchase-orders/[id]/route";
+import { DELETE as deleteOrder, GET as getOrder, PATCH as editOrder } from "@/app/api/purchasing/purchase-orders/[id]/route";
 import { POST as orderAction } from "@/app/api/purchasing/purchase-orders/[id]/[action]/route";
 import { POST as addLine } from "@/app/api/purchasing/purchase-orders/[id]/lines/route";
 import { DELETE as removeLine, PATCH as editLine } from "@/app/api/purchasing/purchase-orders/[id]/lines/[lineId]/route";
@@ -109,6 +109,7 @@ describe("every Purchasing route is protected by the tenant session", () => {
     ["create order", () => createOrder(request("POST", { supplierId: ID, currencyCode: "USD" }, { cookie: null, key: KEY }))],
     ["get order", () => getOrder(request("GET", undefined, { cookie: null }), ctx)],
     ["edit order", () => editOrder(request("PATCH", { notes: "x" }, { cookie: null }), ctx)],
+    ["delete order", () => deleteOrder(request("DELETE", undefined, { cookie: null }), ctx)],
     ["order action", () => orderAction(request("POST", undefined, { cookie: null }), ctx)],
     ["add line", () => addLine(request("POST", { productId: PRODUCT, quantity: "1", unitPrice: "1" }, { cookie: null }), ctx)],
     ["edit line", () => editLine(request("PATCH", { quantity: "1" }, { cookie: null }), ctx)],
@@ -352,5 +353,37 @@ describe("lines", () => {
     const res = await addLine(request("POST", { productId: PRODUCT, quantity: "1", unitPrice: "1" }), ctx);
     expect(res.status).toBe(503);
     expect(JSON.stringify(await res.json())).not.toContain("10.0.0.9");
+  });
+});
+
+describe("DELETE /api/purchasing/purchase-orders/{id}", () => {
+  const ctx = { params: { id: ID } };
+
+  it("asks the Purchasing Service to delete exactly that order, with the session token and nothing from the browser", async () => {
+    stub(() => new Response(null, { status: 204 }));
+    const res = await deleteOrder(request("DELETE", { organization_id: "other", status: "ordered" }), ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(upstream().url).toBe(`${PURCHASING}/api/v1/purchasing/purchase-orders/${ID}`);
+    expect(upstream().init.method).toBe("DELETE");
+    expect(upstream().init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(upstream().init.body).toBeUndefined();
+  });
+
+  it("passes on the service's reason when it refuses (goods received / receipts exist), and a 404", async () => {
+    stub(() => json(409, { detail: "PO-000001 has goods received against it, so it cannot be deleted." }));
+    const refused = await deleteOrder(request("DELETE"), ctx);
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain("cannot be deleted");
+    stub(() => json(404, { detail: "Purchase order not found." }));
+    expect((await deleteOrder(request("DELETE"), ctx)).status).toBe(404);
+  });
+
+  it("refuses a bad id before calling the service, and says so when the service is down", async () => {
+    stub(() => new Response(null, { status: 204 }));
+    expect((await deleteOrder(request("DELETE"), { params: { id: "bad" } })).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    stub(() => { throw new TypeError("down"); });
+    expect((await deleteOrder(request("DELETE"), ctx)).status).toBe(503);
   });
 });

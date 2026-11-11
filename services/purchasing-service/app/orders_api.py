@@ -103,6 +103,14 @@ def update_purchase_order(order_id: uuid.UUID, payload: PurchaseOrderUpdate, ten
     return orders.summaries(db, tenant, [order])[0]
 
 
+@router.delete("/purchase-orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Purchase orders"])
+def delete_purchase_order(order_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """Delete an order for good: a draft, placed or cancelled order that has NO goods receipt. An order with goods received (or any receipt) is refused (409): cancel it instead
+    where that is still possible. Its lines go with it; no stock, inventory record or price is touched."""
+    orders.delete_order(db, tenant, order_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def _status_route(target: str):
     def handler(order_id: uuid.UUID, tenant: TenantContext = Tenant, gateway: InventoryGateway = Depends(get_gateway), db: Session = Depends(get_db)):
         order = orders.change_status(db, tenant, gateway, order_id, target)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 // EVERY dropdown of the portal is a compact, searchable one: a search box on top, and the list shows five options at a time (the rest scrolls). The pages keep writing an
@@ -59,6 +59,8 @@ function Dropdown({ select }: { select: HTMLSelectElement }) {
   const root = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [shift, setShift] = useState(0); // how far the list is moved sideways so that it stays inside the page
   const id = useId();
 
   // what the page does to the real select (a controlled value, a reset, new options, disabled) is mirrored on a short interval: React sets those as properties, which nothing observes
@@ -91,6 +93,32 @@ function Dropdown({ select }: { select: HTMLSelectElement }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // The list opens under its button and to the right. A button near the right edge of the page would push it past the edge (and the page with it), so it is moved left just
+  // enough to fit: the page keeps its size, and the list is always fully on the screen.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = panel.current;
+      const host = root.current;
+      if (!el || !host) return;
+      const margin = 8;
+      // the list stays inside the page's content column (and, always, inside the screen): the column's right edge is the limit where there is one
+      const column = host.closest("main");
+      const columnRight = column ? column.getBoundingClientRect().right - (parseFloat(getComputedStyle(column).paddingRight) || 0) : Infinity;
+      const viewport = Math.min(document.documentElement.clientWidth, columnRight + margin);
+      const { left, right } = host.getBoundingClientRect();
+      const width = el.offsetWidth;
+      let dx = 0;
+      if (left + width > viewport - margin) dx = right - width - left; // it would run past the edge: hang it from the button's right edge instead (opening to the left)
+      if (left + dx + width > viewport - margin) dx = viewport - margin - (left + width); // still too far right (a button at the very edge): just enough to fit
+      if (left + dx < margin) dx = margin - left;
+      setShift(Math.round(dx));
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, shown.length]);
 
   useEffect(() => { setActive(0); }, [query]);
   useEffect(() => { list.current?.children[active]?.scrollIntoView?.({ block: "nearest" }); }, [active, open]);
@@ -125,8 +153,10 @@ function Dropdown({ select }: { select: HTMLSelectElement }) {
       </button>
       {open && (
         <div
+          ref={panel}
           onKeyDown={onKey}
-          className={`absolute left-0 z-50 w-full min-w-[12rem] rounded-xl border border-ix-mist/20 bg-ix-deep p-1.5 text-ix-text shadow-xl shadow-black/30 ${up ? "bottom-full mb-1" : "top-full mt-1"}`}
+          style={{ left: shift }}
+          className={`ix-pop absolute z-50 w-full min-w-[12rem] rounded-xl border border-ix-mist/20 bg-ix-deep p-1.5 text-ix-text shadow-xl shadow-black/30 ${up ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           <input
             ref={search} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" aria-label={`Search ${name}`} autoComplete="off" spellCheck={false}

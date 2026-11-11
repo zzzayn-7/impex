@@ -226,8 +226,7 @@ def test_viewing_filtering_and_searching_orders(api, shop):
     assert {o["number"]: (o["line_count"], o["total_amount"]) for o in listed}["PO-000001"] == (1, "10.0000")
 
 
-def test_orders_are_never_deleted_and_their_status_is_not_directly_settable(api):
+def test_an_orders_status_is_not_directly_settable_and_only_the_delete_route_removes_one(api):
     created = api.order(api.supplier("Acme")["id"])
-    assert api.client.delete(f"{ORDERS}/{created['id']}", headers=api.headers).status_code == 405
     assert api.client.put(f"{ORDERS}/{created['id']}", json={}, headers=api.headers).status_code == 405
     assert api.client.patch(f"{ORDERS}/{created['id']}", json={"status": "ordered"}, headers=api.headers).status_code == 422

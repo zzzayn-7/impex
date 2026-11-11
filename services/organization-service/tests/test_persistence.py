@@ -89,8 +89,9 @@ def test_created_organization_is_stored_in_postgres(client, session_factory):
     assert body["is_active"] is True
     assert set(body) == {  # response shape is unchanged from the in-memory version
         "id", "name", "slug", "country_code", "tax_identifier", "contact_email", "primary_admin_email",
-        "is_active", "created_at",
+        "is_active", "created_at", "is_locked", "locked_at", "lock_reason", "deletion_pending",  # (the lock: migration 0007; unlocked and not being deleted by default)
     }
+    assert body["is_locked"] is False and body["deletion_pending"] is False
 
 
 def test_optional_tax_identifier_can_be_omitted(client):
@@ -202,7 +203,7 @@ def test_unauthenticated_create_stores_nothing(client, session_factory):
 # --- migrations -------------------------------------------------------------
 def test_schema_comes_from_migration_and_matches_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0007"
         columns = {
             row.column_name: row.is_nullable
             for row in conn.execute(text(
@@ -218,6 +219,8 @@ def test_schema_comes_from_migration_and_matches_models(engine):
         # organization settings (migration 0006)
         "contact_phone": "YES", "address_street": "YES", "address_city": "YES", "address_state": "YES", "address_postal_code": "YES", "website": "YES", "description": "YES",
         "default_currency": "NO", "timezone": "NO", "date_format": "NO", "number_format": "NO", "settings_version": "NO", "settings_updated_at": "YES", "settings_updated_by": "YES",
+        # the lock and deletion (migration 0007)
+        "is_locked": "NO", "locked_at": "YES", "locked_by": "YES", "lock_reason": "YES", "deletion_requested_at": "YES",
     }
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart

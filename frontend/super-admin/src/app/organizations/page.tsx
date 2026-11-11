@@ -10,6 +10,7 @@ import Link from "next/link";
 import AdministratorPanel from "./administrator-panel";
 import OrganizationForm from "./organization-form";
 import AdministratorActions from "./administrator-actions";
+import OrganizationActions from "./organization-actions";
 
 export const metadata: Metadata = {
   title: "Organizations | Impex Super Admin",
@@ -96,6 +97,7 @@ export default async function OrganizationsPage() {
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
                     <th className="px-4 py-3 font-semibold">Modules</th>
+                    <th className="px-4 py-3 font-semibold">Access</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -113,18 +115,33 @@ export default async function OrganizationsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
+                          data-testid="organization-status"
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            org.is_active
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            org.deletion_pending
+                              ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                              : org.is_locked
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                : org.is_active
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                           }`}
                         >
-                          {org.is_active ? "Active" : "Inactive"}
+                          {org.deletion_pending ? "Being deleted" : org.is_locked ? "Locked" : org.is_active ? "Active" : "Inactive"}
                         </span>
+                        {org.is_locked && !org.deletion_pending && (
+                          <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-slate-500">
+                            {org.locked_at ? `since ${formatDate(org.locked_at)}` : null}
+                            {org.lock_reason ? <span className="block text-slate-400">{org.lock_reason}</span> : null}
+                          </p>
+                        )}
+                        {org.deletion_pending && <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-red-300/80">The deletion did not finish. Use Finish deleting.</p>}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDate(org.created_at)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <Link href={`/organizations/${org.id}/modules`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-indigo-300 hover:bg-slate-800 hover:text-indigo-200">Manage modules</Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <OrganizationActions organization={{ id: org.id, name: org.name, isLocked: Boolean(org.is_locked), deletionPending: Boolean(org.deletion_pending) }} />
                       </td>
                     </tr>
                   ))}

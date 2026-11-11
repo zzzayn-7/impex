@@ -215,7 +215,7 @@ describe("the header button and its panel", () => {
     frame();
     const header = screen.getByRole("banner");
     const labels = within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", null, "Sign out"]); // (null: the card's own "Add profile picture" button, which has a text name) Add Widgets (home page only) comes right before Customize Theme, which is just before the avatar
+    expect(labels).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", "Edit profile picture", "Sign out"]); // (the card's edit icon) Add Widgets (home page only) comes right before Customize Theme, which is just before the avatar
     const button = within(header).getByRole("button", { name: "Customize Theme" });
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.className).toContain("h-10 w-10"); // the header's control size

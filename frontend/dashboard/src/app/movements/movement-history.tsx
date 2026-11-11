@@ -93,11 +93,6 @@ export default function MovementHistory({ list, filters, products }: Props) {
               {MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY[t]}{t === "opening" ? " (opening balance)" : ""}</option>)}
             </select>
           </label>
-          {filtered && (
-            <button type="button" onClick={() => navigate({ productId: "", type: "" })} className="rounded-lg px-3 py-2 text-sm text-indigo-300 hover:text-indigo-200">
-              Clear filters
-            </button>
-          )}
         </div>
 
         {problem && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">{problem}</p>}

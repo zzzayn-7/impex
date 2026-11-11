@@ -14,7 +14,7 @@ export default async function LoginPage() {
 
   return (
     <div className="ix-dash">
-      <main className="flex min-h-screen items-center justify-center px-4 py-12">
+      <main className="ix-page flex min-h-screen items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-8">
           <div className="flex flex-col items-center gap-3 text-center">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-ix-butter text-xl font-bold text-ix-on-accent shadow-lg shadow-black/20">IX</div>
