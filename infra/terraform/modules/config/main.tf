@@ -19,8 +19,8 @@ locals {
     TENANT_PORTAL_URL             = "${local.public_url}:3001"
     SUPER_ADMIN_PORTAL_URL        = local.public_url
     DEMO_MODE                     = "false"
-    SMTP_PORT                     = "587"
-    SMTP_STARTTLS                 = "true"
+    SMTP_PORT                     = "1025" # Mailpit, inside the Docker network: plain SMTP, no login
+    SMTP_STARTTLS                 = "false"
     SMTP_SSL                      = "false"
     SMTP_FROM_NAME                = "Impex"
     FINANCE_SYNC_ENABLED          = "true"

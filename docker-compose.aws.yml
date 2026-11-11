@@ -26,6 +26,18 @@ services:
   dashboard:
     ports: !reset []
 
+  # Mailpit is the platform's mail server here: every e-mail the platform sends (invitations, support) is CAUGHT, not delivered, and read in its web page
+  # (https://<public ip>:8025, behind the front-door password). Nothing reaches a real inbox: copy a link out of the message and pass it on yourself.
+  # Messages are kept on disk, so they survive restarts.
+  mailpit:
+    profiles: !reset []
+    ports: !reset []
+    environment:
+      - MP_DATABASE=/data/mailpit.db
+      - MP_MAX_MESSAGES=5000
+    volumes:
+      - mailpit_data:/data
+
   edge:
     image: caddy:2-alpine
     container_name: impex-edge
@@ -33,6 +45,7 @@ services:
     ports:
       - "443:443"
       - "3001:3001"
+      - "8025:8025"
     environment:
       - PUBLIC_HOST=${PUBLIC_HOST:?PUBLIC_HOST must be set}
       - EDGE_USER=${EDGE_USER:?EDGE_USER must be set}
@@ -43,5 +56,9 @@ services:
     depends_on:
       - super-admin
       - dashboard
+      - mailpit
     networks:
       - impex-network
+
+volumes:
+  mailpit_data:

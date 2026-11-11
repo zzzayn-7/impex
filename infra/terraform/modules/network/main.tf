@@ -59,7 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "portal" {
   for_each = { for pair in setproduct(var.ingress_ports, var.allowed_cidrs) : "${pair[0]}-${pair[1]}" => pair }
 
   security_group_id = aws_security_group.server.id
-  description       = "HTTPS portal on port ${each.value[0]}"
+  description       = "HTTPS on port ${each.value[0]} (portals / Mailpit)"
   ip_protocol       = "tcp"
   from_port         = each.value[0]
   to_port           = each.value[0]

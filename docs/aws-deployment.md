@@ -16,7 +16,7 @@ Internet ──► Elastic IP ──► EC2 (Amazon Linux 2023, t3.small)
 
 | Module | One job |
 | :--- | :--- |
-| `modules/network` | VPC, public subnet, the Elastic IP, the firewall: **only** the two HTTPS ports are open, to `allowed_cidrs`; outbound is limited to HTTPS, HTTP (OS packages), DNS and e-mail submission (587/465) |
+| `modules/network` | VPC, public subnet, the Elastic IP, the firewall: **only** the three HTTPS ports (443, 3001, 8025) are open, to `allowed_cidrs`; outbound is limited to HTTPS, HTTP (OS packages), DNS and e-mail submission (587/465) |
 | `modules/security` | a customer-managed **KMS key** (yearly rotation) for the secrets, and the server's IAM role: Session Manager, its **own** parameters (`/impex/<env>/*`) and decrypting them only through SSM; nothing else |
 | `modules/config` | SSM parameters, the generated secrets, the front-door password, the `impex-<env>-deploy` command |
 | `modules/server` | the EC2 instance (`files/user_data.sh.tpl` first boot, `files/deploy.sh` every deploy), the data disk, the daily snapshots |
@@ -87,6 +87,10 @@ Push to the branch, then run the deploy command. It pulls, rebuilds, migrates an
 ## Create the first Super Admin
 
 A fresh database has no Super Admin. Create one from the server (`aws ssm start-session`), as the verification scripts do (a one-off `docker compose exec auth-service python -c ...` that adds a `super-admin` user). Keep `DEMO_MODE=false` in production.
+
+## E-mail: Mailpit
+
+The platform's e-mail (administrator invitations, support notifications) goes to **Mailpit**, a mail server that **catches** every message instead of delivering it. Read them at `https://<public_ip>:8025` (the same front-door login as the portals). Nothing reaches a real inbox: open the message in Mailpit and pass the invitation link on yourself. Messages are kept on disk (5,000 at most). `SMTP_PORT` is 1025 and `SMTP_STARTTLS` false (inside the Docker network); the `SMTP_HOST` parameter is left at `__SET_ME__` so Compose uses `mailpit`. To send real e-mail later, set the `SMTP_*` parameters in SSM to a real provider (Amazon SES, Gmail ...), set `SMTP_PORT` to 587 and `SMTP_STARTTLS` to `true`, and redeploy.
 
 ## Things to know
 

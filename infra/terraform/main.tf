@@ -13,8 +13,8 @@ locals {
   name       = "impex-${var.environment}"
   ssm_prefix = "/impex/${var.environment}"
   az         = data.aws_availability_zones.available.names[0]
-  # The edge listens on 443 (Super Admin portal) and 3001 (Organization portal), both over HTTPS.
-  portal_ports = [443, 3001]
+  # The edge listens on 443 (Super Admin portal), 3001 (Organization portal) and 8025 (Mailpit, the mailbox of the platform's e-mails), all over HTTPS.
+  portal_ports = [443, 3001, 8025]
 }
 
 module "network" {

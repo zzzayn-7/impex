@@ -2,7 +2,7 @@
 #   * HTTPS in front of both portals (a certificate from Caddy's own local authority: the browser warns once until you trust it or a real
 #     domain + certificate replaces it), and
 #   * a PASSWORD in front of both portals (HTTP basic authentication, checked here before any request reaches a portal; the portals keep their own sign-in).
-# 443 -> the Super Admin portal, 3001 -> the Organization portal. Every backend service stays on the private Docker network.
+# 443 -> the Super Admin portal, 3001 -> the Organization portal, 8025 -> Mailpit (where the platform's e-mails are read). Every backend service stays on the private Docker network.
 {
 	skip_install_trust
 	default_sni {$PUBLIC_HOST}
@@ -34,6 +34,13 @@ https://{$PUBLIC_HOST} {
 	import front_door
 	reverse_proxy super-admin:3000 {
 		header_up -Authorization # the front-door password is never passed on to a portal
+	}
+}
+
+https://{$PUBLIC_HOST}:8025 {
+	import front_door
+	reverse_proxy mailpit:8025 {
+		header_up -Authorization
 	}
 }
 
