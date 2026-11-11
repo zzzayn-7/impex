@@ -4,7 +4,7 @@ import { DragEvent, KeyboardEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CURRENCIES, checkCurrency, currencyLabel } from "@/lib/currencies";
-import { timezoneOptions } from "@/lib/timezones";
+import { timezoneChoices, timezoneLabel } from "@/lib/timezones";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { LOGO_ACCEPT, checkCompanyName, checkFullName, checkLogoFile, monogram } from "@/lib/setup-validation";
 
@@ -327,7 +327,7 @@ export default function SetupWizard(props: Props) {
             <div className="mt-6">
               <label htmlFor="business-location" className={label}>Location (time zone)</label>
               <select id="business-location" value={timezone} onChange={(e) => setTimezone(e.target.value)} autoComplete="off" className={input}>
-                {timezoneOptions(timezone).map((zone) => <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>)}
+                {timezoneChoices(timezone).map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}
               </select>
             </div>
 
@@ -381,7 +381,7 @@ export default function SetupWizard(props: Props) {
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Location (time zone)</dt>
-                  <dd className="text-[15px] font-medium">{timezone.replace(/_/g, " ")}</dd>
+                  <dd className="text-[15px] font-medium">{timezoneLabel(timezone)}</dd>
                 </div>
                 <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
               </div>

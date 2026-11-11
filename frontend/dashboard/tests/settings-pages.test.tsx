@@ -73,11 +73,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("the Settings page shows what the services hold, in five sections", () => {
-  it("has the five sections, each filled from the organization's own records", async () => {
+describe("the Settings page shows what the services hold, in four sections", () => {
+  it("has the four sections, each filled from the organization's own records", async () => {
     backend({ modules: ["inventory", "sales"] });
     const html = await render(SettingsPage());
-    for (const heading of ["Company profile", "Company branding", "Administrator profile", "Business preferences", "Enabled modules"]) expect(html, heading).toContain(heading);
+    for (const heading of ["Company profile", "Company branding", "Administrator profile", "Business preferences"]) expect(html, heading).toContain(heading);
     // company: every value comes from the service answer
     for (const value of ["Alpha Trading GmbH", "ops@alpha.example", "+49 30 1234567", "12 Harbour Road", "Hamburg", "HH", "20095", "https://alpha.example", "We import machine parts."]) expect(html, value).toContain(value);
     // preferences: the saved choices are the selected options
@@ -99,38 +99,16 @@ describe("the Settings page shows what the services hold, in five sections", () 
     expect(html).not.toMatch(/<input[^>]*value="owner@acme\.example"/); // the administrator's e-mail is not an input either
   });
 
-  it("lists the modules: enabled, not enabled with Request access (Finance included), and the dependencies", async () => {
+  it("has no modules section any more: the Settings page does not list or explain modules", async () => {
     backend({ modules: ["inventory", "sales"] });
     const html = await render(SettingsPage());
-    expect(html).toMatch(/data-module="inventory" data-enabled="true"/);
-    expect(html).toMatch(/data-module="sales" data-enabled="true"/);
-    expect(html).toMatch(/data-module="purchasing" data-enabled="false"/);
-    expect(html).toContain('href="/support/new?module=purchasing"'); // Request access: only opens a ticket
-    expect(html).not.toContain('href="/support/new?module=sales"');
-    expect(html).not.toContain('href="/support/new?module=inventory"');
-    expect(html).not.toContain("Planned: not available yet"); // Finance is released now: a module like the others
-    expect(html).toMatch(/data-module="finance" data-enabled="false"/);
-    expect(html).toContain('href="/support/new?module=finance"'); // Request access: only opens a ticket, it enables nothing
-    expect(html).toContain("Includes: Finance");
-    expect(html).toContain("Purchasing and Sales both need Inventory");
-    for (const permanent of ["Authentication", "Organization Management", "Onboarding", "Help &amp; Support"]) expect(html).toContain(permanent);
-    expect(html).not.toMatch(/<input[^>]*type="checkbox"/); // nothing here can switch a module on
-    expect(html).not.toMatch(/<button[^>]*>[^<]*(Enable|Disable)/);
-  });
-
-  it("stays open when every business module is disabled (and says so)", async () => {
+    expect(html).not.toContain("Enabled modules");
+    expect(html).not.toMatch(/data-module=/);
+    expect(html).not.toContain("never converts or rewrites anything already recorded");
+    expect(html).toContain("Company profile"); // and it stays open whichever modules are enabled
     backend({ modules: [] });
-    const html = await render(SettingsPage());
-    expect(html).toContain("Company profile");
-    expect(html).toMatch(/data-module="inventory" data-enabled="false"/);
-    expect(html).toContain('href="/support/new?module=inventory"');
+    expect(await render(SettingsPage())).toContain("Company profile");
     expect(await render(SettingsLayout({ children: "SETTINGS-CONTENT" }))).toContain("SETTINGS-CONTENT");
-  });
-
-  it("an unknown module list (an outage) is shown as no module enabled, never as all", async () => {
-    backend({ modules: undefined, org: { modules: "all" } });
-    const html = await render(SettingsPage());
-    expect(html).not.toMatch(/data-enabled="true"/);
   });
 
   it("the history is shown with who changed what and when, in the organization's own format", async () => {
@@ -142,7 +120,7 @@ describe("the Settings page shows what the services hold, in five sections", () 
     expect(html).toContain("Alpha Trading GmbH</span>");
     expect(html).toContain("Logo added");
     expect(html).toContain("Olivia Owner");
-    expect(html).toContain("05/11/2026 22:30"); // DD/MM/YYYY in Europe/London
+    expect(html).toContain("05/11/2026 10:30 PM"); // DD/MM/YYYY in Europe/London, 12-hour clock
   });
 
   it("nothing is hardcoded: two organizations see their own values only", async () => {

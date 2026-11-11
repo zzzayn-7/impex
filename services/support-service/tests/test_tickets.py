@@ -436,3 +436,32 @@ def test_a_rate_limited_request_stores_nothing_and_can_be_retried_later(world, s
     assert len(rows(session_factory, SupportTicket)) == 1
     monkeypatch.setenv("SUPPORT_TICKETS_PER_HOUR", "5")
     assert world["alpha"].open(key="idem-limited-001").status_code == 201  # the refused key was not consumed
+
+
+# --- deleting a ticket from YOUR side ------------------------------------------------------------------------------------------------------
+def test_deleting_a_ticket_removes_it_from_my_side_only_and_unsends_nothing(world, session_factory):
+    from sqlalchemy import text
+    mine, keep = world["alpha"].ticket(subject="Delete me"), world["alpha"].ticket(subject="Keep me")
+    other = world["beta"].ticket(subject="Beta ticket")
+    assert world["alpha"].client.post(f"{TICKETS}/{mine['id']}/hide", headers=world["alpha"].headers).status_code == 204
+    assert world["alpha"].client.post(f"{TICKETS}/{mine['id']}/hide", headers=world["alpha"].headers).status_code == 204  # asking twice is fine
+    page = world["alpha"].mine().json()
+    assert [i["id"] for i in page["items"]] == [keep["id"]] and page["total"] == 1 and page["counts"]["open"] == 1
+    assert world["alpha"].client.get("/api/v1/support/summary", headers=world["alpha"].headers).json()["total"] == 1
+    assert world["alpha"].read(mine["id"]).status_code == 404  # it cannot be opened or replied to any more
+    assert world["alpha"].follow_up(mine["id"]).status_code == 404
+    inbox = world["root"].inbox().json()
+    assert mine["id"] in [i["id"] for i in inbox["items"]]  # the Super Admin still has it: nothing was unsent
+    assert world["root"].open_admin(mine["id"]).status_code == 200
+    with session_factory() as db:
+        assert db.execute(text("SELECT count(*), count(hidden_by_organization_at) FROM support_tickets")).one() == (3, 1)
+        assert db.execute(text("SELECT count(*) FROM support_messages")).scalar() == 3 and db.execute(text("SELECT count(*) FROM support_email_outbox")).scalar() >= 3
+    assert [i["id"] for i in world["beta"].mine().json()["items"]] == [other["id"]]
+
+
+def test_nobody_can_delete_another_organizations_ticket_and_a_super_admin_has_no_such_button(world):
+    mine = world["alpha"].ticket()
+    assert world["beta"].client.post(f"{TICKETS}/{mine['id']}/hide", headers=world["beta"].headers).status_code == 404
+    assert world["root"].client.post(f"{TICKETS}/{mine['id']}/hide", headers=world["root"].headers).status_code == 403
+    assert world["alpha"].client.post(f"{TICKETS}/{mine['id']}/hide").status_code == 401
+    assert len(world["alpha"].mine().json()["items"]) == 1

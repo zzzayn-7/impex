@@ -8,13 +8,16 @@ import uuid
 from datetime import date
 from typing import Literal, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import invoicing
-from app.auth import TenantContext, require_active_tenant
+from app.auth import TenantContext, bearer_scheme, get_org_client, require_active_tenant
 from app.database import get_db
-from app.invoice_pdf import build_pdf
+from app.invoice_pdf import Branding, build_pdf
 from app.models import Client, Invoice
 from app.schemas import (
     BillableLine, ClientAccount, InvoiceCreate, InvoiceDetail, InvoiceLines, InvoicePage, InvoiceUpdate, PaymentCreate, ReversalCreate, VoidRequest,
@@ -98,12 +101,33 @@ def get_invoice(invoice_id: uuid.UUID, tenant: TenantContext = Tenant, db: Sessi
     return invoicing.detail(db, tenant, invoicing.get_invoice_or_404(db, tenant, invoice_id))
 
 
+async def organization_logo(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme), org_client: httpx.AsyncClient = Depends(get_org_client),
+) -> Optional[bytes]:
+    """The caller's own organization's logo, through the Organization Service's secured, tenant-bound endpoint with the caller's own token. A missing logo - or an unreachable
+    service - is simply "no logo" (the invoice then shows the initials square): it never stops an invoice from being printed."""
+    if credentials is None:
+        return None
+    try:
+        response = await org_client.get("/api/v1/tenant/organization/logo", headers={"Authorization": f"Bearer {credentials.credentials}"})
+    except httpx.HTTPError:
+        return None
+    if response.status_code != 200 or not response.headers.get("content-type", "").startswith("image/"):
+        return None
+    return response.content
+
+
 @router.get("/invoices/{invoice_id}/pdf", tags=["Invoices"], responses={200: {"content": {"application/pdf": {}}}})
-def invoice_pdf(invoice_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    """The invoice as a PDF, built from the saved invoice only."""
+def invoice_pdf(
+    invoice_id: uuid.UUID, inline: bool = False, tenant: TenantContext = Tenant, logo: Optional[bytes] = Depends(organization_logo), db: Session = Depends(get_db),
+):
+    """The invoice as a PDF, built from the saved invoice only (and the organization's branding). Read-only. `inline=true` is what Print opens (shown, not downloaded); the document
+    is the same."""
     detail = invoicing.detail(db, tenant, invoicing.get_invoice_or_404(db, tenant, invoice_id))
+    contact = db.scalar(select(Client.contact_person).where(Client.organization_id == tenant.organization_id, Client.id == detail.client.id))
+    pdf = build_pdf(detail, Branding(name=tenant.organization_name, description=tenant.organization_description, logo=logo), contact_person=contact)
     filename = f"{detail.number or 'invoice-draft'}.pdf"
-    return Response(content=build_pdf(detail), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{filename}"', "Cache-Control": "no-store"})
 
 
 @router.patch("/invoices/{invoice_id}", response_model=InvoiceDetail, tags=["Invoices"])

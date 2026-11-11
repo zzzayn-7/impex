@@ -9,12 +9,15 @@ import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { TicketDetail } from "@/lib/support";
 import { CATEGORY_LABELS, MESSAGE_MAX, PRIORITY_LABELS, PRIORITY_STYLE, STATUS_LABELS, STATUS_STYLE } from "@/lib/support-labels";
 import { useStamp } from "@/components/clock";
+import { useConfirm } from "@/components/ui/confirm";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /** One ticket: its status, the whole conversation as bubbles, and a reply box. Message text is rendered as plain TEXT (React escapes it),
  *  never as HTML, so nothing a person wrote can run in the page. */
 export default function TicketConversation({ ticket: initial, justSent = false }: { ticket: TicketDetail; justSent?: boolean }) {
   const stamp = useStamp();
   const router = useRouter();
+  const [confirm, confirmDialog] = useConfirm();
   const [ticket, setTicket] = useState(initial);
   const keyRef = useRef(newIdempotencyKey());
   const busyRef = useRef(false);
@@ -24,6 +27,17 @@ export default function TicketConversation({ ticket: initial, justSent = false }
   const [notice, setNotice] = useState<string | null>(justSent ? `Your request ${initial.ticket_number} was sent to the Impex team. You will receive an email when they reply.` : null);
 
   const answered = ticket.messages.some((m) => m.sender_role === "super-admin");
+
+  // Delete this request from YOUR side: it is not unsent (the Impex team still has it); it leaves your list and you are taken back to it.
+  async function remove() {
+    const ok = await confirm({ title: `Delete ${ticket.ticket_number} from your list?`, message: "It disappears from your list only. It is not unsent: the Impex team still has it and nothing is erased.", confirmLabel: "Delete" });
+    if (!ok) return;
+    const r = await api(`/api/support/tickets/${ticket.id}/hide`, { method: "POST" });
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok) return setError(r.error);
+    router.replace("/support");
+    router.refresh();
+  }
 
   async function send() {
     if (busyRef.current) return;
@@ -55,6 +69,13 @@ export default function TicketConversation({ ticket: initial, justSent = false }
           <h2 className="font-mono text-xl font-semibold text-white">{ticket.ticket_number}</h2>
           <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[ticket.status]}`}>{STATUS_LABELS[ticket.status]}</span>
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLE[ticket.priority]}`}>{PRIORITY_LABELS[ticket.priority]} priority</span>
+          <span className="ml-auto">
+            <Tooltip label="Delete from my list">
+              <button type="button" onClick={() => void remove()} aria-label="Delete this request from my list" className="p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:text-red-300 focus-visible:outline-none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+              </button>
+            </Tooltip>
+          </span>
         </div>
         <p className="text-base text-slate-100">{ticket.subject}</p>
         <p className="text-xs text-slate-400">
@@ -103,6 +124,7 @@ export default function TicketConversation({ ticket: initial, justSent = false }
           This request is closed. If you still need help, <Link href="/support/new" className="text-indigo-300 hover:text-indigo-200">send a new request</Link>.
         </p>
       )}
+      {confirmDialog}
     </article>
   );
 }

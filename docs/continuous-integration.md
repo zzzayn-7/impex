@@ -11,6 +11,7 @@
 ## Safety
 
 * The database is a service container with a made-up user and password (`ci_user` / `ci-only-throwaway-password`) that protect nothing. **No production credential, no repository secret and no persistent database or Docker volume is used or needed**; the workflow has `contents: read` permission only.
+* Each service also runs `tests/test_migration_gate.py` (scratch databases of its own): a service cannot become ready while a migration is pending or failed, the migration step is idempotent, lock-protected and never stamps or resets (see [`database-migrations.md`](database-migrations.md)).
 * Each service's test suite creates its own `impex_<service>_test` database, builds it from the Alembic migrations (so a missing migration fails the tests, and `alembic check` fails when a model and a migration disagree) and drops it afterwards.
 * The live end-to-end scripts (`scripts/verify_*.py`) drive the running Docker stack with its real databases and are **not** run in CI. Run them locally after `docker compose up`.
 

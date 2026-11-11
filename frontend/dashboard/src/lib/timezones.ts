@@ -33,6 +33,87 @@ export const startingTimezone = (current: string | null | undefined, countryCode
 
 export const isKnownTimezone = (value: unknown): value is string => typeof value === "string" && TIMEZONES.includes(value);
 
+/** The country of each offered zone: a person looks for "Pakistan", not for "Asia". */
+const ZONE_COUNTRY: Record<string, string> = {
+  "Africa/Cairo": "Egypt",
+  "Africa/Casablanca": "Morocco",
+  "Africa/Johannesburg": "South Africa",
+  "Africa/Lagos": "Nigeria",
+  "Africa/Nairobi": "Kenya",
+  "America/Anchorage": "United States",
+  "America/Argentina/Buenos_Aires": "Argentina",
+  "America/Bogota": "Colombia",
+  "America/Chicago": "United States",
+  "America/Denver": "United States",
+  "America/Halifax": "Canada",
+  "America/Lima": "Peru",
+  "America/Los_Angeles": "United States",
+  "America/Mexico_City": "Mexico",
+  "America/New_York": "United States",
+  "America/Santiago": "Chile",
+  "America/Sao_Paulo": "Brazil",
+  "America/Toronto": "Canada",
+  "America/Vancouver": "Canada",
+  "Asia/Baghdad": "Iraq",
+  "Asia/Bangkok": "Thailand",
+  "Asia/Colombo": "Sri Lanka",
+  "Asia/Dhaka": "Bangladesh",
+  "Asia/Dubai": "United Arab Emirates",
+  "Asia/Hong_Kong": "Hong Kong",
+  "Asia/Jakarta": "Indonesia",
+  "Asia/Jerusalem": "Israel",
+  "Asia/Karachi": "Pakistan",
+  "Asia/Kathmandu": "Nepal",
+  "Asia/Kolkata": "India",
+  "Asia/Kuala_Lumpur": "Malaysia",
+  "Asia/Manila": "Philippines",
+  "Asia/Riyadh": "Saudi Arabia",
+  "Asia/Seoul": "South Korea",
+  "Asia/Shanghai": "China",
+  "Asia/Singapore": "Singapore",
+  "Asia/Tashkent": "Uzbekistan",
+  "Asia/Tehran": "Iran",
+  "Asia/Tokyo": "Japan",
+  "Atlantic/Reykjavik": "Iceland",
+  "Australia/Adelaide": "Australia",
+  "Australia/Brisbane": "Australia",
+  "Australia/Melbourne": "Australia",
+  "Australia/Perth": "Australia",
+  "Australia/Sydney": "Australia",
+  "Europe/Amsterdam": "Netherlands",
+  "Europe/Athens": "Greece",
+  "Europe/Berlin": "Germany",
+  "Europe/Brussels": "Belgium",
+  "Europe/Dublin": "Ireland",
+  "Europe/Istanbul": "Turkey",
+  "Europe/Lisbon": "Portugal",
+  "Europe/London": "United Kingdom",
+  "Europe/Madrid": "Spain",
+  "Europe/Moscow": "Russia",
+  "Europe/Paris": "France",
+  "Europe/Rome": "Italy",
+  "Europe/Stockholm": "Sweden",
+  "Europe/Vienna": "Austria",
+  "Europe/Warsaw": "Poland",
+  "Europe/Zurich": "Switzerland",
+  "Pacific/Auckland": "New Zealand",
+  "Pacific/Honolulu": "United States",
+};
+
+/** "Pakistan / Karachi" (country / city) - never "Asia/Karachi" (continent / city). A zone without a known country keeps its own name; UTC is just "UTC". */
+export function timezoneLabel(zone: string): string {
+  const country = ZONE_COUNTRY[zone];
+  if (!country) return zone === "UTC" ? "UTC" : zone.replace(/_/g, " ");
+  const city = zone.split("/").pop()!.replace(/_/g, " ");
+  return `${country} / ${city}`;
+}
+
+/** The choices for a time zone dropdown, UTC first then by country and city (the person types a country or a city to find one). The VALUE stays the IANA name. */
+export function timezoneChoices(current: string): { value: string; label: string }[] {
+  const all = timezoneOptions(current).map((value) => ({ value, label: timezoneLabel(value) }));
+  return [...all.filter((z) => z.value === "UTC"), ...all.filter((z) => z.value !== "UTC").sort((a, b) => a.label.localeCompare(b.label))];
+}
+
 /** The offered zones, plus the organization's current one if it is a valid zone that is not in the list (so it is never lost). */
 export function timezoneOptions(current: string): string[] {
   return TIMEZONES.includes(current) ? TIMEZONES : [current, ...TIMEZONES];

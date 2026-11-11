@@ -8,6 +8,7 @@ import { activeHref, type NavGroup } from "@/lib/dashboard-nav";
 import { Tooltip } from "@/components/ui/tooltip";
 import { containWheel } from "@/lib/contain-wheel";
 import Icon from "./icons";
+import { monogram } from "@/lib/setup-validation";
 
 // The dashboard's navigation. On a desktop it is a fixed 76px icon rail that EXPANDS OVER the page (a fixed-position overlay: the page itself
 // never moves) when the pointer is over it or keyboard focus is inside it, or when the toggle has pinned it open. Below the `lg` breakpoint it is
@@ -57,7 +58,25 @@ export function MenuButton() {
 
 const label = "ix-nav-label whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[pinned=true]:opacity-100 max-lg:opacity-100";
 
-export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHref: string }) {
+/** The top of the sidebar: the organization's own logo (or its monogram) and name - where "Impex" used to be. */
+function Brand({ organization, label }: { organization: { name: string; has_logo?: boolean; logo_version?: string | null } | null; label: string }) {
+  const name = organization?.name || "Impex";
+  return (
+    <>
+      <span className="grid h-[52px] w-[50px] shrink-0 place-items-center" aria-hidden="true">
+        {organization?.has_logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/api/organization/logo?v=${encodeURIComponent(organization.logo_version ?? "")}`} alt="" data-testid="sidebar-logo" className="h-9 w-9 rounded-xl bg-ix-text/95 object-contain p-0.5" />
+        ) : (
+          <span data-testid="sidebar-monogram" className="grid h-9 w-9 place-items-center rounded-xl bg-ix-butter text-sm font-bold text-ix-on-accent">{organization ? monogram(name) : "IX"}</span>
+        )}
+      </span>
+      <span className={`${label} ml-1 min-w-0 max-w-[150px] truncate text-sm font-semibold tracking-wide text-ix-text`} data-testid="sidebar-org-name">{name}</span>
+    </>
+  );
+}
+
+export function Sidebar({ groups, currentHref, organization = null }: { groups: NavGroup[]; currentHref: string; organization?: { name: string; has_logo?: boolean; logo_version?: string | null } | null }) {
   const { mobileOpen, setMobileOpen, pinned, setPinned } = useNav();
   const ref = useRef<HTMLElement>(null);
   // The current item follows the address, so nested pages ("/invoices/123", "/finance/journal/new") keep their parent highlighted.
@@ -112,10 +131,7 @@ export function Sidebar({ groups, currentHref }: { groups: NavGroup[]; currentHr
         ].join(" ")}
       >
         <div className="flex h-[68px] shrink-0 items-center px-3">
-          <span className="grid h-[52px] w-[50px] shrink-0 place-items-center" aria-hidden="true">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-ix-butter text-sm font-bold text-ix-on-accent">IX</span>
-          </span>
-          <span className={`${label} ml-1 tracking-wide text-ix-text`}>Impex</span>
+          <Brand organization={organization} label={label} />
           <Tooltip label={pinned ? "Collapse navigation" : "Pin navigation open"} side="bottom">
             <button
               type="button"

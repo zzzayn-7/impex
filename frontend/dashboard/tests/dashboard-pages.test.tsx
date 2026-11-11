@@ -392,8 +392,8 @@ describe("loading and chrome", () => {
   it("shows the company logo when it has one and a monogram when not", async () => {
     orgBody["token-alpha"] = org(ALL, { has_logo: true, logo_version: "17" });
     let html = await render();
-    expect(html).toContain('src="/api/organization/logo?v=17"');
-    expect(html).toContain("Alpha Trading GmbH logo");
+    expect(html).toContain('src="/api/organization/logo?v=17"'); // at the top of the sidebar, beside the company name
+    expect(html).not.toContain("Alpha Trading GmbH logo"); // and no longer in the account card
     orgBody["token-alpha"] = org(ALL);
     html = await render();
     expect(html).not.toContain("/api/organization/logo");

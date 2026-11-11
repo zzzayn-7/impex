@@ -53,6 +53,8 @@ cp .env.example .env
 ```bash
 docker compose up --build
 ```
+Database migrations are applied automatically, **before** each service starts (a one-shot `<name>-migrate` container per service); a failed migration keeps the service from
+starting and the data in the `postgres_data` volume is never reset. See [`docs/database-migrations.md`](docs/database-migrations.md).
 
 ### 3. Access Services
 - **Super Admin Frontend**: [http://localhost](http://localhost) (or directly at [http://localhost:3000](http://localhost:3000))
@@ -88,6 +90,7 @@ python -m venv .venv
 # On Linux/macOS:
 # source .venv/bin/activate
 pip install -r requirements.txt
+python -m app.db_migrations   # apply pending database migrations first (the service refuses to start on a database that is not at its migration head)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 

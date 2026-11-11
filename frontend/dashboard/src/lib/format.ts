@@ -70,10 +70,12 @@ export function formatDate(input: string | Date, prefs: Preferences = DEFAULT_PR
   return parts ? writeDate(parts, prefs.date_format) : String(input);
 }
 
-/** Date and time (24-hour) of an instant in the organization's time zone. */
+/** Date and time of an instant in the organization's time zone, on a 12-hour clock: "11/11/2026 08:01 PM" - never "20:01". */
 export function formatDateTime(input: string | Date, prefs: Preferences = DEFAULT_PREFERENCES): string {
   const parts = partsOf(input, prefs.timezone);
-  return parts ? `${writeDate(parts, prefs.date_format)} ${parts.hour}:${parts.minute}` : String(input);
+  if (!parts) return String(input);
+  const hour = Number(parts.hour);
+  return `${writeDate(parts, prefs.date_format)} ${String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, "0")}:${parts.minute} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 /** How a moment is written for a person: "11/11/2026 | 03:45 PM" (dd/mm/yyyy | hh:mm AM/PM) in the time zone of the organization's country - never UTC.

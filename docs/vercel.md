@@ -86,7 +86,7 @@ Warnings that remain and are not caused by this repo's settings: `Unknown env co
 ## Databases and migrations
 
 * Seven databases on one hosted Postgres: `impex_auth`, `impex_organizations`, `impex_inventory`, `impex_sales`, `impex_purchasing`, `impex_support`, `impex_finance` (the code's defaults). The scripts in `database/init` show how they are created.
-* Alembic is **not** run on deploy any more than it was by the Docker image's start command: run `alembic upgrade head` for each service against the hosted databases (from CI or a workstation, with that service's `DB_*` variables). Do it before the first deploy and before any deploy that adds a migration. Bindings do not resolve during builds, so migrations cannot be a build step that needs another service.
+* Alembic is **not** run by a Vercel deploy (Docker Compose does it with one-shot `<name>-migrate` containers: see [`database-migrations.md`](database-migrations.md)): run `python -m app.db_migrations` (or `alembic upgrade head`) for each service against the hosted databases (from CI or a workstation, with that service's `DB_*` variables). Do it before the first deploy and before any deploy that adds a migration. A service whose database is not at its migration head refuses to start, so forgetting this shows up as a failed start-up check with a clear message, not as errors on the first request. Bindings do not resolve during builds, so migrations cannot be a build step that needs another service.
 * Serverless functions open many short-lived connections: use the provider's pooled connection endpoint for `DB_HOST`/`DB_PORT`.
 
 ## Python version

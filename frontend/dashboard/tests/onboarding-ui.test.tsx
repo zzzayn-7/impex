@@ -514,19 +514,22 @@ describe("the portal shell shows the company identity", () => {
   const admin = { full_name: "Ada Lovelace", email: "ada@acme.example" } as any;
   it("logo, company name and the administrator's name (in the avatar's card)", () => {
     render(<PortalShell admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: true, logo_version: "9" }}>{null}</PortalShell>);
-    expect((screen.getByAltText("Alpha Trading GmbH logo") as HTMLImageElement).getAttribute("src")).toBe("/api/organization/logo?v=9");
+    expect((screen.getByTestId("sidebar-logo") as HTMLImageElement).getAttribute("src")).toBe("/api/organization/logo?v=9");
+    expect(screen.queryByAltText("Alpha Trading GmbH logo")).toBeNull(); // not in the account card
     expect(screen.queryByText("Admin Portal")).toBeNull();
-    expect(screen.getByText("Alpha Trading GmbH")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-org-name").textContent).toBe("Alpha Trading GmbH"); // the top of the sidebar, where "Impex" was
+    expect(screen.getAllByText("Alpha Trading GmbH").length).toBeGreaterThan(1); // and the profile card
     expect(screen.getAllByText("Ada Lovelace").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
   it("a monogram when there is no logo, and the platform mark when there is no organization at all", () => {
     const { unmount } = render(<PortalShell admin={admin} current="dashboard" organization={{ name: "Alpha Trading GmbH", has_logo: false }}>{null}</PortalShell>);
-    expect(screen.getByText("AT")).toBeTruthy();
+    expect(screen.getAllByText("AT").length).toBeGreaterThan(0);
     expect(screen.queryByRole("img")).toBeNull();
     unmount();
     render(<PortalShell admin={admin} current="dashboard">{null}</PortalShell>);
     expect(screen.getAllByText("IX").length).toBeGreaterThan(0); // the platform mark in the sidebar
+    expect(screen.getByTestId("sidebar-org-name").textContent).toBe("Impex");
     expect(screen.queryByText("Alpha Trading GmbH")).toBeNull(); // no organization: no company in the card either
   });
   it("lists every enabled page with its route", () => {

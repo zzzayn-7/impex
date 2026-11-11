@@ -240,3 +240,44 @@ describe("TicketConversation", () => {
     expect(screen.getByRole("status").textContent).toContain("Your request SUP-000001 was sent to the Impex team");
   });
 });
+
+describe("deleting a request from my side", () => {
+  beforeEach(() => { vi.stubGlobal("confirm", () => true); });
+
+  it("the bin on the list asks first, says it is not unsent, hides it from my list only and refreshes", async () => {
+    let asked = "";
+    vi.stubGlobal("confirm", (message: string) => { asked = message; return true; });
+    stubFetch(() => json(200, { ok: true }));
+    render(<SupportIndex list={page([summary()])} filters={noFilters} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete SUP-000001 from my list" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].url).toBe(`/api/support/tickets/${T1}/hide`);
+    expect(calls[0].init.method).toBe("POST");
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    expect(asked).toContain("not unsent");
+  });
+
+  it("answering No changes nothing", async () => {
+    vi.stubGlobal("confirm", () => false);
+    stubFetch(() => json(200, {}));
+    render(<SupportIndex list={page([summary()])} filters={noFilters} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete SUP-000001 from my list" }));
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a refusal is shown and the list stays", async () => {
+    stubFetch(() => json(404, { error: "Ticket not found." }));
+    render(<SupportIndex list={page([summary()])} filters={noFilters} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete SUP-000001 from my list" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Ticket not found.");
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("the open request has the same bin and takes you back to the list", async () => {
+    stubFetch(() => json(200, { ok: true }));
+    render(<TicketConversation ticket={detail() as any} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete this request from my list" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/support"));
+    expect(calls[0].url).toBe(`/api/support/tickets/${T1}/hide`);
+  });
+});

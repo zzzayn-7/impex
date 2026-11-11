@@ -39,7 +39,7 @@ def make_message(engine, ticket, body="hello", role="organization-admin"):
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0001"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
     with targeting_test_database():
         command.check(alembic_config())  # raises if the models and the migrations disagree
 

@@ -107,7 +107,7 @@ describe("the Super Admin shell", () => {
     const card = within(header).getByRole("group", { name: "Account details", hidden: true });
     expect(card.className).toContain("invisible");
     for (const text of ["Root Admin", "root@impex.example", "Super Admin"]) expect(within(card).getAllByText(text).length, text).toBeGreaterThan(0);
-    expect(within(card).getByText("User ID")).toBeTruthy();
+    expect(within(card).getByText("User ID :")).toBeTruthy();
     const signOut = within(header).getByRole("button", { name: "Sign out" });
     expect(signOut.textContent).toBe("");
     expect(signOut.className).toContain("text-red-400");

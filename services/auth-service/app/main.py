@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from contextlib import asynccontextmanager
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -12,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db_migrations import verify_database_schema
+from app.avatar import clear_avatar, set_avatar
 from app.dashboard_layout import layout_of, set_layout
 from app.database import get_db
 from app.models import User
@@ -33,11 +36,18 @@ SECRET_KEY = os.getenv("SECRET_KEY", "default_dev_secret_key_change_me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
+    yield
+
+
 app = FastAPI(
     title="Impex Auth Service",
     version="1.0.0",
     docs_url="/docs",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -86,6 +96,9 @@ class UserProfile(BaseModel):
     theme_accent: Optional[str] = None
     # The person's own home-page widget arrangement ({version, revision, order, hidden}), or None when they never customised it.
     dashboard_layout: Optional[dict] = None
+    # Whether the person has a profile picture, and a version that changes with it (a cache-buster for the picture's address).
+    has_avatar: bool = False
+    avatar_version: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +123,8 @@ def to_profile(user: User) -> UserProfile:
         theme_background=theme_background,
         theme_accent=theme_accent,
         dashboard_layout=layout_of(user),
+        has_avatar=user.avatar_updated_at is not None,
+        avatar_version=str(int(user.avatar_updated_at.timestamp() * 1000)) if user.avatar_updated_at else None,
     )
 
 
@@ -225,6 +240,27 @@ class ThemeUpdate(BaseModel):
 def update_my_theme(payload: ThemeUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Save YOUR colour theme (any signed-in person: an organization administrator or a Super Admin, each their own). Safe to repeat."""
     return to_profile(set_theme(db, current_user, payload.background, payload.accent))
+
+
+@app.put("/api/v1/auth/me/avatar", response_model=UserProfile, tags=["Auth"])
+async def update_my_avatar(file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Add or replace YOUR profile picture (any signed-in person, each their own). The upload is decoded and re-encoded; nothing else is stored."""
+    data = await file.read(10 * 1024 * 1024 + 1)  # never more than a few MB in memory; the real limit is checked on the bytes
+    return to_profile(set_avatar(db, current_user, data, file.content_type))
+
+
+@app.get("/api/v1/auth/me/avatar", tags=["Auth"])
+def get_my_avatar(current_user: User = Depends(get_current_user)):
+    """YOUR profile picture as a PNG (404 when there is none). There is no way to ask for anybody else's."""
+    if not current_user.avatar_png:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No profile picture")
+    return Response(content=current_user.avatar_png, media_type="image/png", headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+
+
+@app.delete("/api/v1/auth/me/avatar", response_model=UserProfile, tags=["Auth"])
+def delete_my_avatar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Remove YOUR profile picture (the initials are shown again). Safe to repeat."""
+    return to_profile(clear_avatar(db, current_user))
 
 
 class DashboardLayoutUpdate(BaseModel):

@@ -67,6 +67,13 @@ def open_my_ticket(ticket_id: uuid.UUID, caller: Caller = Depends(require_tenant
     return tickets.open_ticket(db, caller, ticket_id)
 
 
+@router.post("/tickets/{ticket_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+def delete_from_my_side(ticket_id: uuid.UUID, caller: Caller = Depends(require_tenant), db: Session = Depends(get_db)):
+    """Delete a ticket from YOUR list. It is not unsent: the Super Admin still has it, and nothing is erased."""
+    tickets.hide_ticket(db, caller, ticket_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/tickets/{ticket_id}/messages", response_model=TicketDetail, status_code=status.HTTP_201_CREATED)
 def follow_up(ticket_id: uuid.UUID, payload: MessageCreate, response: Response, caller: Caller = Depends(require_tenant), key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
     """Add a message to your ticket. A ticket waiting for you (or resolved) goes back to Open; a closed ticket takes no more messages."""

@@ -166,7 +166,7 @@ describe("the header", () => {
     expect(within(header).queryByRole("searchbox")).toBeNull(); // no decorative search or notification bell
     expect(within(header).queryByRole("button", { name: /search|notification/i })).toBeNull();
     // the only controls: the phone menu button (hidden on large screens), the avatar and Sign out
-    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", "Sign out"]);
+    expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", null, "Sign out"]);
   });
 
   it("every page's name is preceded by its own icon, in yellow, the same drawing its sidebar entry uses", () => {
@@ -199,8 +199,13 @@ describe("the header", () => {
     const card = screen.getByRole("group", { name: "Account details", hidden: true });
     expect(card.className).toContain("invisible"); // closed: not seen and not read out
     for (const text of ["Olivia Owner", "owner@acme.example", "Organization Admin", "u", "Alpha Trading GmbH"]) expect(within(card).getAllByText(text, { exact: true }).length, text).toBeGreaterThan(0);
-    expect(within(card).getByText("Role")).toBeTruthy();
-    expect(within(card).getByText("User ID")).toBeTruthy();
+    // "Label : value" lines, all left aligned (nothing pushed to the right edge), the labels in the accent colour
+    const rows = within(card).getAllByTestId("profile-detail");
+    expect(rows.map((r) => r.textContent)).toEqual(["Role :Organization Admin", "User ID :u", "Organization :Alpha Trading GmbH"]);
+    for (const row of rows) {
+      expect(row.className).not.toMatch(/justify-between|text-right|ml-auto/);
+      expect(row.querySelector("dt")!.className).toContain("text-ix-accent-text");
+    }
     const avatar = screen.getByRole("button", { name: "Account: Olivia Owner" });
     await user.hover(avatar);
     expect(card.className).toContain("visible");
@@ -215,15 +220,24 @@ describe("the header", () => {
     expect(avatar.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("shows the company's own logo beside its name in the card when it has one, and a monogram when not", () => {
-    const { unmount } = render(<DashboardFrame admin={admin} organization={{ ...organization, has_logo: true, logo_version: "9" } as any}>content</DashboardFrame>);
-    const logo = screen.getByAltText("Alpha Trading GmbH logo") as HTMLImageElement;
-    expect(logo.getAttribute("src")).toBe("/api/organization/logo?v=9");
-    expect(screen.getByRole("group", { name: "Account details", hidden: true }).contains(logo)).toBe(true);
-    unmount();
-    render(<DashboardFrame admin={admin} organization={organization as any}>content</DashboardFrame>);
-    expect(screen.queryByAltText("Alpha Trading GmbH logo")).toBeNull();
-    expect(within(screen.getByRole("group", { name: "Account details", hidden: true })).getByText("AT")).toBeTruthy();
+  it("does NOT put the company's logo (or monogram) in the account card: the logo lives at the top of the sidebar", () => {
+    render(<DashboardFrame admin={admin} organization={{ ...organization, has_logo: true, logo_version: "9" } as any}>content</DashboardFrame>);
+    const card = screen.getByRole("group", { name: "Account details", hidden: true });
+    expect(card.querySelector('img[src*="/api/organization/logo"]')).toBeNull();
+    expect(within(card).queryByText("AT")).toBeNull();
+    expect(screen.getByTestId("sidebar-logo").getAttribute("src")).toBe("/api/organization/logo?v=9");
+  });
+
+  it("the header bar is exactly as wide as the page content, on every page (one shared width)", () => {
+    for (const key of ["dashboard", "support", "stock"] as const) {
+      const { unmount, container } = render(<DashboardFrame admin={admin} organization={{ ...organization, modules: ["inventory"] } as any} current={key}>content</DashboardFrame>);
+      const header = container.querySelector("header")!;
+      const main = container.querySelector("main")!;
+      const width = (el: Element) => el.className.match(/max-w-\S+/)?.[0];
+      expect(width(header), key).toBe("max-w-7xl");
+      expect(width(main), key).toBe(width(header));
+      unmount();
+    }
   });
 
   it("without a readable organization the header still names the page, the card has no organization row, and no business page is listed", () => {

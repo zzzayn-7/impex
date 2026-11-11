@@ -8,6 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db_migrations import verify_database_schema
 from app.auth import TenantContext, create_auth_client, create_org_client, require_active_tenant
 from app.database import get_db
 from app.identifiers import annotate_unit_lock, barcode_owner_of, has_stock_history
@@ -22,6 +23,7 @@ from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
     app.state.auth_client = create_auth_client()
     app.state.org_client = create_org_client()
     yield

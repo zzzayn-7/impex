@@ -17,19 +17,19 @@ describe("dates and times follow the organization's preferences and never the st
   });
 
   it("shows the instant in the chosen time zone, which can move the calendar day", () => {
-    expect(formatDateTime(instant, prefs({ timezone: "UTC" }))).toBe("2026-11-07 22:05");
-    expect(formatDateTime(instant, prefs({ timezone: "Asia/Karachi" }))).toBe("2026-11-08 03:05"); // UTC+5: already the next day
-    expect(formatDateTime(instant, prefs({ timezone: "America/New_York", date_format: "MM/DD/YYYY" }))).toBe("11/07/2026 17:05"); // UTC-5 in November
-    expect(formatDateTime(instant, prefs({ timezone: "Europe/London", date_format: "DD/MM/YYYY" }))).toBe("07/11/2026 22:05");
+    expect(formatDateTime(instant, prefs({ timezone: "UTC" }))).toBe("2026-11-07 10:05 PM");
+    expect(formatDateTime(instant, prefs({ timezone: "Asia/Karachi" }))).toBe("2026-11-08 03:05 AM"); // UTC+5: already the next day
+    expect(formatDateTime(instant, prefs({ timezone: "America/New_York", date_format: "MM/DD/YYYY" }))).toBe("11/07/2026 05:05 PM"); // UTC-5 in November
+    expect(formatDateTime(instant, prefs({ timezone: "Europe/London", date_format: "DD/MM/YYYY" }))).toBe("07/11/2026 10:05 PM");
   });
 
   it("handles daylight saving time per the zone's own rules", () => {
-    expect(formatDateTime("2026-07-01T12:00:00Z", prefs({ timezone: "America/New_York" }))).toBe("2026-07-01 08:00"); // UTC-4 in July
-    expect(formatDateTime("2026-07-01T12:00:00Z", prefs({ timezone: "Europe/London" }))).toBe("2026-07-01 13:00");
+    expect(formatDateTime("2026-07-01T12:00:00Z", prefs({ timezone: "America/New_York" }))).toBe("2026-07-01 08:00 AM"); // UTC-4 in July
+    expect(formatDateTime("2026-07-01T12:00:00Z", prefs({ timezone: "Europe/London" }))).toBe("2026-07-01 01:00 PM");
   });
 
-  it("midnight is 00:00, never 24:00", () => {
-    expect(formatDateTime("2026-11-07T00:00:00Z", prefs())).toBe("2026-11-07 00:00");
+  it("midnight is 12:00 AM, never 24:00 or 00:00", () => {
+    expect(formatDateTime("2026-11-07T00:00:00Z", prefs())).toBe("2026-11-07 12:00 AM");
   });
 
   it("changing the preference never changes the stored value: the same instant is written, not rewritten", () => {
@@ -42,7 +42,7 @@ describe("dates and times follow the organization's preferences and never the st
 
   it("an unreadable value is returned as it was, and an unknown zone falls back to UTC", () => {
     expect(formatDate("not a date", prefs())).toBe("not a date");
-    expect(formatDateTime("2026-11-07T10:00:00Z", prefs({ timezone: "Mars/Olympus" }))).toBe("2026-11-07 10:00");
+    expect(formatDateTime("2026-11-07T10:00:00Z", prefs({ timezone: "Mars/Olympus" }))).toBe("2026-11-07 10:00 AM");
   });
 });
 

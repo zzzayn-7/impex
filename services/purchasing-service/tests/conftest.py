@@ -11,6 +11,8 @@ Run them inside Docker (so the postgres hostname and credentials are available):
 """
 import json
 import os
+
+os.environ.setdefault("SCHEMA_CHECK", "off")  # the tests build their own database; test_migration_gate.py turns the gate on for its scratch databases
 import uuid
 from contextlib import contextmanager
 from decimal import Decimal

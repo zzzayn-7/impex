@@ -99,6 +99,7 @@ class TenantContext:
     email: str
     full_name: str
     organization_name: str = ""  # the organization's name, once the Organization Service has confirmed it (used on invoices)
+    organization_description: str = ""  # the business description, shown under the name on invoices
     # True only on the two "finish what was started" routes, when the module has been switched off: see require_active_tenant_for_recovery.
     recovery_only: bool = False
     # The Auth Service's record that this administrator confirmed their own profile during first-time setup.
@@ -155,7 +156,7 @@ async def _verified_tenant(tenant: TenantContext, credentials: Optional[HTTPAuth
         or organization.get("is_active") is not True
     ):
         raise inactive
-    tenant = replace(tenant, organization_name=str(organization.get("name") or ""))
+    tenant = replace(tenant, organization_name=str(organization.get("name") or ""), organization_description=str(organization.get("description") or ""))
     if not _setup_done(organization, tenant):
         raise setup_required()  # before the module: an organization that is not set up has nothing to be entitled to yet
     return tenant, _module_allowed(organization, unavailable)

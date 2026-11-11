@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 // Settings uses the portal's shared glass design (the same palette and surfaces as every other page and the first-time setup wizard). The cards
 // are level-2 panels: a little more opaque than the dashboard's glass, because these are long forms that must stay highly readable.
@@ -12,14 +12,32 @@ export const quietButton =
   "inline-flex min-h-10 items-center justify-center rounded-xl border border-ix-mist/15 bg-ix-deep/55 px-4 py-2 text-sm font-medium text-ix-text transition duration-200 hover:bg-ix-mist/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/50 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none";
 export const linkClass = "font-medium text-ix-accent-text underline decoration-ix-muted/40 underline-offset-2 hover:text-ix-text";
 
+/** Every settings area is a dropdown: closed, only its title is shown; one click opens its form downwards, another closes it. The form stays mounted while closed (a
+ *  half-edited form keeps its values), and the page address `#id` opens the area it names. */
 export function Card({ id, title, description, children }: { id: string; title: string; description?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const reveal = () => {
+      if (window.location.hash !== `#${id}`) return;
+      setOpen(true);
+      requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView?.({ block: "start" }));
+    };
+    reveal();
+    window.addEventListener("hashchange", reveal);
+    return () => window.removeEventListener("hashchange", reveal);
+  }, [id]);
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="ix-panel relative p-5 sm:p-7">
-      <header className="mb-5 border-b border-ix-mist/15 pb-4">
-        <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight text-ix-text">{title}</h2>
-        {description && <p className="mt-1 text-sm text-ix-muted">{description}</p>}
-      </header>
-      {children}
+    <section id={id} aria-labelledby={`${id}-title`} className="ix-panel relative">
+      <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl p-5 sm:px-7 sm:py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ix-accent/60 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0">
+            <h2 id={`${id}-title`} className="text-lg font-semibold tracking-tight text-ix-text">{title}</h2>
+            {description && <span className="mt-1 hidden text-sm text-ix-muted group-open:block">{description}</span>}
+          </span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0 text-ix-accent-text transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </summary>
+        <div className="border-t border-ix-mist/15 p-5 sm:p-7">{children}</div>
+      </details>
     </section>
   );
 }

@@ -143,7 +143,7 @@ def list_tickets(
     unread: Optional[bool], organization_id: Optional[uuid.UUID], limit: int, offset: int,
 ) -> TicketPage:
     platform = caller.role == SUPER_ADMIN_ROLE
-    scope = [] if platform else [SupportTicket.organization_id == caller.organization_id]
+    scope = [] if platform else [SupportTicket.organization_id == caller.organization_id, SupportTicket.hidden_by_organization_at.is_(None)]
     filters = list(scope)
     if platform and organization_id:
         filters.append(SupportTicket.organization_id == organization_id)
@@ -172,7 +172,7 @@ def list_tickets(
 
 def summary(db: Session, caller: Caller) -> dict:
     platform = caller.role == SUPER_ADMIN_ROLE
-    scope = [] if platform else [SupportTicket.organization_id == caller.organization_id]
+    scope = [] if platform else [SupportTicket.organization_id == caller.organization_id, SupportTicket.hidden_by_organization_at.is_(None)]
     unread = db.scalar(select(func.count()).select_from(SupportTicket).where(*scope, _unread_expr(caller.role))) or 0
     open_ = db.scalar(select(func.count()).select_from(SupportTicket).where(*scope, SupportTicket.status.in_(ACTIVE))) or 0
     total = db.scalar(select(func.count()).select_from(SupportTicket).where(*scope)) or 0
@@ -182,7 +182,7 @@ def summary(db: Session, caller: Caller) -> dict:
 def _get(db: Session, caller: Caller, ticket_id: uuid.UUID, *, lock: bool = False) -> SupportTicket:
     query = select(SupportTicket).where(SupportTicket.id == ticket_id)
     if caller.role != SUPER_ADMIN_ROLE:
-        query = query.where(SupportTicket.organization_id == caller.organization_id)  # another tenant's ticket is a plain 404
+        query = query.where(SupportTicket.organization_id == caller.organization_id, SupportTicket.hidden_by_organization_at.is_(None))  # another tenant's ticket (or one you deleted) is a plain 404
     if lock:
         query = query.with_for_update().execution_options(populate_existing=True)
     found = db.scalar(query)
@@ -209,6 +209,17 @@ def detail(db: Session, caller: Caller, ticket: SupportTicket) -> TicketDetail:
         **body, messages=[MessageResponse(id=m.id, sender_role=m.sender_role, sender_name=m.sender_name, body=m.message_body, created_at=m.created_at, read=m.read_at is not None) for m in messages],
         can_reply=ticket.status != "closed", events=events, notifications=notifications,
     )
+
+
+def hide_ticket(db: Session, caller: Caller, ticket_id: uuid.UUID) -> None:
+    """Delete a ticket from the REQUESTER'S side. Nothing is unsent or erased: the ticket, its messages, its audit trail and its notifications stay, and the Super Admin still
+    sees it. Asking twice is fine."""
+    ticket = db.scalar(select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.organization_id == caller.organization_id).with_for_update())
+    if ticket is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found.")
+    if ticket.hidden_by_organization_at is None:
+        ticket.hidden_by_organization_at = _now()
+        db.commit()
 
 
 def open_ticket(db: Session, caller: Caller, ticket_id: uuid.UUID) -> TicketDetail:

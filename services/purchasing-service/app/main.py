@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
+from app.db_migrations import verify_database_schema
 from app.auth import create_auth_client, create_org_client
 from app.inventory import create_inventory_client
 from app.orders_api import router as orders_router
@@ -14,6 +15,7 @@ from app.suppliers_api import router as suppliers_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
     app.state.auth_client = create_auth_client()
     app.state.org_client = create_org_client()
     app.state.inventory_client = create_inventory_client()

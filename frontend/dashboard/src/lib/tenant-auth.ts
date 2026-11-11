@@ -18,6 +18,9 @@ export type AuthUser = {
   theme_accent?: string | null;
   // The administrator's own home-page widget arrangement ({ version, revision, order, hidden }), or null when they never changed it.
   dashboard_layout?: unknown;
+  // The administrator's own profile picture: whether there is one, and a version that changes with it (a cache-buster for its address).
+  has_avatar?: boolean;
+  avatar_version?: string | null;
 };
 
 export type TenantAdmin = AuthUser & { role: "organization-admin"; organization_id: string; is_active: true };

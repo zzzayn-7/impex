@@ -58,6 +58,8 @@ class SupportTicket(Base):
     last_reply_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())  # latest message by anyone
     last_message_role: Mapped[str] = mapped_column(String(20), nullable=False, default="organization-admin", server_default=text("'organization-admin'"))
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The requesting organization deleted the ticket from ITS list (the ticket itself is kept; the Super Admin still sees it).
+    hidden_by_organization_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SupportMessage(Base):

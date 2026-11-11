@@ -233,3 +233,18 @@ describe("the business APIs wait for setup (middleware)", () => {
     expect((await gateApi(api("/api/stock/in"))).status).toBe(403);
   });
 });
+
+describe("deleting a request from my side", () => {
+  it("needs a session and a real id, and asks the Support Service to hide it (nothing is erased)", async () => {
+    const { POST: hide } = await import("@/app/api/support/tickets/[id]/hide/route");
+    const make = (cookie: boolean) => new NextRequest("http://localhost:3001/api/support/tickets/x/hide", { method: "POST", headers: cookie ? { cookie: "impex_tenant_session=tok" } : {} });
+    expect((await hide(make(false), { params: { id: "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718" } })).status).toBe(401);
+    expect((await hide(make(true), { params: { id: "nope" } })).status).toBe(404);
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: any, init: any) => { seen.push(`${init.method} ${url}`); return new Response(null, { status: 204 }); }));
+    expect((await hide(make(true), { params: { id: "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718" } })).status).toBe(200);
+    expect(seen).toEqual([expect.stringMatching(/^POST .*\/api\/v1\/support\/tickets\/8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718\/hide$/)]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "Ticket not found." }), { status: 404 })));
+    expect((await hide(make(true), { params: { id: "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718" } })).status).toBe(404);
+  });
+});

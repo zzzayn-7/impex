@@ -9,6 +9,8 @@ The Auth and Organization services are in-process fakes that answer by bearer to
 is a 401 from Auth, an inactive organization is a 403 from the Organization Service.
 """
 import os
+
+os.environ.setdefault("SCHEMA_CHECK", "off")  # the tests build their own database; test_migration_gate.py turns the gate on for its scratch databases
 import smtplib
 import uuid
 from contextlib import contextmanager

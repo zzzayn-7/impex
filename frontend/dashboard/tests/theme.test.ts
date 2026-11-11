@@ -14,7 +14,7 @@ const PAIRS: Array<[BackgroundId, AccentId]> = BACKGROUNDS.flatMap((b) => ACCENT
 describe("the palettes", () => {
   it("offers exactly the five new backgrounds (and the original Impex one so a reset is a real, selectable state)", () => {
     expect(BACKGROUNDS.map((b) => [b.name, b.hex])).toEqual([
-      ["Original Impex", "#172A32"], ["Burgundy", "#35232E"], ["Ice", "#E7F0F4"], ["Graphite", "#252B30"], ["Deep Purple", "#292938"], ["Deep Steel Blue", "#202F3C"],
+      ["Deep Teal", "#172A32"], ["Burgundy", "#35232E"], ["Ice", "#E7F0F4"], ["Graphite", "#252B30"], ["Deep Purple", "#292938"], ["Deep Steel Blue", "#202F3C"],
     ]);
     expect(BACKGROUNDS.filter((b) => b.id !== "original")).toHaveLength(5);
   });

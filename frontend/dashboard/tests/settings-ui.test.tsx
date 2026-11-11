@@ -322,17 +322,16 @@ describe("Business preferences", () => {
     expect(within(screen.getByLabelText("Number format")).getAllByRole("option").map((o) => o.textContent)).toEqual(["1,234,567.89", "1.234.567,89", "1 234 567,89", "12,34,567.89"]);
   });
 
-  it("previews the choice, and says plainly that nothing already recorded is converted", async () => {
+  it("previews the choice", async () => {
     view();
-    expect(within(screen.getByLabelText("Preview")).getByText(/2026-11-07 10:00/)).toBeTruthy();
+    expect(within(screen.getByLabelText("Preview")).getByText(/2026-11-07 10:00 AM/)).toBeTruthy();
     await userEvent.selectOptions(screen.getByLabelText("Time zone"), "Asia/Karachi");
     await userEvent.selectOptions(screen.getByLabelText("Date format"), "DD/MM/YYYY");
     await userEvent.selectOptions(screen.getByLabelText("Number format"), "dot_comma");
     await userEvent.selectOptions(screen.getByLabelText("Default currency"), "PKR");
     const preview = within(screen.getByLabelText("Preview"));
-    expect(preview.getByText("07/11/2026 15:00")).toBeTruthy(); // 10:00 UTC is 15:00 in Karachi
+    expect(preview.getByText("07/11/2026 03:00 PM")).toBeTruthy(); // 10:00 UTC is 03:00 PM in Karachi
     expect(preview.getByText("1.234.567,89 PKR")).toBeTruthy();
-    expect(section().getByText(/never converts or rewrites anything already recorded/)).toBeTruthy();
     expect(saves()).toHaveLength(0);
   });
 
@@ -359,19 +358,13 @@ describe("Business preferences", () => {
   });
 });
 
-describe("Enabled modules", () => {
-  it("shows enabled and not enabled modules (Finance too), dependencies and Request access", () => {
+describe("Modules are not a Settings section any more", () => {
+  it("has no Enabled modules section, no Modules tab, and no 'defaults only' disclaimer", () => {
     view({ modules: ["inventory", "purchasing"] });
-    const rows = within(document.getElementById("modules")!);
-    expect(document.querySelector('[data-module="inventory"]')?.getAttribute("data-enabled")).toBe("true");
-    expect(document.querySelector('[data-module="purchasing"]')?.getAttribute("data-enabled")).toBe("true");
-    expect(document.querySelector('[data-module="sales"]')?.getAttribute("data-enabled")).toBe("false");
-    expect(document.querySelector('[data-module="finance"]')?.getAttribute("data-enabled")).toBe("false");
-    expect(rows.queryByText("Planned: not available yet")).toBeNull();
-    expect(rows.getAllByText(/Requires Inventory/).length).toBe(2);
-    expect(rows.getAllByRole("link", { name: "Request access" }).map((a) => a.getAttribute("href"))).toEqual(["/support/new?module=sales", "/support/new?module=finance"]);
-    expect(rows.queryAllByRole("checkbox")).toHaveLength(0);
-    expect(rows.getByText(/Purchasing and Sales both need Inventory/)).toBeTruthy();
+    expect(document.getElementById("modules")).toBeNull();
+    expect(screen.queryByText("Enabled modules")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Modules" })).toBeNull();
+    expect(document.body.textContent).not.toContain("never converts or rewrites anything already recorded");
   });
 });
 
@@ -419,18 +412,17 @@ describe("history", () => {
 });
 
 describe("layout and accessibility", () => {
-  it("has labelled sections, a section navigation, and a responsive layout", () => {
+  it("has labelled sections that are dropdowns (closed until clicked), and a responsive layout", async () => {
     view();
-    for (const id of ["company", "branding", "profile", "preferences", "appearance", "modules"]) {
+    for (const id of ["company", "branding", "profile", "preferences", "appearance"]) {
       const section = document.getElementById(id)!;
       expect(section.getAttribute("aria-labelledby")).toBe(`${id}-title`);
       expect(document.getElementById(`${id}-title`)!.textContent!.length).toBeGreaterThan(3);
     }
-    const nav = within(screen.getByRole("navigation", { name: "Settings sections" }));
-    expect(nav.getAllByRole("link").map((l) => l.getAttribute("href"))).toEqual(["#company", "#branding", "#profile", "#preferences", "#appearance", "#modules"]);
+    expect(screen.queryByRole("navigation", { name: "Settings sections" })).toBeNull(); // the dropdown titles are the tabs
     const company = document.getElementById("company")!;
     expect(company.innerHTML).toContain("sm:grid-cols-2"); // two columns from the small breakpoint, one on a phone
-    expect(company.className).toContain("p-5"); // phone padding, larger from sm:
+    expect(company.innerHTML).toContain("p-5 sm:p-7"); // phone padding, larger from sm:
     for (const input of company.querySelectorAll("input, textarea")) expect(document.querySelector(`label[for="${(input as HTMLElement).id}"]`), (input as HTMLElement).id).not.toBeNull();
   });
 

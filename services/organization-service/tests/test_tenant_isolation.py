@@ -19,7 +19,7 @@ from conftest import fake_auth_client
 TENANT_URL = "/api/v1/tenant/organization"
 ORGS = "/api/v1/organizations"
 
-EXPECTED_FIELDS = {"id", "name", "slug", "country_code", "tax_identifier", "contact_email", "is_active", "created_at", "setup_status", "has_logo", "logo_version", "modules", "default_currency", "timezone", "date_format", "number_format", "settings_version"}
+EXPECTED_FIELDS = {"id", "name", "slug", "country_code", "tax_identifier", "contact_email", "is_active", "created_at", "setup_status", "has_logo", "logo_version", "modules", "description", "default_currency", "timezone", "date_format", "number_format", "settings_version"}
 
 
 def bearer(token):

@@ -40,7 +40,6 @@ export default async function SettingsPage() {
       initial={result.settings}
       history={history}
       admin={{ id: admin.id, full_name: admin.full_name, email: admin.email, role: admin.role, organization_id: admin.organization_id ?? "" }}
-      modules={organization.ok ? organization.organization.modules : undefined}
       now={new Date().toISOString()}
     />
   );

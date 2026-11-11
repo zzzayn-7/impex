@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
+import SelectEnhancer from "@/components/ui/select-enhancer";
 import { THEME_COOKIE } from "@/lib/session";
 import { decodeThemeCookie, themeAttributes, themeCss } from "@/lib/theme";
 import "./globals.css";
@@ -24,7 +25,7 @@ export default function RootLayout({
       <head>
         <style id="ix-theme" dangerouslySetInnerHTML={{ __html: themeCss() }} />
       </head>
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">{children}</body>
+      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">{children}<SelectEnhancer /></body>
     </html>
   );
 }

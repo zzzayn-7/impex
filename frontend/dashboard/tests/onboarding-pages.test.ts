@@ -85,7 +85,7 @@ describe("the dashboard waits for setup", () => {
     stubWorld({ t: state("ready", { org: { has_logo: true, logo_version: "1730000000000" } }) });
     const withLogo = await render(OrganizationDashboard());
     expect(withLogo).toContain('src="/api/organization/logo?v=1730000000000"');
-    expect(withLogo).toContain("Alpha Trading GmbH logo");
+    expect(withLogo).not.toContain("Alpha Trading GmbH logo"); // the logo is the sidebar's, not the account card's
     expect(withLogo).not.toContain("Admin Portal"); // the header names the page now; the company is in the avatar's card
     stubWorld({ t: state("ready") });
     const monogram = await render(OrganizationDashboard());

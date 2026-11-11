@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db_migrations import verify_database_schema
 from app.activation import (
     accept_invitation,
     create_internal_auth_client,
@@ -39,6 +40,7 @@ from app.tenancy import require_tenant_organization
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
     app.state.auth_client = create_auth_client()
     app.state.internal_auth_client = create_internal_auth_client()
     app.state.usage_client = UsageClient()
@@ -145,6 +147,7 @@ class TenantOrganizationResponse(BaseModel):
     date_format: str = "YYYY-MM-DD"
     number_format: str = "comma_dot"
     settings_version: int = 1
+    description: Optional[str] = None  # the business description (shown under the company name on invoices)
 
 
 def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -> TenantOrganizationResponse:
@@ -166,6 +169,7 @@ def to_tenant_response(org: Organization, modules: Optional[List[str]] = None) -
         date_format=org.date_format,
         number_format=org.number_format,
         settings_version=org.settings_version,
+        description=org.description,
     )
 
 

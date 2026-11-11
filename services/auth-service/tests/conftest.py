@@ -9,6 +9,8 @@ Run them inside Docker:
         "pip install -q -r requirements-dev.txt && python -m pytest -v"
 """
 import os
+
+os.environ.setdefault("SCHEMA_CHECK", "off")  # the tests build their own database; test_migration_gate.py turns the gate on for its scratch databases
 from contextlib import contextmanager
 from pathlib import Path
 

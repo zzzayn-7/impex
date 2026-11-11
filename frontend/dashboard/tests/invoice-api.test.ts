@@ -351,6 +351,14 @@ describe("invoices: the PDF", () => {
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/invoices/${ID}/pdf`);
     expect(upstream().init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}` });
   });
+  it("Print asks for the same PDF inline: shown, not saved", async () => {
+    stub(() => new Response("%PDF-", { status: 200, headers: { "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="INV-000001.pdf"' } }));
+    const req = new NextRequest(`http://localhost:3001/api/sales/invoices/x/pdf?inline=1`, { method: "GET", headers: { cookie: `impex_tenant_session=${TOKEN}` } });
+    const res = await invoicePdf(req, params());
+    expect(res.headers.get("content-disposition")).toBe('inline; filename="INV-000001.pdf"');
+    expect(upstream().url).toBe(`${SALES}/api/v1/sales/invoices/${ID}/pdf?inline=true`);
+    expect((await invoicePdf(request("GET"), params())).headers.get("content-disposition")).toMatch(/^attachment/); // without it: a download, as before
+  });
   it("passes on only a safe file name", async () => {
     stub(() => new Response("x", { status: 200, headers: { "Content-Disposition": 'attachment; filename="../../etc/passwd"' } }));
     expect((await invoicePdf(request("GET"), params())).headers.get("content-disposition")).toBe('attachment; filename="invoice.pdf"');

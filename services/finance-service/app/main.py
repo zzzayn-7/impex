@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 
+from app.db_migrations import verify_database_schema
 from app.api import router as finance_router
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
@@ -17,6 +18,7 @@ log = logging.getLogger("impex.finance")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
     app.state.auth_client = create_auth_client()
     app.state.org_client = create_org_client()
     app.state.feed_client = create_feed_client()  # None when MODULE_INTERNAL_API_KEY is not set: synchronisation is then off, never open

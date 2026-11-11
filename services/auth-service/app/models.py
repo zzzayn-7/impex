@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Uuid, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, LargeBinary, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,3 +40,6 @@ class User(Base):
     theme_accent: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     # The person's own arrangement of the widgets on their portal's home page: identifiers and a revision only (see app/dashboard_layout.py). NULL = never customised.
     dashboard_layout: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    # The person's own profile picture: a small square PNG re-encoded from the decoded upload (see app/avatar.py). NULL = none (the portals show the initials).
+    avatar_png: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    avatar_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

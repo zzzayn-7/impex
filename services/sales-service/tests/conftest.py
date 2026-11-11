@@ -11,6 +11,8 @@ Run them inside Docker (so the postgres hostname and credentials are available):
 """
 import json
 import os
+
+os.environ.setdefault("SCHEMA_CHECK", "off")  # the tests build their own database; test_migration_gate.py turns the gate on for its scratch databases
 import threading
 import uuid
 from collections import defaultdict
@@ -122,6 +124,8 @@ class Directory:
         self.organizations = {}  # organization id -> {"name": ..., "is_active": ...}
         self.auth_mode = None  # "down" | "500"
         self.org_mode = None
+        self.logos = {}  # organization id -> image bytes (what the Organization Service would serve at /tenant/organization/logo)
+        self.descriptions = {}  # organization id -> the business description
 
     def add_organization(self, name: str, active: bool = True, modules=None) -> str:
         org_id = str(uuid.uuid4())
@@ -159,7 +163,12 @@ class Directory:
         organization = self.organizations.get(str(user.get("organization_id")))
         if user["role"] != "organization-admin" or organization is None or not organization["is_active"]:
             return httpx.Response(403, json={"detail": "Your organization is not active."})
+        if request.url.path.endswith("/organization/logo"):  # the secured, tenant-bound logo endpoint
+            logo = self.logos.get(str(user["organization_id"]))
+            return httpx.Response(200, content=logo, headers={"content-type": "image/png"}) if logo else httpx.Response(404, json={"detail": "No logo."})
         body = {"id": user["organization_id"], "name": organization["name"], "is_active": True}
+        if self.descriptions.get(str(user["organization_id"])):
+            body["description"] = self.descriptions[str(user["organization_id"])]
         if self.org_mode != "no-setup-status":  # an old/broken Organization Service that does not say whether setup is complete
             body["setup_status"] = organization.get("setup_status", "completed")
         if self.org_mode != "no-modules":  # "no-modules": an old/broken Organization Service that does not say which modules are enabled

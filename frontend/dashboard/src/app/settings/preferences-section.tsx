@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { DATE_FORMAT_OPTIONS, NUMBER_FORMAT_OPTIONS, formatDateTime, formatDecimal, type DateFormat, type NumberFormat, type Preferences } from "@/lib/format";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { currencyLabel } from "@/lib/currencies";
-import { currencyOptions, timezoneOptions } from "@/lib/timezones";
+import { currencyOptions, timezoneChoices, timezoneOptions } from "@/lib/timezones";
 import { Card, Field, Notice, SaveBar, inputClass } from "./settings-ui";
 import type { SectionProps } from "./company-section";
 
@@ -63,7 +63,7 @@ export default function PreferencesSection({ settings, onSaved, onConflict, setD
         </Field>
         <Field id="pref-timezone" label="Time zone" error={errors.timezone} hint="How dates and times are written on screen. Stored times stay in UTC.">
           <select id="pref-timezone" value={draft.timezone} onChange={(e) => set("timezone", e.target.value)} className={inputClass}>
-            {timezoneOptions(saved.timezone).map((z) => <option key={z} value={z}>{z.replace(/_/g, " ")}</option>)}
+            {timezoneChoices(saved.timezone).map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}
           </select>
         </Field>
         <Field id="pref-date" label="Date format" error={errors.date_format}>
@@ -82,10 +82,6 @@ export default function PreferencesSection({ settings, onSaved, onConflict, setD
         <p className="text-xs font-semibold uppercase tracking-wide text-ix-muted">Preview</p>
         <p className="mt-1.5 text-sm text-ix-text">Now: <span className="font-medium">{formatDateTime(now, previewPrefs)}</span> · Amount: <span className="font-medium">{formatDecimal("1234567.89", previewPrefs, 2)} {draft.default_currency}</span></p>
       </div>
-      <p className="mt-3 text-xs text-ix-muted">
-        These are defaults and display settings only. Changing them never converts or rewrites anything already recorded: issued invoices, purchase orders, payments, stock quantities and stored times keep exactly the values and the currency they were made with.
-      </p>
-
       {error && <div className="mt-4"><Notice kind="error">{error}</Notice></div>}
       <SaveBar dirty={dirty} busy={busy} onSave={() => void save()} onDiscard={() => { setDraft(saved); setErrors({}); setError(null); }} />
     </Card>

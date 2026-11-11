@@ -23,6 +23,7 @@ export default function InvoiceDetailView({ invoice: initial }: { invoice: Invoi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
   const [confirming, setConfirming] = useState<"issue" | "void" | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [reversing, setReversing] = useState<string | null>(null);
@@ -97,6 +98,40 @@ export default function InvoiceDetailView({ invoice: initial }: { invoice: Invoi
     accepted(r.data, "Payment reversed. Both records stay on the invoice.");
   }
 
+  // PRINT: the invoice itself - the same PDF Download saves - is fetched with the administrator's session and handed to the browser's print dialog from a hidden frame, so the
+  // dashboard (sidebar, header, buttons) is never part of what is printed. If the browser will not print from a frame, the PDF opens in a tab instead. Read-only.
+  async function printInvoice() {
+    if (printing) return;
+    setPrinting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sales/invoices/${invoice.id}/pdf?inline=1`, { cache: "no-store" });
+      if (res.status === 401) return router.replace("/login");
+      if (!res.ok) return setError("The invoice could not be prepared for printing. Please try again.");
+      const url = URL.createObjectURL(await res.blob());
+      const frame = document.createElement("iframe");
+      frame.setAttribute("aria-hidden", "true");
+      frame.title = "Invoice to print";
+      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+      const cleanup = () => { URL.revokeObjectURL(url); frame.remove(); };
+      frame.onload = () => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+        } catch {
+          window.open(url, "_blank");
+        }
+        setTimeout(cleanup, 120000);
+      };
+      frame.src = url;
+      document.body.appendChild(frame);
+    } catch {
+      setError("Unable to reach the server. Please try again.");
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <article className="space-y-5" aria-label={invoice.number ?? "Draft invoice"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -113,7 +148,7 @@ export default function InvoiceDetailView({ invoice: initial }: { invoice: Invoi
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
           {invoice.editable && <Link href={`/invoices/${invoice.id}/edit`} className={`${buttonClass} inline-flex items-center`}>Edit draft</Link>}
-          <button type="button" onClick={() => window.print()} className={buttonClass}>Print</button>
+          <button type="button" onClick={() => void printInvoice()} disabled={printing} className={buttonClass}>{printing ? "Preparing…" : "Print"}</button>
           <a href={`/api/sales/invoices/${invoice.id}/pdf`} download className={`${buttonClass} inline-flex items-center`}>Download PDF</a>
         </div>
       </div>

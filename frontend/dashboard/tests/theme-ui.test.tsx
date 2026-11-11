@@ -55,7 +55,7 @@ describe("the customizer", () => {
     const accents = within(screen.getByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
     expect(accents.map((a) => a.getAttribute("aria-label"))).toEqual(ACCENTS.map((a) => `${a.name} ${a.hex}`));
     for (const a of ACCENTS) expect(radio("Accent", `${a.name} ${a.hex}`).textContent).toContain(a.name);
-    expect(radio("Background", /Original Impex/).getAttribute("aria-checked")).toBe("true");
+    expect(radio("Background", /Deep Teal/).getAttribute("aria-checked")).toBe("true");
     expect(radio("Accent", /Pale Butter Yellow/).getAttribute("aria-checked")).toBe("true");
     expect(screen.getAllByRole("radio", { checked: true })).toHaveLength(2); // exactly one of each
   });
@@ -69,7 +69,7 @@ describe("the customizer", () => {
     expect(painted()).toEqual({ bg: "burgundy", accent: "lavender-mist", scheme: "dark" });
     expect(radio("Background", /Burgundy/).getAttribute("aria-checked")).toBe("true");
     expect(radio("Accent", /Lavender Mist/).getAttribute("aria-checked")).toBe("true");
-    expect(radio("Background", /Original Impex/).getAttribute("aria-checked")).toBe("false");
+    expect(radio("Background", /Deep Teal/).getAttribute("aria-checked")).toBe("false");
     expect(calls).toEqual([]); // nothing is saved by choosing
     expect(screen.getByText(/saved only when you press Apply Theme/i)).toBeTruthy();
   });
@@ -79,7 +79,7 @@ describe("the customizer", () => {
     mount(DEFAULT_THEME, <ThemeCustomizer />);
     await user.click(radio("Background", /Ice/));
     expect(painted().scheme).toBe("light");
-    for (const name of [/Burgundy/, /Graphite/, /Deep Purple/, /Deep Steel Blue/, /Original Impex/]) {
+    for (const name of [/Burgundy/, /Graphite/, /Deep Purple/, /Deep Steel Blue/, /Deep Teal/]) {
       await user.click(radio("Background", name));
       expect(painted().scheme, String(name)).toBe("dark");
     }
@@ -110,7 +110,7 @@ describe("the customizer", () => {
     expect(preview.querySelector(".ix-glass")).toBeTruthy(); // a small glass card
     expect(preview.querySelector(".bg-ix-butter")).toBeTruthy(); // a primary button
     expect(preview.querySelector(".bg-ix-accent-text\\/10")).toBeTruthy(); // a selected navigation item
-    expect(preview.textContent).toContain("Original Impex · Pale Butter Yellow");
+    expect(preview.textContent).toContain("Deep Teal · Pale Butter Yellow");
     await user.click(radio("Background", /Deep Purple/));
     await user.click(radio("Accent", /Dusty Rose/));
     expect(preview.textContent).toContain("Deep Purple · Dusty Rose");
@@ -148,9 +148,9 @@ describe("the customizer", () => {
     mount({ background: "burgundy", accent: "dusty-rose" }, <><ThemeCustomizer /><Probe /></>);
     await user.click(screen.getByRole("button", { name: "Reset to Default" }));
     expect(painted()).toEqual({ bg: "original", accent: "pale-butter", scheme: "dark" });
-    expect(radio("Background", /Original Impex/).getAttribute("aria-checked")).toBe("true");
+    expect(radio("Background", /Deep Teal/).getAttribute("aria-checked")).toBe("true");
     expect(radio("Accent", /Pale Butter Yellow/).getAttribute("aria-checked")).toBe("true");
-    expect(document.querySelector("[data-theme-preview]")!.textContent).toContain("Original Impex · Pale Butter Yellow");
+    expect(document.querySelector("[data-theme-preview]")!.textContent).toContain("Deep Teal · Pale Butter Yellow");
     expect(calls).toEqual([]); // not saved yet
     expect(screen.getByTestId("saved").textContent).toBe("burgundy.dusty-rose");
     await user.click(screen.getByRole("button", { name: "Apply Theme" }));
@@ -215,7 +215,7 @@ describe("the header button and its panel", () => {
     frame();
     const header = screen.getByRole("banner");
     const labels = within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", "Sign out"]); // Add Widgets (home page only) comes right before Customize Theme, which is just before the avatar
+    expect(labels).toEqual(["Open navigation", "Add Widgets", "Customize Theme", "Account: Olivia Owner", null, "Sign out"]); // (null: the card's own "Add profile picture" button, which has a text name) Add Widgets (home page only) comes right before Customize Theme, which is just before the avatar
     const button = within(header).getByRole("button", { name: "Customize Theme" });
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.className).toContain("h-10 w-10"); // the header's control size

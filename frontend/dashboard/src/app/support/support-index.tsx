@@ -7,11 +7,27 @@ import { useRouter } from "next/navigation";
 import type { TicketFilters, TicketPage } from "@/lib/support";
 import { CATEGORIES, CATEGORY_LABELS, PRIORITY_LABELS, PRIORITY_STYLE, STATUSES, STATUS_LABELS, STATUS_STYLE } from "@/lib/support-labels";
 import { useStamp } from "@/components/clock";
+import { useConfirm } from "@/components/ui/confirm";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const selectClass = "mt-1.5 block max-w-[14rem] rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
 
 export default function SupportIndex({ list, filters }: { list: TicketPage; filters: TicketFilters }) {
   const stamp = useStamp();
+  const [confirm, confirmDialog] = useConfirm();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  // The bin icon deletes a request from YOUR list only: it is not unsent, the Impex team still has it.
+  async function remove(id: string, number: string) {
+    const ok = await confirm({ title: `Delete ${number} from your list?`, message: "It disappears from your list only. It is not unsent: the Impex team still has it and nothing is erased.", confirmLabel: "Delete" });
+    if (!ok) return;
+    setProblem(null);
+    const res = await fetch(`/api/support/tickets/${id}/hide`, { method: "POST" });
+    const body = await res.json().catch(() => null);
+    if (res.status === 401) return router.replace("/login");
+    if (!res.ok) return setProblem(body?.error ?? "The request could not be deleted. Please try again.");
+    router.refresh();
+  }
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);
@@ -100,8 +116,8 @@ export default function SupportIndex({ list, filters }: { list: TicketPage; filt
           ) : (
             <ul className="divide-y divide-slate-800/60" aria-label="Your requests">
               {list.items.map((t) => (
-                <li key={t.id}>
-                  <Link href={`/support/${t.id}`} className="flex flex-wrap items-start justify-between gap-3 px-2 py-3.5 hover:bg-slate-800/30">
+                <li key={t.id} className="flex items-start gap-1">
+                  <Link href={`/support/${t.id}`} className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-3 px-2 py-3.5 hover:bg-slate-800/30">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-sm font-semibold text-indigo-300">{t.ticket_number}</span>
@@ -117,6 +133,11 @@ export default function SupportIndex({ list, filters }: { list: TicketPage; filt
                       <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[t.status]}`}>{STATUS_LABELS[t.status]}</span>
                     </div>
                   </Link>
+                  <Tooltip label="Delete from my list">
+                    <button type="button" onClick={() => void remove(t.id, t.ticket_number)} aria-label={`Delete ${t.ticket_number} from my list`} className="mt-3.5 p-1.5 text-red-400 transition-colors hover:text-red-300 focus-visible:text-red-300 focus-visible:outline-none">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3" /></svg>
+                    </button>
+                  </Tooltip>
                 </li>
               ))}
             </ul>
@@ -133,6 +154,8 @@ export default function SupportIndex({ list, filters }: { list: TicketPage; filt
           </div>
         )}
       </section>
+      {problem && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">{problem}</p>}
+      {confirmDialog}
     </div>
   );
 }

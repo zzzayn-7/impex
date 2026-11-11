@@ -1,3 +1,16 @@
+# DATABASE MIGRATIONS (see docs/database-migrations.md). Every database-backed service has a one-shot `<name>-migrate` container built from the SAME image as the
+# service. It runs `alembic upgrade head` (nothing else: never stamp, reset or downgrade) under a database lock, logs "DATABASE MIGRATION SUCCEEDED / FAILED" and exits.
+# The service lists it in `depends_on: condition: service_completed_successfully`, so the service is not even created until its migrations have been applied, and a failed
+# migration keeps the updated service from starting. Restarting the service (docker restart, a crash, `restart: unless-stopped`) never runs migrations again, and a repeated
+# `docker compose up` finds nothing pending and exits at once. The service itself also refuses to start on a database that is not at its migration head.
+x-migrate: &migrate
+  restart: "no"
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - impex-network
+
 services:
   gateway:
     image: nginx:alpine
@@ -14,11 +27,28 @@ services:
     networks:
       - impex-network
 
+  # One-shot: applies the pending migrations of auth-service's database, then exits (0 = the database is at head). Safe to run again.
+  auth-migrate:
+    <<: *migrate
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    image: impex-auth-service
+    container_name: impex-auth-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${AUTH_DB_NAME:-impex_auth}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+
   auth-service:
     build:
       context: ./services/auth-service
       dockerfile: Dockerfile
     container_name: impex-auth-service
+    image: impex-auth-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -36,14 +66,39 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
+
+  # One-shot: applies the pending migrations of organization-service's database, then exits (0 = the database is at head). Safe to run again.
+  organization-migrate:
+    <<: *migrate
+    build:
+      context: ./services/organization-service
+      dockerfile: Dockerfile
+    image: impex-organization-service
+    container_name: impex-organization-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${ORG_DB_NAME:-impex_organizations}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
 
   organization-service:
     build:
       context: ./services/organization-service
       dockerfile: Dockerfile
     container_name: impex-organization-service
+    image: impex-organization-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -81,9 +136,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      organization-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
       mailpit:
         condition: service_started
         required: false  # only a local mail catcher; not needed when SMTP_HOST points at a real server
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
 
@@ -108,12 +171,29 @@ services:
     networks:
       - impex-network
 
+  # One-shot: applies the pending migrations of inventory-service's database, then exits (0 = the database is at head). Safe to run again.
+  inventory-migrate:
+    <<: *migrate
+    build:
+      context: ./services/inventory-service
+      dockerfile: Dockerfile
+    image: impex-inventory-service
+    container_name: impex-inventory-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${INVENTORY_DB_NAME:-impex_inventory}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+
   # Product catalog (tenant-scoped). Own database: impex_inventory.
   inventory-service:
     build:
       context: ./services/inventory-service
       dockerfile: Dockerfile
     container_name: impex-inventory-service
+    image: impex-inventory-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8002:8002"
@@ -131,8 +211,32 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      inventory-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
+
+  # One-shot: applies the pending migrations of sales-service's database, then exits (0 = the database is at head). Safe to run again.
+  sales-migrate:
+    <<: *migrate
+    build:
+      context: ./services/sales-service
+      dockerfile: Dockerfile
+    image: impex-sales-service
+    container_name: impex-sales-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${SALES_DB_NAME:-impex_sales}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
 
   # Clients and delivery lists (tenant-scoped). Own database: impex_sales. Reads products/stock from the Inventory Service
   # with the caller's own token; never changes inventory.
@@ -141,6 +245,7 @@ services:
       context: ./services/sales-service
       dockerfile: Dockerfile
     container_name: impex-sales-service
+    image: impex-sales-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8003:8003"
@@ -159,8 +264,32 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      sales-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
+
+  # One-shot: applies the pending migrations of purchasing-service's database, then exits (0 = the database is at head). Safe to run again.
+  purchasing-migrate:
+    <<: *migrate
+    build:
+      context: ./services/purchasing-service
+      dockerfile: Dockerfile
+    image: impex-purchasing-service
+    container_name: impex-purchasing-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${PURCHASING_DB_NAME:-impex_purchasing}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
 
   # Suppliers and purchase orders (tenant-scoped). Own database: impex_purchasing. Reads products from the Inventory Service
   # with the caller's own token; never changes inventory (receiving goods is a later step).
@@ -169,6 +298,7 @@ services:
       context: ./services/purchasing-service
       dockerfile: Dockerfile
     container_name: impex-purchasing-service
+    image: impex-purchasing-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8004:8004"
@@ -186,8 +316,32 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      purchasing-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
+
+  # One-shot: applies the pending migrations of support-service's database, then exits (0 = the database is at head). Safe to run again.
+  support-migrate:
+    <<: *migrate
+    build:
+      context: ./services/support-service
+      dockerfile: Dockerfile
+    image: impex-support-service
+    container_name: impex-support-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${SUPPORT_DB_NAME:-impex_support}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
 
   # Help & Support tickets and the durable email outbox. Own database: impex_support. Organization administrators open and follow tickets;
   # the Super Admin answers them from the Super Admin portal. Email is only a notification (SUPPORT_NOTIFICATION_EMAIL receives the alerts).
@@ -196,6 +350,7 @@ services:
       context: ./services/support-service
       dockerfile: Dockerfile
     container_name: impex-support-service
+    image: impex-support-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8005:8005"
@@ -229,11 +384,35 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      support-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
       mailpit:
         condition: service_started
         required: false  # only a local mail catcher; not needed when SMTP_HOST points at a real server
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
+
+  # One-shot: applies the pending migrations of finance-service's database, then exits (0 = the database is at head). Safe to run again.
+  finance-migrate:
+    <<: *migrate
+    build:
+      context: ./services/finance-service
+      dockerfile: Dockerfile
+    image: impex-finance-service
+    container_name: impex-finance-migrate
+    command: ["python", "-m", "app.db_migrations"]
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${FINANCE_DB_NAME:-impex_finance}
+      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
 
   # Chart of accounts, double-entry journal and expenses. Own database: impex_finance. Off for every organization until the Super Admin
   # enables the Finance module. A background worker PULLS issued invoices, payments and confirmed goods receipts from the Sales and
@@ -243,6 +422,7 @@ services:
       context: ./services/finance-service
       dockerfile: Dockerfile
     container_name: impex-finance-service
+    image: impex-finance-service  # the migration container above runs this very image
     restart: unless-stopped
     ports:
       - "8006:8006"
@@ -263,6 +443,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      finance-migrate:
+        condition: service_completed_successfully  # migrations applied (and none failed) before the service starts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'], timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - impex-network
 

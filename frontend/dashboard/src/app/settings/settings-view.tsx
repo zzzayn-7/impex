@@ -7,19 +7,9 @@ import type { HistoryData, SettingsData } from "@/lib/settings";
 import AppearanceSection from "./appearance-section";
 import BrandingSection from "./branding-section";
 import CompanySection from "./company-section";
-import ModulesSection from "./modules-section";
 import PreferencesSection from "./preferences-section";
 import ProfileSection, { type AdminInfo } from "./profile-section";
-import { Notice, linkClass } from "./settings-ui";
-
-const SECTIONS = [
-  { id: "company", label: "Company profile" },
-  { id: "branding", label: "Branding" },
-  { id: "profile", label: "Administrator" },
-  { id: "preferences", label: "Preferences" },
-  { id: "appearance", label: "Appearance & Theme" },
-  { id: "modules", label: "Modules" },
-];
+import { Card, Notice, linkClass } from "./settings-ui";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Company display name", contact_email: "Business contact email", contact_phone: "Phone number", address_street: "Street address", address_city: "City",
@@ -29,10 +19,10 @@ const FIELD_LABELS: Record<string, string> = {
 
 const shorten = (value: string | null) => (value === null ? "empty" : value.length > 60 ? `${value.slice(0, 57)}…` : value);
 
-/** The five sections of Organization Settings. The saved values live here (one version for the whole organization); each section keeps its own
+/** The areas of Organization Settings, each a dropdown that opens its form downwards. The saved values live here (one version for the whole organization); each section keeps its own
  *  draft and saves on its own. A save names the version it was made from, so a change made meanwhile by another administrator is refused and
  *  the current values are shown instead of being overwritten. */
-export default function SettingsView({ initial, history: initialHistory, admin, modules, now }: { initial: SettingsData; history: HistoryData; admin: AdminInfo; modules: unknown; now: string }) {
+export default function SettingsView({ initial, history: initialHistory, admin, now }: { initial: SettingsData; history: HistoryData; admin: AdminInfo; now: string }) {
   const [settings, setSettings] = useState(initial);
   const [history, setHistory] = useState(initialHistory);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -85,10 +75,6 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
         <p className="mt-1 text-sm text-ix-muted">Manage your company, your own profile and how Impex shows your business. Changes are saved to your organization and apply for every administrator.</p>
       </div>
 
-      <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {SECTIONS.map((s) => <a key={s.id} href={`#${s.id}`} className="rounded-full border border-ix-mist/15 bg-ix-deep/55 px-3.5 py-1.5 text-xs font-medium text-ix-accent-text transition hover:bg-ix-butter/15 motion-reduce:transition-none">{s.label}</a>)}
-      </nav>
-
       {notice && (
         <div className="sticky top-2 z-10"><Notice kind={notice.kind}>{notice.text}</Notice></div>
       )}
@@ -99,30 +85,25 @@ export default function SettingsView({ initial, history: initialHistory, admin, 
       <ProfileSection admin={admin} organizationName={settings.company.name} setDirty={setDirty} onSaved={(m) => setNotice({ kind: "success", text: m })} />
       <PreferencesSection {...common} now={now} />
       <AppearanceSection />
-      <ModulesSection modules={modules} />
 
-      <section aria-labelledby="history-title" className="rounded-2xl border border-ix-mist/15 bg-ix-deep/55 p-5 sm:p-7">
-        <details>
-          <summary id="history-title" className="cursor-pointer text-lg font-semibold tracking-tight text-ix-text">Recent changes</summary>
-          <p className="mt-2 text-xs text-ix-muted">Every change to your company profile, branding and preferences is recorded permanently: what changed, who changed it and when.</p>
-          {history.items.length === 0 ? (
-            <p className="mt-4 text-sm text-ix-muted">No changes yet.</p>
-          ) : (
-            <ol className="mt-4 divide-y divide-ix-mist/10">
-              {history.items.map((item) => (
-                <li key={item.id} className="py-3 text-sm">
-                  <p className="font-medium text-ix-text">{FIELD_LABELS[item.field] ?? item.field}</p>
-                  <p className="text-ix-muted">
-                    {item.field === "logo" ? `Logo ${item.new_value ?? "changed"}` : <>{shorten(item.old_value)} → <span className="text-ix-text">{shorten(item.new_value)}</span></>}
-                  </p>
-                  <p className="text-xs text-ix-muted">{item.changed_by_name ?? item.changed_by_email ?? "An administrator"} · {formatDateTime(item.created_at, prefs)}</p>
-                </li>
-              ))}
-            </ol>
-          )}
-          {history.total > history.items.length && <p className="mt-2 text-xs text-ix-muted">Showing the latest {history.items.length} of {history.total}.</p>}
-        </details>
-      </section>
+      <Card id="history" title="Recent changes" description="Every change to your company profile, branding and preferences is recorded permanently: what changed, who changed it and when.">
+      {history.items.length === 0 ? (
+        <p className="mt-4 text-sm text-ix-muted">No changes yet.</p>
+      ) : (
+        <ol className="mt-4 divide-y divide-ix-mist/10">
+          {history.items.map((item) => (
+            <li key={item.id} className="py-3 text-sm">
+              <p className="font-medium text-ix-text">{FIELD_LABELS[item.field] ?? item.field}</p>
+              <p className="text-ix-muted">
+                {item.field === "logo" ? `Logo ${item.new_value ?? "changed"}` : <>{shorten(item.old_value)} → <span className="text-ix-text">{shorten(item.new_value)}</span></>}
+              </p>
+              <p className="text-xs text-ix-muted">{item.changed_by_name ?? item.changed_by_email ?? "An administrator"} · {formatDateTime(item.created_at, prefs)}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+      {history.total > history.items.length && <p className="mt-2 text-xs text-ix-muted">Showing the latest {history.items.length} of {history.total}.</p>}
+      </Card>
 
       <p className="text-xs text-ix-muted">Need something changed that you cannot edit here? <a href="/support/new?change=other" className={linkClass}>Ask the Impex team</a>.</p>
     </div>

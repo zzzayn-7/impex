@@ -592,3 +592,7 @@ body {
    dark and one for light backgrounds, so both keep an accessible contrast against the glass. */
 :root { --ix-profit-rgb: 74 222 128; }
 :root[data-ix-scheme="light"] { --ix-profit-rgb: 21 128 61; }
+
+/* Every dropdown is drawn by components/ui/select-enhancer.tsx (a search box, five options at a time). The real <select> stays in the page - it is what the form and the page
+   read - but is not shown. */
+select[data-ix-enhanced="1"] { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; overflow: hidden !important; clip-path: inset(50%) !important; }

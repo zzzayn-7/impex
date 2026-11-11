@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 
 from app import api
+from app.db_migrations import verify_database_schema
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
 from app.outbox import run_worker
@@ -14,6 +15,7 @@ from app.worker_api import router as worker_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_schema()  # refuses to start while a database migration is pending or failed (see app/db_migrations.py)
     app.state.auth_client = create_auth_client()
     app.state.org_client = create_org_client()
     stop = asyncio.Event()

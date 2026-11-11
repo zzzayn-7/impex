@@ -497,15 +497,33 @@ describe("Invoice: reading it", () => {
     for (const text of ["Subtotal25.00 USD", "Discount1.00 USD", "Tax2.40 USD", "Total26.40 USD", "Paid10.00 USD", "Outstanding16.40 USD"]) expect(totals, text).toContain(text);
   });
 
-  it("prints, downloads the PDF, and never changes stock", async () => {
+  it("prints the invoice PDF itself (not the dashboard page), downloads the same PDF, and never changes anything", async () => {
     window.print = vi.fn();
+    const printed = vi.fn();
+    server["GET /api/sales/invoices/:id/pdf"] = () => new Response(new Blob(["%PDF-"], { type: "application/pdf" }), { status: 200, headers: { "Content-Type": "application/pdf" } });
+    (URL as any).createObjectURL = vi.fn(() => "blob:invoice");
+    (URL as any).revokeObjectURL = vi.fn();
+    const append = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: any) => {
+      if (node.tagName === "IFRAME") { Object.defineProperty(node, "contentWindow", { value: { focus: () => undefined, print: printed } }); setTimeout(() => node.onload?.(new Event("load")), 0); return node; }
+      return append(node);
+    });
     render(<InvoiceDetailView invoice={issued() as any} />);
     await user().click(screen.getByRole("button", { name: "Print" }));
-    expect(window.print).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(printed).toHaveBeenCalledTimes(1));
+    expect(window.print).not.toHaveBeenCalled(); // the dashboard page itself is never printed
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET /api/sales/invoices/${INVOICE}/pdf?inline=1`]); // a read: nothing is created, issued or paid by printing
     const link = screen.getByRole("link", { name: "Download PDF" });
     expect(link.getAttribute("href")).toBe(`/api/sales/invoices/${INVOICE}/pdf`);
     expect(link.hasAttribute("download")).toBe(true);
-    expect(calls).toHaveLength(0);
+    expect(stockCalls()).toHaveLength(0);
+  });
+
+  it("says so when the invoice cannot be prepared for printing", async () => {
+    server["GET /api/sales/invoices/:id/pdf"] = () => json(500, { error: "x" });
+    render(<InvoiceDetailView invoice={issued() as any} />);
+    await user().click(screen.getByRole("button", { name: "Print" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("could not be prepared for printing");
   });
 
   it("the action areas are hidden when printing", () => {

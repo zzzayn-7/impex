@@ -5,5 +5,5 @@ import PortalFrame from "@/components/portal-frame";
 // then shows a "Back to setup" note). Authentication is unchanged (a signed-in, active organization administrator is required, checked before the
 // page streams) and the Support Service re-checks the caller and their organization on every request.
 export default async function SupportLayout({ children }: { children: React.ReactNode }) {
-  return PortalFrame({ current: "support", allowIncompleteSetup: true, pageHandlesOutage: true, width: "narrow", children });
+  return PortalFrame({ current: "support", allowIncompleteSetup: true, pageHandlesOutage: true, children });
 }

@@ -22,14 +22,13 @@ import { loadWorkspace, requireTenantAdmin } from "@/lib/tenant-session";
 // complete: a recoverable error is, with sign-out still available. Module access: when the organization is known and the page's module is not
 // enabled for it, the page is not rendered at all.
 export default async function PortalFrame({
-  current, children, allowIncompleteSetup = false, pageHandlesOutage = false, width,
+  current, children, allowIncompleteSetup = false, pageHandlesOutage = false,
 }: {
   current: PageKey;
   children: React.ReactNode;
   allowIncompleteSetup?: boolean;
   /** The page explains an unreachable Organization Service itself (the dashboard and Help & Support do): it is still shown, never replaced. */
   pageHandlesOutage?: boolean;
-  width?: "wide" | "default" | "narrow";
 }) {
   const admin = await requireTenantAdmin();
   const workspace = await loadWorkspace(admin);
@@ -39,7 +38,7 @@ export default async function PortalFrame({
   const denied = workspace.kind === "ready" && organization !== null && module !== undefined && !canUse(organization.modules, module);
   return (
     <ClockProvider timeZone={normalizePreferences(organization).timezone}>
-    <PortalShell admin={admin} organization={organization} current={current} width={width}>
+    <PortalShell admin={admin} organization={organization} current={current}>
       {workspace.kind === "unavailable" && !pageHandlesOutage ? (
         <GlassPanel role="alert" className="mx-auto max-w-xl space-y-3 p-6 text-center">
           <p className="text-sm font-medium text-white">We couldn&apos;t load your workspace just now.</p>

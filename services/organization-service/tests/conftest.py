@@ -9,6 +9,8 @@ Run them inside Docker (so the postgres hostname and credentials are available):
         "pip install -q -r requirements-dev.txt && python -m pytest -v"
 """
 import os
+
+os.environ.setdefault("SCHEMA_CHECK", "off")  # the tests build their own database; test_migration_gate.py turns the gate on for its scratch databases
 import re
 import smtplib
 from contextlib import contextmanager

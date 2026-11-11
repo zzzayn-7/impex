@@ -17,7 +17,7 @@
 // What is stored for a person is only the two identifiers below (validated here and again by the Auth Service): never a colour value, never CSS.
 
 export const BACKGROUNDS = [
-  { id: "original", name: "Original Impex", hex: "#172A32", scheme: "dark" },
+  { id: "original", name: "Deep Teal", hex: "#172A32", scheme: "dark" },
   { id: "burgundy", name: "Burgundy", hex: "#35232E", scheme: "dark" },
   { id: "ice", name: "Ice", hex: "#E7F0F4", scheme: "light" },
   { id: "graphite", name: "Graphite", hex: "#252B30", scheme: "dark" },
