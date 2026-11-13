@@ -57,7 +57,7 @@ EDGE_PASSWORD="$(edge_param BASIC_AUTH_PASSWORD)"
 EDGE_PASSWORD_HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$EDGE_PASSWORD")"
 printf "EDGE_USER='%s'\nEDGE_PASSWORD_HASH='%s'\n" "$EDGE_USER" "$EDGE_PASSWORD_HASH" >> "$tmp"
 unset EDGE_PASSWORD
-grep -q "^PUBLIC_HOST=" "$tmp" || { echo "required parameter $SSM_PREFIX/env/PUBLIC_HOST is missing"; rm -f "$tmp"; exit 1; }
+grep -q "^DOMAIN=" "$tmp" || { echo "required parameter $SSM_PREFIX/env/DOMAIN is missing"; rm -f "$tmp"; exit 1; }
 
 mv "$tmp" "$APP/.env"
 chmod 600 "$APP/.env"

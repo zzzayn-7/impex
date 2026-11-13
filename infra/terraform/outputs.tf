@@ -5,12 +5,17 @@ output "public_ip" {
 
 output "super_admin_url" {
   description = "Super Admin portal (HTTPS, behind the front-door password)."
-  value       = "https://${module.network.public_ip}"
+  value       = "https://admin.${var.domain_name}"
 }
 
 output "organization_portal_url" {
   description = "Organization portal (HTTPS, behind the front-door password)."
-  value       = "https://${module.network.public_ip}:3001"
+  value       = "https://app.${var.domain_name}"
+}
+
+output "mailbox_url" {
+  description = "Mailpit: the e-mails the platform sent (HTTPS, behind the front-door password)."
+  value       = "https://mail.${var.domain_name}"
 }
 
 output "front_door_user" {
@@ -49,4 +54,14 @@ output "deploy_command" {
 output "set_a_parameter" {
   description = "Example: set an SSM parameter (then run the deploy command)."
   value       = "aws ssm put-parameter --region ${var.aws_region} --name ${local.ssm_prefix}/env/SMTP_HOST --type String --value smtp.example.com --overwrite"
+}
+
+output "dns_name_servers" {
+  description = "Set these four as the CUSTOM nameservers for the domain at the registrar (Namecheap: Domain List > Manage > Nameservers > Custom DNS)."
+  value       = module.dns.name_servers
+}
+
+output "domain_hosts" {
+  description = "The names Terraform points at the server."
+  value       = [for p in ["", "www.", "app.", "admin.", "mail."] : "${p}${var.domain_name}"]
 }

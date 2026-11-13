@@ -13,8 +13,8 @@ locals {
   name       = "impex-${var.environment}"
   ssm_prefix = "/impex/${var.environment}"
   az         = data.aws_availability_zones.available.names[0]
-  # The edge listens on 443 (Super Admin portal), 3001 (Organization portal) and 8025 (Mailpit, the mailbox of the platform's e-mails), all over HTTPS.
-  portal_ports = [443, 3001, 8025]
+  # The edge listens on 443 (HTTPS: the portals and Mailpit, by name) and 80 (Let's Encrypt validation and the redirect to https).
+  portal_ports = [80, 443]
 }
 
 module "network" {
@@ -41,7 +41,7 @@ module "config" {
   name            = local.name
   ssm_prefix      = local.ssm_prefix
   kms_key_id      = module.security.kms_key_id
-  public_host     = module.network.public_ip
+  domain          = var.domain_name
   repo_url        = var.repo_url
   repo_branch     = var.repo_branch
   basic_auth_user = var.basic_auth_user
@@ -66,4 +66,13 @@ module "server" {
 
   # The first boot reads the parameters and needs the route to the internet, so both must exist before the server does.
   depends_on = [module.config, module.network, module.security]
+}
+
+# DNS: a Route 53 hosted zone for the domain, pointing every name at the server. Costs about 0.50 USD a month.
+module "dns" {
+  source = "./modules/dns"
+
+  domain_name = var.domain_name
+  environment = var.environment
+  public_ip   = module.network.public_ip
 }

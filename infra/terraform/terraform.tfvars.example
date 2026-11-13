@@ -14,3 +14,6 @@ basic_auth_user = "impex"
 
 # Refuse to terminate the server through the API.
 termination_protection = true
+
+# Your domain (hosted in Route 53; set the registrar nameservers to the dns_name_servers output).
+domain_name = "example.com"

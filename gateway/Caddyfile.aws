@@ -1,12 +1,10 @@
 # The EDGE of the AWS deployment (docker-compose.aws.yml): the ONLY thing reachable from the internet. It puts
-#   * HTTPS in front of both portals (a certificate from Caddy's own local authority: the browser warns once until you trust it or a real
-#     domain + certificate replaces it), and
-#   * a PASSWORD in front of both portals (HTTP basic authentication, checked here before any request reaches a portal; the portals keep their own sign-in).
-# 443 -> the Super Admin portal, 3001 -> the Organization portal, 8025 -> Mailpit (where the platform's e-mails are read). Every backend service stays on the private Docker network.
+#   * real HTTPS in front of everything: Caddy gets and renews free Let's Encrypt certificates for the domain by itself, and
+#   * a PASSWORD in front of everything (HTTP basic authentication, checked here before any request reaches a portal; the portals keep their own sign-in).
+#   admin.<domain>  the Super Admin portal         app.<domain>  the Organization portal         mail.<domain>  Mailpit (the platform's caught e-mail)
+#   <domain>, www.<domain>  send people to app.<domain>
+# Every backend service stays on the private Docker network. The certificates need ports 80 and 443 open and the domain's DNS pointing at this server.
 {
-	skip_install_trust
-	default_sni {$PUBLIC_HOST}
-	auto_https disable_redirects
 	servers {
 		# only TCP is published, so do not advertise HTTP/3 (UDP)
 		protocols h1 h2
@@ -14,14 +12,13 @@
 }
 
 (front_door) {
-	tls internal
-
 	# Nobody gets past this without the password; a wrong guess is slowed by the hash itself.
 	basic_auth {
 		{$EDGE_USER} {$EDGE_PASSWORD_HASH}
 	}
 
 	header {
+		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy strict-origin-when-cross-origin
@@ -30,23 +27,27 @@
 	}
 }
 
-https://{$PUBLIC_HOST} {
+admin.{$DOMAIN} {
 	import front_door
 	reverse_proxy super-admin:3000 {
 		header_up -Authorization # the front-door password is never passed on to a portal
 	}
 }
 
-https://{$PUBLIC_HOST}:8025 {
+app.{$DOMAIN} {
+	import front_door
+	reverse_proxy dashboard:3001 {
+		header_up -Authorization
+	}
+}
+
+mail.{$DOMAIN} {
 	import front_door
 	reverse_proxy mailpit:8025 {
 		header_up -Authorization
 	}
 }
 
-https://{$PUBLIC_HOST}:3001 {
-	import front_door
-	reverse_proxy dashboard:3001 {
-		header_up -Authorization
-	}
+{$DOMAIN}, www.{$DOMAIN} {
+	redir https://app.{$DOMAIN}{uri} permanent
 }

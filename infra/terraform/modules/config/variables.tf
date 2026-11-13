@@ -12,8 +12,8 @@ variable "kms_key_id" {
   type        = string
 }
 
-variable "public_host" {
-  description = "The address the portals are reached at (the server's Elastic IP, or a domain name once there is one)."
+variable "domain" {
+  description = "The domain the portals are served on: admin.<domain>, app.<domain>, mail.<domain>."
   type        = string
 }
 

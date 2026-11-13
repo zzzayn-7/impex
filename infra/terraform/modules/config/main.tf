@@ -9,18 +9,19 @@
 # After changing a parameter, run the deploy command (an output of the root module). The repository settings live under <prefix>/deploy/.
 
 locals {
-  public_url = "https://${var.public_host}"
+  admin_url = "https://admin.${var.domain}"
+  app_url   = "https://app.${var.domain}"
 
   plain = {
-    PUBLIC_HOST                   = var.public_host
+    DOMAIN                        = var.domain
     POSTGRES_USER                 = "impex_admin"
-    NEXT_PUBLIC_API_GATEWAY_URL   = local.public_url
-    APP_BASE_URL                  = local.public_url
-    TENANT_PORTAL_URL             = "${local.public_url}:3001"
-    SUPER_ADMIN_PORTAL_URL        = local.public_url
+    NEXT_PUBLIC_API_GATEWAY_URL   = local.admin_url
+    APP_BASE_URL                  = local.admin_url # invitation links open the activation page of the Super Admin portal
+    TENANT_PORTAL_URL             = local.app_url
+    SUPER_ADMIN_PORTAL_URL        = local.admin_url
     DEMO_MODE                     = "false"
-    SMTP_PORT                     = "1025" # Mailpit, inside the Docker network: plain SMTP, no login
-    SMTP_STARTTLS                 = "false"
+    SMTP_PORT                     = "587" # real e-mail: Gmail submission with STARTTLS (Mailpit, on 1025 without TLS, is only for catching mail while testing)
+    SMTP_STARTTLS                 = "true"
     SMTP_SSL                      = "false"
     SMTP_FROM_NAME                = "Impex"
     FINANCE_SYNC_ENABLED          = "true"

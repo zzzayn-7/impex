@@ -48,7 +48,7 @@ resource "aws_eip" "this" {
 
 resource "aws_security_group" "server" {
   name        = "${var.name}-server"
-  description = "Impex: the two portals, over HTTPS only"
+  description = "Impex: HTTPS (and port 80 for certificates and the redirect)"
   vpc_id      = aws_vpc.this.id
   tags        = { Name = "${var.name}-server" }
 
@@ -59,7 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "portal" {
   for_each = { for pair in setproduct(var.ingress_ports, var.allowed_cidrs) : "${pair[0]}-${pair[1]}" => pair }
 
   security_group_id = aws_security_group.server.id
-  description       = "HTTPS on port ${each.value[0]} (portals / Mailpit)"
+  description       = "Web on port ${each.value[0]} (HTTPS; 80 only redirects and validates certificates)"
   ip_protocol       = "tcp"
   from_port         = each.value[0]
   to_port           = each.value[0]

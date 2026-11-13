@@ -46,6 +46,16 @@ variable "termination_protection" {
   default     = true
 }
 
+variable "domain_name" {
+  description = "Your domain (registered anywhere), for example example.com. Terraform hosts it in Route 53 (about 0.50 USD a month), points it at the server, and the server serves admin.<domain>, app.<domain> and mail.<domain> over HTTPS."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.domain_name))
+    error_message = "domain_name must be a plain domain such as example.com (lowercase, no https://, no path)."
+  }
+}
+
 variable "repo_url" {
   description = "The GitHub repository the server deploys from."
   type        = string
