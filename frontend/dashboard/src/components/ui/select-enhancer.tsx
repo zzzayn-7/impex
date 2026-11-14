@@ -74,6 +74,9 @@ function Dropdown({ select }: { select: HTMLSelectElement }) {
   const shown = options.filter((o) => !query.trim() || o.label.toLowerCase().includes(query.trim().toLowerCase()));
   const { layout, look } = splitClasses(select.className);
   const disabled = select.disabled;
+  // A dropdown the page gave no width to is as wide as its LONGEST option, whatever is selected, so choosing a short or a long option never changes its size (and never
+  // shifts the page). The width comes from an invisible stack of all the labels, drawn with CSS content so it adds no text to the page.
+  const fixedWidth = /(^|\s)(?:[a-z0-9-]+:)*(?:w-|min-w-)/.test(layout);
 
   const close = useCallback(() => { setOpen(false); setQuery(""); }, []);
 
@@ -148,7 +151,14 @@ function Dropdown({ select }: { select: HTMLSelectElement }) {
         onKeyDown={(e) => { if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}
         className={`${look} flex w-full items-center justify-between gap-2 text-left`}
       >
-        <span className="min-w-0 flex-1 truncate">{selected?.label ?? ""}</span>
+        <span className="relative min-w-0 flex-1">
+          <span className="block truncate">{selected?.label ?? ""}</span>
+          {!fixedWidth && (
+            <span aria-hidden="true" data-ix-sizer="" className="invisible block h-0 max-w-[24rem] overflow-hidden whitespace-nowrap">
+              {options.map((o) => <span key={o.index} data-t={o.label || " "} className="block after:content-[attr(data-t)]" />)}
+            </span>
+          )}
+        </span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`h-4 w-4 shrink-0 text-ix-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
@@ -207,12 +217,33 @@ export default function SelectEnhancer() {
       }
       if (changed) setItems(Array.from(known.current, ([select, host]) => ({ select, host })));
     };
-    scan();
+    // On a page the server rendered, React is still HYDRATING it for a moment after it loads (Next runs that as a low-priority transition that any other update can
+    // interrupt and restart). A dropdown's host element put into the page before that is over would be an unexpected extra node on the restart, and React would throw
+    // the server's HTML away and render the whole page again (error #418). So nothing is touched until the browser has been idle after the load: hydration works in
+    // back-to-back slices, so an idle moment means it is finished. A page that was not server rendered (a client-side navigation, a test) has nothing to wait for.
+    let settled = !Array.isArray((window as unknown as { __next_f?: unknown }).__next_f);
     let pending = 0;
-    const observer = new MutationObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(scan); });
+    let idle = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => { if (settled) scan(); };
+    const settle = () => { settled = true; scan(); };
+    const afterLoad = () => {
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(() => { timer = setTimeout(settle, 200); });
+      else timer = setTimeout(settle, 1200); // Safari has no idle callback
+    };
+    if (!settled) {
+      if (document.readyState === "complete") afterLoad();
+      else window.addEventListener("load", afterLoad, { once: true });
+    }
+    run();
+    const observer = new MutationObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(run); });
     observer.observe(document.body, { childList: true, subtree: true });
-    const handle = setInterval(scan, 700); // a safety net: pages that swap their content without a mutation we can see
-    return () => { observer.disconnect(); clearInterval(handle); cancelAnimationFrame(pending); };
+    const handle = setInterval(run, 700); // a safety net: pages that swap their content without a mutation we can see
+    return () => {
+      observer.disconnect(); clearInterval(handle); cancelAnimationFrame(pending); clearTimeout(timer);
+      if (idle && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
+      window.removeEventListener("load", afterLoad);
+    };
   }, []);
 
   return <>{items.map(({ select, host }) => createPortal(<Dropdown select={select} />, host, host.dataset.ixId))}</>;

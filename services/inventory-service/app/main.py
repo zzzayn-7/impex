@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import delete, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.db_migrations import verify_database_schema
 from app.auth import TenantContext, create_auth_client, create_org_client, require_active_tenant
 from app.database import get_db
 from app.identifiers import annotate_unit_lock, barcode_owner_of, has_stock_history
-from app.models import Product
+from app.models import HiddenMovement, Product, ProductIdentifier, StockBalance, StockMovement, StockOperation, StockReservation
 from app.schemas import ProductCreate, ProductList, ProductResponse, ProductUpdate
 from app.search import like_pattern
 from app.scan_api import router as scan_router
@@ -197,6 +197,40 @@ def _set_active(db: Session, tenant: TenantContext, product_id: uuid.UUID, activ
 def archive_product(product_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
     """Archive (soft-delete): the product disappears from the default list but nothing is erased."""
     return _set_active(db, tenant, product_id, False)
+
+
+@app.delete(f"{PREFIX}/products/{{product_id}}", status_code=status.HTTP_204_NO_CONTENT, tags=["Products"])
+def delete_product(product_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """DELETE FOR GOOD (not the archive): the product is removed completely from this organization's inventory, together with its stock balance, barcodes,
+    stock movements and finished reservations. Orders, receipts and invoices in the other services keep their own copy of the product's SKU and name, so they stay readable.
+
+    Refused (409) while sales orders still hold stock of the product: cancel or dispatch those first, or archive the product instead. The ledger's append-only guard is
+    lifted for this one transaction with the same out-of-band switch the organization purge uses; the application sets it nowhere else."""
+    product = get_scoped_or_404(db, Product, tenant, product_id, "Product")
+    org = tenant.organization_id
+    held = db.scalar(scoped_count(StockReservation, tenant, StockReservation.product_id == product.id, StockReservation.status == "active"))
+    if held:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Sales orders still hold stock of this product. Dispatch or cancel those orders first, or archive the product instead.",
+        )
+    try:
+        db.execute(text("SELECT set_config('app.allow_ledger_maintenance', 'on', true)"))  # this transaction only
+        movements = select(StockMovement.id).where(StockMovement.organization_id == org, StockMovement.product_id == product.id)
+        operations = [row for row in db.scalars(select(StockMovement.operation_id).where(StockMovement.organization_id == org, StockMovement.product_id == product.id).distinct())]
+        db.execute(delete(HiddenMovement).where(HiddenMovement.organization_id == org, HiddenMovement.movement_id.in_(movements)))
+        db.execute(delete(StockMovement).where(StockMovement.organization_id == org, StockMovement.product_id == product.id))
+        if operations:
+            still_used = select(StockMovement.operation_id).where(StockMovement.organization_id == org)
+            db.execute(delete(StockOperation).where(StockOperation.organization_id == org, StockOperation.id.in_(operations), StockOperation.id.not_in(still_used)))
+        db.execute(delete(StockReservation).where(StockReservation.organization_id == org, StockReservation.product_id == product.id))
+        db.execute(delete(StockBalance).where(StockBalance.organization_id == org, StockBalance.product_id == product.id))
+        db.execute(delete(ProductIdentifier).where(ProductIdentifier.organization_id == org, ProductIdentifier.product_id == product.id))
+        db.execute(delete(Product).where(Product.organization_id == org, Product.id == product.id))
+        db.commit()
+    except Exception:
+        db.rollback()  # all or nothing
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "The product could not be deleted. Nothing was changed.")
 
 
 @app.post(f"{PREFIX}/products/{{product_id}}/restore", response_model=ProductResponse, tags=["Products"])

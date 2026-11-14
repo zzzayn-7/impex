@@ -33,6 +33,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ product: data.product, identifiers: data.identifiers, label: data.label }, { headers: { "Cache-Control": "no-store" } });
 }
 
+// DELETE a product FOR GOOD (not the archive): it is removed from the organization's inventory with its stock and stock history. Refused while sales orders
+// still hold stock of it (the service's message says so). Only the signed-in administrator's own products can be deleted: another organization's id is "not found".
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = req.cookies.get(TENANT_SESSION_COOKIE)?.value;
+  if (!token) return fail("You are not signed in.", 401);
+  if (!UUID_RE.test(params.id)) return fail("Product not found.", 404);
+  const result = await inventoryRequest("DELETE", `/api/v1/inventory/products/${params.id}`, token);
+  if (!result || result.status !== 204) return failureResponse(result);
+  return NextResponse.json({ deleted: true }, { headers: { "Cache-Control": "no-store" } });
+}
+
 // EDIT a product of the signed-in administrator's catalog. Only the fields that are sent are changed.
 // The product id is looked up inside the administrator's own organization by the Inventory Service, so another
 // organization's id simply answers "not found". No organization field can be sent or changed from here.

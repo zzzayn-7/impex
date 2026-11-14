@@ -48,7 +48,7 @@ resource "aws_eip" "this" {
 
 resource "aws_security_group" "server" {
   name        = "${var.name}-server"
-  description = "Impex: HTTPS (and port 80 for certificates and the redirect)"
+  description = "Impex: the two portals, over HTTPS only"
   vpc_id      = aws_vpc.this.id
   tags        = { Name = "${var.name}-server" }
 
@@ -59,7 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "portal" {
   for_each = { for pair in setproduct(var.ingress_ports, var.allowed_cidrs) : "${pair[0]}-${pair[1]}" => pair }
 
   security_group_id = aws_security_group.server.id
-  description       = "Web on port ${each.value[0]} (HTTPS; 80 only redirects and validates certificates)"
+  description       = each.value[0] == 80 ? "HTTP on port 80 (certificate validation and the redirect to https)" : "HTTPS on port ${each.value[0]} (portals / Mailpit)"
   ip_protocol       = "tcp"
   from_port         = each.value[0]
   to_port           = each.value[0]
@@ -112,4 +112,16 @@ resource "aws_vpc_security_group_egress_rule" "smtp" {
   from_port         = tonumber(each.value)
   to_port           = tonumber(each.value)
   cidr_ipv4         = "0.0.0.0/0"
+}
+
+# SSH (optional): only from the addresses listed in ssh_cidrs, and the server accepts keys only (no passwords).
+resource "aws_vpc_security_group_ingress_rule" "ssh" {
+  for_each = toset(var.ssh_cidrs)
+
+  security_group_id = aws_security_group.server.id
+  description       = "SSH from ${each.value}"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
+  cidr_ipv4         = each.value
 }

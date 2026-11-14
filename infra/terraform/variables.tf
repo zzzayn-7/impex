@@ -73,3 +73,20 @@ variable "snapshot_retention_days" {
   type        = number
   default     = 7
 }
+
+variable "ssh_allowed_cidrs" {
+  description = "Addresses that may open an SSH session on port 22, for example [\"203.0.113.7/32\"] (your own public IP). Empty keeps SSH closed. Never the whole internet. Login user: ec2-user, key only."
+  type        = list(string)
+  default     = []
+}
+
+variable "extra_dns_records" {
+  description = "Extra DNS records for the domain (the e-mail service's DKIM / return-path / DMARC records). name is relative to the domain."
+  type = list(object({
+    name  = string
+    type  = string
+    ttl   = optional(number, 300)
+    value = string
+  }))
+  default = []
+}

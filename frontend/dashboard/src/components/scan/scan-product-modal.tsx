@@ -116,20 +116,22 @@ export function ScanProductModal({ onFound, onClose, check, activeOnly = true }:
 }
 
 /** The "Scan Product" button with its dialog. Drop it next to any product field: `onFound` receives the identified product and its stock. */
-export function ScanProductButton({ onFound, check, activeOnly, disabled = false, label = "Scan Product", className }: {
+export function ScanProductButton({ onFound, check, activeOnly, disabled = false, label = "Scan Product", className, iconOnly = false }: {
   onFound: (result: ScanResult) => void;
   check?: CheckFn;
   activeOnly?: boolean;
   disabled?: boolean;
   label?: string;
   className?: string;
+  /** Just the scanner icon (the label stays as its accessible name): for a toolbar that has no room for words. */
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} disabled={disabled} aria-haspopup="dialog" className={className ?? `${buttonClass.secondary} shrink-0`}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10" /></svg>
-        {label}
+      <button type="button" onClick={() => setOpen(true)} disabled={disabled} aria-haspopup="dialog" aria-label={iconOnly ? label : undefined} className={className ?? `${buttonClass.secondary} shrink-0`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={iconOnly ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10" /></svg>
+        {!iconOnly && label}
       </button>
       {open && <ScanProductModal activeOnly={activeOnly} check={check} onClose={() => setOpen(false)} onFound={(result) => { setOpen(false); onFound(result); }} />}
     </>

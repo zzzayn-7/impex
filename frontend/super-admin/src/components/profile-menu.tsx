@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import { useThemeOptional } from "@/components/theme/theme-provider";
+import { useVisibleViewport } from "@/lib/visual-viewport";
 
 // The signed-in administrator in the header: just the round avatar (their profile picture, or their initials). Hovering it only blurs it a little; CLICKING it opens a small
 // dark-glass card (Escape, a click elsewhere or clicking the avatar again closes it). The card shows, in this order: the profile picture centred in its frame with a small edit
@@ -36,6 +37,7 @@ const Trash = () => <svg {...icon} className="h-4 w-4"><path d="M3 6h18" /><path
 
 /** Take a picture with the device's camera: live preview, one shot, a look at it, then "Use this photo" (or retake). Everything stays in the browser until it is used. */
 function CameraDialog({ onUse, onClose }: { onUse: (file: File) => void; onClose: () => void }) {
+  useVisibleViewport();
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -78,11 +80,11 @@ function CameraDialog({ onUse, onClose }: { onUse: (file: File) => void; onClose
   return (
     <div
       data-profile-dialog=""
-      className="ix-overlay-in fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
+      className="ix-overlay-in fixed inset-x-0 top-[var(--ix-vv-top,0px)] z-[100] flex h-[var(--ix-vv-h,100dvh)] overflow-y-auto overscroll-contain bg-black/60 p-4 backdrop-blur-sm"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="ix-menu ix-dialog-in w-full max-w-xs p-4 text-center">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="ix-menu ix-dialog-in m-auto w-full max-w-xs p-4 text-center">
         <h3 id={titleId} className="text-sm font-semibold text-ix-text">Take a picture</h3>
         {problem ? (
           <p role="alert" className="mt-3 text-xs text-ix-muted">{problem}</p>

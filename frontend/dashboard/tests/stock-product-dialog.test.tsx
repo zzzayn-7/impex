@@ -29,8 +29,10 @@ type Call = { url: string; method: string; body: any };
 let calls: Call[];
 let current: ReturnType<typeof product>;
 let identifiers: unknown[];
+let gone = false;
 
 beforeEach(() => {
+  gone = false;
   calls = [];
   current = product();
   identifiers = [identifier];
@@ -44,6 +46,8 @@ beforeEach(() => {
     if (method === "PATCH" && url === `/api/products/${P1}`) { current = { ...current, ...(body.name ? { name: body.name } : {}) }; return json(200, { product: current }); }
     if (method === "POST" && url === `/api/products/${P1}/archive`) { current = { ...current, is_active: false }; return json(200, { product: current }); }
     if (method === "POST" && url === `/api/products/${P1}/restore`) { current = { ...current, is_active: true }; return json(200, { product: current }); }
+    if (method === "DELETE" && url === `/api/products/${P1}`) { gone = true; return json(200, { deleted: true }); }
+    if (method === "GET" && url.startsWith("/api/stock/items")) return json(200, { items: gone ? [] : [row({ is_active: !current || current.is_active })], total: gone ? 0 : 1, pageSize: 25 });
     if (method === "POST" && url === `/api/products/${P1}/identifiers`) { identifiers = [...identifiers, { ...identifier, id: "i2", value: body.value, kind: body.kind }]; return json(201, { identifier: identifiers[identifiers.length - 1] }); }
     if (method === "POST" && url === "/api/products") return json(201, { product: product({ id: P2, sku: body.sku, name: body.name }) });
     return json(404, { error: "not found" });
@@ -185,46 +189,73 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
   });
 });
 
-describe("the Delete icon (always asks first)", () => {
+describe("the Archive and Delete icons (each always asks first)", () => {
   // jsdom has no <dialog>.showModal, so the confirmation falls back to window.confirm (the same question, asked the same way)
   const answer = (yes: boolean) => { const confirm = vi.fn(() => yes); vi.stubGlobal("confirm", confirm); return confirm; };
 
-  it("asks before anything happens, and saying no changes nothing", async () => {
+  it("Archive asks before anything happens, and saying no changes nothing", async () => {
     const confirm = answer(false);
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
+    await user.click(screen.getByRole("button", { name: "Archive Steel bolt" }));
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(String((confirm.mock.calls[0] as unknown[])[0])).toContain("Nothing is erased");
     expect(writes()).toEqual([]);
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
-  it("after the confirmation the product is archived (nothing is erased), the page re-reads its figures and says so", async () => {
+  it("after the confirmation Archive keeps everything (nothing is erased) and re-reads the list", async () => {
+    answer(true);
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Archive Steel bolt" }));
+    await waitFor(() => expect(writes()).toEqual([{ url: `/api/products/${P1}/archive`, method: "POST", body: undefined }]));
+    expect((await screen.findByRole("status")).textContent).toContain("Steel bolt was archived");
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled()); // the total cost is read again
+  });
+
+  it("Delete asks in plain words that it is permanent, and saying no changes nothing", async () => {
+    const confirm = answer(false);
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(String((confirm.mock.calls[0] as unknown[])[0])).toContain("cannot be undone");
+    expect(writes()).toEqual([]);
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("after the confirmation Delete removes the product for good (a DELETE, not the archive): the row goes and the page re-reads its figures", async () => {
     answer(true);
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
-    await waitFor(() => expect(writes()).toEqual([{ url: `/api/products/${P1}/archive`, method: "POST", body: undefined }]));
+    await waitFor(() => expect(writes()).toEqual([{ url: `/api/products/${P1}`, method: "DELETE", body: undefined }]));
     expect((await screen.findByRole("status")).textContent).toContain("Steel bolt was deleted");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete Steel bolt" })).toBeNull());
     expect(router.refresh).toHaveBeenCalled();
   });
 
   it("a refusal from the service is shown and the row stays", async () => {
     answer(true);
-    vi.stubGlobal("fetch", vi.fn(async () => json(409, { error: "This product still has stock reserved for customer orders." })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(409, { error: "Sales orders still hold stock of this product. Dispatch or cancel those orders first, or archive the product instead." })));
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByRole("button", { name: "Delete Steel bolt" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("This product still has stock reserved for customer orders.");
+    expect((await screen.findByRole("alert")).textContent).toContain("Sales orders still hold stock of this product");
     expect(router.refresh).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Delete Steel bolt" })).toBeTruthy();
   });
 
-  it("an archived (already deleted) product cannot be deleted again, but can still be edited and restored", () => {
+  it("an archived product shows Restore instead of Archive; it can still be edited or deleted for good", async () => {
+    const user = userEvent.setup();
     mount([row({ is_active: false })]);
-    expect((screen.getByRole("button", { name: "Delete Steel bolt" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Archive Steel bolt" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Delete Steel bolt" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "Edit Steel bolt" }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Restore Steel bolt" }));
+    await waitFor(() => expect(writes()).toEqual([{ url: `/api/products/${P1}/restore`, method: "POST", body: undefined }]));
+    expect((await screen.findByRole("status")).textContent).toContain("Steel bolt was restored");
   });
 
   it("has a tooltip on each icon", async () => {

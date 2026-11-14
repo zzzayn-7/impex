@@ -137,13 +137,13 @@ describe("Stock page", () => {
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Opening Balance/);
   });
 
-  it("passes only whitelisted filters; a warehouse in the URL is ignored", async () => {
+  it("passes only whitelisted filters; a warehouse, the old in-stock filter and a page number in the URL are ignored (the list scrolls, it has no pages)", async () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const wid = "11111111-1111-4111-8111-111111111111";
     await render(StockPage as Page, { q: "bolt", warehouse: wid, inStock: "1", status: "all", page: "2", organization_id: ORG_B_ID });
     const stockCall = inventoryCalls().find((c) => new URL(c.url).pathname.endsWith("/stock"))!;
-    expect(Object.fromEntries(new URL(stockCall.url).searchParams)).toEqual({ q: "bolt", in_stock_only: "true", status: "all", limit: "25", offset: "25" });
+    expect(Object.fromEntries(new URL(stockCall.url).searchParams)).toEqual({ q: "bolt", status: "all", limit: "25", offset: "0" });
   });
 });
 

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 
 import { Tooltip } from "@/components/ui/tooltip";
+import { useVisibleViewport } from "@/lib/visual-viewport";
 import ThemeCustomizer from "./theme-customizer";
 import { useTheme } from "./theme-provider";
 
@@ -12,6 +13,7 @@ import { useTheme } from "./theme-provider";
 
 export default function ThemeButton() {
   const { open, setOpen, cancel } = useTheme();
+  useVisibleViewport(open); // the panel never grows taller than the visible screen (the phone's bars and keyboard are not part of it)
   const panelId = useId();
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -57,7 +59,7 @@ export default function ThemeButton() {
           id={panelId}
           role="dialog"
           aria-label="Customize Appearance"
-          className="ix-menu absolute inset-x-0 top-full z-50 mt-3 max-h-[calc(100dvh-7rem)] overflow-y-auto p-4 sm:inset-x-auto sm:right-0 sm:w-[27rem] sm:p-5"
+          className="ix-menu absolute inset-x-0 top-full z-50 mt-3 max-h-[calc(var(--ix-vv-h,100dvh)-7rem)] overflow-y-auto p-4 sm:inset-x-auto sm:right-0 sm:w-[27rem] sm:p-5"
         >
           <h2 className="mb-4 flex items-center gap-2.5 text-base font-semibold tracking-tight text-ix-text">
             <span aria-hidden="true" className="h-4 w-1 rounded-full bg-ix-accent-text" />

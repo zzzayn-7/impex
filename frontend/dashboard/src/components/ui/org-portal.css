@@ -5,6 +5,14 @@
 .ix-dash table :is(th, td):not(:first-child) { text-align: center; }
 .ix-dash table td:not(:first-child) > div.flex { justify-content: center; }
 
+/* PHONES. Safari on an iPhone zooms the whole page in when a text box smaller than 16px gets focus, so a pop-up form that was laid out to fit suddenly does not (and the
+   person has to pinch back out). On touch screens every text box is therefore 16px. Pop-ups themselves are sized to the visible screen in components/ui/modal.tsx. */
+@media (hover: none) and (pointer: coarse) {
+  .ix-dash :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+  dialog :is(input, textarea),
+  [data-ix-dropdown] input { font-size: 16px; }
+}
+
 /* The Profit & Loss chart: profit is GREEN (the portal's palette has no green of its own - its accent is chosen by the person), loss is the theme's red. Two stops, one for
    dark and one for light backgrounds, so both keep an accessible contrast against the glass. */
 :root { --ix-profit-rgb: 74 222 128; }

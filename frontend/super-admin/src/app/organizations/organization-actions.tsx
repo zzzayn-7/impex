@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
+import { useVisibleViewport } from "@/lib/visual-viewport";
+
 type Props = {
   organization: { id: string; name: string; isLocked: boolean; deletionPending: boolean };
 };
@@ -19,6 +21,7 @@ export default function OrganizationActions({ organization }: Props) {
   const router = useRouter();
   const titleId = useId();
   const [dialog, setDialog] = useState<Dialog>(null);
+  useVisibleViewport(dialog !== null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [typed, setTyped] = useState("");
@@ -88,8 +91,8 @@ export default function OrganizationActions({ organization }: Props) {
 
       {/* in the page itself, not inside the table: the panel around it has a backdrop filter, which would make "fixed" mean "fixed to the panel" */}
       {dialog && createPortal(
-        <div className="ix-overlay-in fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-          <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="ix-dialog-in w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 text-left shadow-2xl">
+        <div className="ix-overlay-in fixed inset-x-0 top-[var(--ix-vv-top,0px)] z-[100] flex h-[var(--ix-vv-h,100dvh)] overflow-y-auto overscroll-contain bg-black/60 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="ix-dialog-in m-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 text-left shadow-2xl sm:p-6">
             {dialog === "lock" && (
               <>
                 <h3 id={titleId} className="text-base font-semibold text-white">Lock {organization.name}?</h3>

@@ -32,3 +32,14 @@ resource "aws_route53_record" "caa" {
   ttl     = 3600
   records = ["0 issue \"letsencrypt.org\"", "0 issuewild \";\""]
 }
+
+# Records the e-mail service needs (DKIM, return path, DMARC ...). A TXT value longer than 255 characters is split into the several strings DNS requires.
+resource "aws_route53_record" "extra" {
+  for_each = { for r in var.extra_records : "${r.name}.${r.type}" => r }
+
+  zone_id = aws_route53_zone.this.zone_id
+  name    = "${each.value.name}.${var.domain_name}"
+  type    = each.value.type
+  ttl     = each.value.ttl
+  records = each.value.type == "TXT" ? [join("\" \"", [for i in range(0, ceil(length(each.value.value) / 255)) : substr(each.value.value, i * 255, 255)])] : [each.value.value]
+}

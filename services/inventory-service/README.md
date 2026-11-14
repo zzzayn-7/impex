@@ -17,7 +17,8 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `GET /products?q=&status=active\|archived\|all&limit=&offset=` | list / search / filter (paged) |
 | `GET /products/{id}` | view one |
 | `PATCH /products/{id}` | update (only the fields sent) |
-| `POST /products/{id}/archive` / `restore` | archive (soft delete) / restore |
+| `POST /products/{id}/archive` / `restore` | archive (hide it, keep everything) / restore |
+| `DELETE /products/{id}` | delete **for good**: the product with its stock balance, barcodes, stock movements and finished reservations (one transaction, `204`). `409` while sales orders still hold stock of it; another organization's id is `404`. Other services keep their own copy of the SKU and name |
 | `GET /stock?q=&in_stock_only=&status=` | overview: per product the quantity in stock |
 | `GET /stock/movements?product_id=&type=` | the ledger, newest first (read-only) |
 | `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product |
@@ -63,7 +64,7 @@ Interactive docs: http://localhost:8002/docs
 | organizations never mix | every query is tenant-scoped, and composite foreign keys `(organization_id, id)` tie a balance/movement and its product to the **same** organization inside the database |
 | exact quantities | `NUMERIC(18,4)`, JSON strings, never floats |
 | pieces are whole | units that are not known measurable ones (`kg`, `g`, `l`, `ml`, `m`, `cm`, `tonne`, ...) accept whole numbers only; the service reports it as `unit_allows_fractions` |
-| history is kept | a product is archived, never deleted; archived products refuse new stock changes but keep their stock and history |
+| history is kept | archiving keeps everything: archived products refuse new stock changes but keep their stock and history. Deleting a product (`DELETE /products/{id}`, the portal's Delete icon, after a plain-words confirmation) is the one way history goes: it lifts the ledger's append-only guard for that single transaction with the same out-of-band switch the organization purge uses, and removes only that product's rows |
 
 Movement types: `opening`, `in`, `out`. Each records product, quantity, the product's stock afterwards (`balance_after`),
 a reason, the authenticated user (id and email) and the time. An opening balance is only possible before any other

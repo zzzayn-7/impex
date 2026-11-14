@@ -20,7 +20,7 @@ export function inventoryServiceUrl(): string {
 export type InventoryResult = { status: number; data: any } | null; // null = the service could not be reached
 
 export async function inventoryRequest(
-  method: "GET" | "POST" | "PATCH",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
   token: string,
   body?: unknown,

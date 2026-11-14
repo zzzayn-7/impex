@@ -13,15 +13,15 @@ export const metadata: Metadata = {
 type SearchParams = Record<string, string | string[] | undefined>;
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
-// Only these filters and the page number are read from the URL. There is no organization parameter: whose stock
+// Only these filters are read from the URL. There is no organization parameter: whose stock
 // is shown is decided on the server from the signed-in administrator's session.
 function parseFilters(searchParams: SearchParams): StockFilters {
   const status = first(searchParams.status);
   return {
     q: (first(searchParams.q) ?? "").trim().slice(0, 100),
-    inStockOnly: first(searchParams.inStock) === "1",
+    inStockOnly: false, // (the "in stock only" filter is gone from the page)
     status: status === "archived" || status === "all" ? status : "active",
-    page: Math.max(1, Math.min(10000, parseInt(first(searchParams.page) ?? "1", 10) || 1)),
+    page: 1, // the list scrolls: the first rows come with the page, the rest as the reader reaches the end
   };
 }
 

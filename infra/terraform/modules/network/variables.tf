@@ -30,3 +30,14 @@ variable "allowed_cidrs" {
     error_message = "allowed_cidrs must be a non-empty list of valid IPv4 CIDR blocks, for example [\"203.0.113.7/32\"]."
   }
 }
+
+variable "ssh_cidrs" {
+  description = "Addresses that may open an SSH session (port 22). Empty (the default) keeps SSH closed: Session Manager is the way in."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.ssh_cidrs : can(cidrnetmask(c)) && c != "0.0.0.0/0"])
+    error_message = "ssh_cidrs must be valid IPv4 CIDR blocks, and never 0.0.0.0/0 (SSH is never open to the whole internet)."
+  }
+}

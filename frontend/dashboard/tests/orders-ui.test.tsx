@@ -773,7 +773,8 @@ describe("Delivery Lists board", () => {
       expect(dialog.textContent, text).toContain(text);
     }
     expect(dialog.className).toContain("rounded-[24px]");
-    expect(dialog.className).toContain("max-h-[85vh]"); // never taller than the viewport
+    expect(dialog.className).toContain("max-h-[calc(var(--ix-vv-h,100dvh)-1.5rem)]"); // never taller than the VISIBLE screen (not vh: on a phone that includes the area behind the browser's bars)
+    expect(dialog.className).not.toMatch(/\d\s?vh\]/);
     expect(dialog.querySelector("[data-modal-body]")!.className).toContain("overflow-y-auto"); // the list scrolls INSIDE the dialog
     expect(document.body.style.overflow).toBe("hidden"); // the page behind does not scroll
     expect(within(dialog).getByRole("link", { name: "Prepare dispatch" }).getAttribute("href")).toBe(`/delivery-lists/${L1}/dispatch`);

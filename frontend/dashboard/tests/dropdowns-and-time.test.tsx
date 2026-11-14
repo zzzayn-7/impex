@@ -53,6 +53,49 @@ describe("every dropdown is compact and searchable", () => {
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
   });
 
+  it("a dropdown without a width of its own is as wide as its longest option, so choosing a short or a long one never changes its size", async () => {
+    render(
+      <>
+        <div>
+          <select aria-label="Status" className="rounded-lg border px-3" defaultValue="a">
+            <option value="a">Active</option>
+            <option value="b">Archived products</option>
+            <option value="c">All</option>
+          </select>
+        </div>
+        <div>
+          <select aria-label="Fixed" className="w-36 rounded-lg border px-3" defaultValue="a"><option value="a">Active</option><option value="b">Archived products</option></select>
+        </div>
+        <SelectEnhancer />
+      </>
+    );
+    const status = await screen.findByRole("button", { name: "Status" });
+    const labels = Array.from(status.querySelectorAll("[data-ix-sizer] [data-t]")).map((el) => el.getAttribute("data-t"));
+    expect(labels).toEqual(["Active", "Archived products", "All"]); // every option takes part in the width, whatever is selected
+    expect(status.querySelector("[data-ix-sizer]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(status.textContent).toBe("Active"); // but only the chosen one is text
+    expect((await screen.findByRole("button", { name: "Fixed" })).querySelector("[data-ix-sizer]")).toBeNull(); // an explicit width is respected as it is
+  });
+
+  it("on a server-rendered page it touches nothing until the browser has been idle (React is still hydrating before that)", async () => {
+    let idle: (() => void) | undefined;
+    (window as any).__next_f = []; // what Next puts on a page it rendered on the server
+    (window as any).requestIdleCallback = (cb: () => void) => { idle = cb; return 1; };
+    (window as any).cancelIdleCallback = () => {};
+    try {
+      render(<><div><select aria-label="Status" defaultValue="a"><option value="a">Active</option></select></div><SelectEnhancer /></>);
+      await new Promise((resolve) => setTimeout(resolve, 900)); // longer than the scan interval
+      expect(screen.queryByRole("button", { name: "Status" })).toBeNull(); // still the plain select: no extra element was put into the page
+      expect(document.querySelector("[data-ix-enhanced]")).toBeNull();
+      idle!();
+      expect(await screen.findByRole("button", { name: "Status" })).toBeTruthy();
+    } finally {
+      delete (window as any).__next_f;
+      delete (window as any).requestIdleCallback;
+      delete (window as any).cancelIdleCallback;
+    }
+  });
+
   it("keeps the layout classes on the wrapper and the look on the button", () => {
     expect(splitClasses("mt-1 w-full appearance-none rounded-xl border px-3 pr-8")).toEqual({ layout: "mt-1", look: "rounded-xl border px-3" });
   });

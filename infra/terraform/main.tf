@@ -24,6 +24,7 @@ module "network" {
   availability_zone = local.az
   ingress_ports     = local.portal_ports
   allowed_cidrs     = var.allowed_cidrs
+  ssh_cidrs         = var.ssh_allowed_cidrs
 }
 
 module "security" {
@@ -75,4 +76,12 @@ module "dns" {
   domain_name = var.domain_name
   environment = var.environment
   public_ip   = module.network.public_ip
+
+  extra_records = var.extra_dns_records
+}
+
+# The zone used to be created with a count; it is the SAME zone (same nameservers, already delegated at the registrar), so it is moved, never recreated.
+moved {
+  from = module.dns[0]
+  to   = module.dns
 }

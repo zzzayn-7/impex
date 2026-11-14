@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as searchProducts, POST as createProduct } from "@/app/api/products/route";
-import { GET as viewProduct, PATCH as editProduct } from "@/app/api/products/[id]/route";
+import { DELETE as deleteProduct, GET as viewProduct, PATCH as editProduct } from "@/app/api/products/[id]/route";
 import { POST as archiveProduct } from "@/app/api/products/[id]/archive/route";
 import { POST as restoreProduct } from "@/app/api/products/[id]/restore/route";
 
@@ -47,6 +47,7 @@ describe("every product route is protected by the tenant session", () => {
     ["edit", () => editProduct(request("PATCH", { name: "X Y" }, null), ctx())],
     ["archive", () => archiveProduct(request("POST", undefined, null, null), ctx())],
     ["restore", () => restoreProduct(request("POST", undefined, null, null), ctx())],
+    ["delete", () => deleteProduct(request("DELETE", undefined, null, null), ctx())],
   ])("%s without a session answers 401 and never calls the Inventory Service", async (_name, call) => {
     expect((await call()).status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -228,6 +229,33 @@ describe("archive and restore", () => {
     expect((await handler(request("POST"), ctx())).status).toBe(404);
     stub(() => json(403, { detail: "Your organization is not active." }));
     expect((await handler(request("POST"), ctx())).status).toBe(403);
+  });
+});
+
+describe("delete (for good)", () => {
+  beforeEach(() => stub(() => new Response(null, { status: 204 })));
+
+  it("calls the product's own DELETE endpoint as the signed-in administrator, with nothing from the browser", async () => {
+    const res = await deleteProduct(request("DELETE", { organization_id: "evil" }), ctx());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    const { url, init } = upstream();
+    expect(url).toBe(`${INVENTORY}/api/v1/inventory/products/${ID}`);
+    expect(init.method).toBe("DELETE");
+    expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(init.body).toBeUndefined();
+  });
+
+  it("rejects a malformed id, and passes the service's refusals on in its own words", async () => {
+    expect((await deleteProduct(request("DELETE"), ctx("nope"))).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    stub(() => json(404, { detail: "Product not found." }));
+    expect((await deleteProduct(request("DELETE"), ctx())).status).toBe(404);
+    stub(() => json(409, { detail: "Sales orders still hold stock of this product. Dispatch or cancel those orders first, or archive the product instead." }));
+    const refused = await deleteProduct(request("DELETE"), ctx());
+    expect(refused.status).toBe(409);
+    stub(() => { throw new Error("down"); });
+    expect((await deleteProduct(request("DELETE"), ctx())).status).toBe(503);
   });
 });
 

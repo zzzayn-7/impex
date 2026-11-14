@@ -17,3 +17,10 @@ termination_protection = true
 
 # Your domain (hosted in Route 53; set the registrar nameservers to the dns_name_servers output).
 domain_name = "example.com"
+
+# Extra DNS records, for example from your e-mail service (name is relative to the domain).
+# extra_dns_records = [
+#   { name = "resend._domainkey", type = "TXT",   value = "p=MIGf...IDAQAB" },
+#   { name = "send",              type = "CNAME", value = "send.forge.rmta.net" },
+#   { name = "_dmarc",            type = "TXT",   value = "v=DMARC1; p=none;" },
+# ]

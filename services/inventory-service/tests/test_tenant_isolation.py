@@ -77,7 +77,7 @@ def test_neither_administrator_can_modify_the_others_products(client, world, ses
     assert client.patch(f"{URL}/{target}", json={"name": "HIJACKED", "selling_price": "0.01"}, headers=headers).status_code == 404
     assert client.post(f"{URL}/{target}/archive", headers=headers).status_code == 404
     assert client.post(f"{URL}/{target}/restore", headers=headers).status_code == 404
-    assert client.delete(f"{URL}/{target}", headers=headers).status_code == 405  # there is no hard delete at all
+    assert client.delete(f"{URL}/{target}", headers=headers).status_code == 404  # another organization's product cannot be deleted
     after = rows(session_factory)
     assert {k: (v.name, v.selling_price, v.is_active, v.organization_id, v.updated_at) for k, v in after.items()} == \
            {k: (v.name, v.selling_price, v.is_active, v.organization_id, v.updated_at) for k, v in before.items()}
@@ -212,8 +212,11 @@ def test_a_dependency_outage_returns_503_never_401_or_data(client, directory, wo
     assert client.get("/health").status_code == 200
 
 
-def test_nothing_is_ever_hard_deleted_through_the_api(client, world, session_factory):
+def test_a_delete_removes_only_that_product_of_the_callers_own_organization(client, world, session_factory):
     target = world["products"]["alpha"][0]["id"]
-    assert client.delete(f"{URL}/{target}", headers=bearer("admin-alpha")).status_code == 405
+    assert client.delete(f"{URL}/{target}", headers=bearer("admin-beta")).status_code == 404
     with session_factory() as db:
         assert db.scalar(select(func.count()).select_from(Product)) == 4
+    assert client.delete(f"{URL}/{target}", headers=bearer("admin-alpha")).status_code == 204
+    with session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(Product)) == 3

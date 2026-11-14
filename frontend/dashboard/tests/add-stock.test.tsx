@@ -56,7 +56,7 @@ const mount = (products = [product()]) =>
 const writes = () => calls.filter((c) => c.method !== "GET");
 const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole("button", { name: "Add Stock" }));
-  return screen.findByRole("dialog", { name: "Add Product to Stock" });
+  return screen.findByRole("region", { name: "Add Product to Stock" });
 };
 async function fill(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, v: { sku?: string; name?: string; unit?: string; cost?: string; selling?: string; opening?: string } = {}) {
   const x = { sku: "dell-001", name: "Dell Latitude Laptop", unit: "pcs", cost: "620", selling: "799", ...v };
@@ -75,16 +75,16 @@ describe("the buttons on the Stock page", () => {
     expect(top).toEqual(["Add Stock", "Opening Balance"]);
   });
 
-  it("a product's row has no Stock In / Stock Out buttons any more: its Actions are only the Edit and Delete icons", () => {
+  it("a product's row has no Stock In / Stock Out buttons any more: its Actions are the Edit, Archive and Delete icons", () => {
     mount();
     const rowOf = within(screen.getAllByRole("row")[1]);
     expect(rowOf.queryByRole("button", { name: /Stock In|Stock Out/ })).toBeNull();
-    expect(rowOf.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit Steel bolt", "Delete Steel bolt"]);
+    expect(rowOf.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Edit Steel bolt", "Archive Steel bolt", "Delete Steel bolt"]);
   });
 });
 
 describe("Add Stock opens a form for a NEW product", () => {
-  it("titled 'Add Product to Stock', with every field of the spec, no category and NO existing-product selector", async () => {
+  it("opens as a form on the page (not a dialog), with every field of the spec, no category and NO existing-product selector", async () => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
@@ -99,13 +99,20 @@ describe("Add Stock opens a form for a NEW product", () => {
     expect((within(dialog).getByLabelText("Currency") as HTMLInputElement).value).toBe("USD");
   });
 
-  it("explains the opening quantity section in the words of the spec", async () => {
+  it("is an inline form like Add Client (no dialog), with the opening quantity box beside the currency and below the barcode, and no 'if the goods carry one' wording", async () => {
     const user = userEvent.setup();
     mount();
-    const dialog = await openDialog(user);
-    expect(within(dialog).getByRole("heading", { name: "Existing Stock / Opening Quantity" })).toBeTruthy();
-    expect(dialog.textContent).not.toContain("Enter a quantity only if your organization already owns these goods"); // no descriptions under the text boxes
-    expect(dialog.textContent).not.toContain("Leave it at 0");
+    const form = await openDialog(user);
+    expect(screen.queryByRole("dialog")).toBeNull(); // it is part of the page, not a pop-up
+    expect(within(form).getByRole("heading", { name: "New product" })).toBeTruthy();
+    expect(within(form).queryByRole("heading", { name: "Existing Stock / Opening Quantity" })).toBeNull(); // no separate section any more
+    expect(form.textContent).not.toContain("if the goods carry one");
+    const order = Array.from(form.querySelectorAll("label")).map((l) => l.textContent ?? "");
+    const at = (start: string) => order.findIndex((text) => text.startsWith(start));
+    expect(at("Barcode")).toBeGreaterThan(-1);
+    expect(at("Currency")).toBeGreaterThan(at("Cost price"));
+    expect(at("Opening quantity")).toBe(at("Currency") + 1); // right after the currency box, on the row below the barcode
+    expect(order[at("Barcode")]).toBe("Barcode"); // just the word
   });
 
   it("validates the required fields inline and sends nothing until they are right", async () => {
@@ -115,7 +122,7 @@ describe("Add Stock opens a form for a NEW product", () => {
     await submit(user, dialog);
     for (const text of ["Enter a SKU.", "Enter the product name.", "Enter the unit of measurement", "Enter the cost price."]) expect(dialog.textContent, text).toContain(text);
     expect(calls).toEqual([]);
-    expect(screen.getByRole("dialog", { name: "Add Product to Stock" })).toBeTruthy(); // it stays open
+    expect(screen.getByRole("region", { name: "Add Product to Stock" })).toBeTruthy(); // it stays open
   });
 
   it.each(["abc", "-5", "1.23456", "1,5"])("refuses the opening quantity %j beside the field and sends nothing", async (typed) => {
@@ -141,7 +148,7 @@ describe("Add Stock opens a form for a NEW product", () => {
     await user.click(saving);
     expect(calls.filter((c) => c.url === "/api/products")).toHaveLength(1);
     release(json(201, { product: product({ id: NEW, sku: "DELL-001", name: "Dell Latitude Laptop" }) }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("Cancel closes it without sending anything", async () => {
@@ -149,7 +156,7 @@ describe("Add Stock opens a form for a NEW product", () => {
     mount();
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
     expect(calls).toEqual([]);
   });
 });
@@ -166,7 +173,7 @@ describe("Scenario A: a new product with no existing stock", () => {
     expect(writes()[0].body).toMatchObject({ sku: "CISCO-001", name: "Cisco Router", unit: "pcs", costPrice: "620", currencyCode: "USD" }); // no selling price: it is agreed per sales order
     expect(Object.keys(writes()[0].body)).not.toContain("quantity");
     expect(router.refresh).toHaveBeenCalled(); // the Stock table re-reads, so the new product shows at once (with 0 on hand)
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 });
 
@@ -182,7 +189,7 @@ describe("Scenario B: a new product the organization already owns", () => {
     expect(writes()[1].body).toEqual({ product_id: NEW, quantity: "35" }); // the id the product was just given; no organization, no extra mechanism
     expect(writes()[1].headers["Idempotency-Key"]).toMatch(IDEMPOTENCY_KEY_RE);
     expect(router.refresh).toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("allows a decimal quantity (the service decides, per unit, whether that unit may have one)", async () => {
@@ -247,7 +254,7 @@ describe("when the product is created but recording the quantity fails (partial 
     expect(openings[1].headers["Idempotency-Key"]).toBe(openings[0].headers["Idempotency-Key"]); // the service applies it once, however often it is sent
     expect(openings[1].body).toEqual(openings[0].body);
     expect(writes().filter((c) => c.url === "/api/products")).toHaveLength(1); // the product was created ONCE
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("tells the administrator when the service replays an already-applied request (nothing counted twice)", async () => {
@@ -323,7 +330,7 @@ describe("when the product is created but recording the quantity fails (partial 
     await user.click(within(dialog).getByRole("button", { name: "Record it later" }));
     await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\) with no stock yet\. Use Opening Balance to record its starting quantity\./);
     expect(writes().filter((c) => c.url === "/api/stock/opening")).toHaveLength(1); // only the first attempt
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("a quantity that is empty, malformed or zero on retry is refused beside the field and sends nothing", async () => {

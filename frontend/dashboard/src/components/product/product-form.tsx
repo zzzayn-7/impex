@@ -49,14 +49,19 @@ type Props = {
   withOpeningQuantity?: boolean;
   /** Inside a dialog: no card of its own and no heading (the dialog has them). */
   embedded?: boolean;
+  /** An inline card in the look of the Add Client / Purchase Order forms (slate card, small title, compact buttons), shown on the page itself rather than in a dialog. */
+  panel?: boolean;
   /** Text of the submit button when adding. */
   addLabel?: string;
 };
 
 const COMMON_UNITS = ["pcs", "kg", "g", "l", "m", "box", "pallet"];
 const bad = "!border-red-400/60 focus:!border-red-400 focus:!ring-red-400/20";
+// The inline panel draws its fields exactly like the Add Client form (same classes); the dialog and the edit form keep the glass look.
+const panelInput = "mt-1.5 block w-full rounded-lg border bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:ring-1 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500 disabled:opacity-60";
+const panelBad = "!border-red-500/60 focus:!border-red-500 focus:!ring-red-500";
 
-export default function ProductForm({ product, onDone, onCancel, onSaved, defaults, withBarcode = false, withOpeningQuantity = false, embedded = false, addLabel = "Add product" }: Props) {
+export default function ProductForm({ product, onDone, onCancel, onSaved, defaults, withBarcode = false, withOpeningQuantity = false, embedded = false, panel = false, addLabel = "Add product" }: Props) {
   const router = useRouter();
   const editing = Boolean(product);
   const initial = product ? productToForm(product) : { ...EMPTY_PRODUCT, ...(defaults ?? {}) };
@@ -174,14 +179,19 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
     }
   }
 
+  const labelClass = panel ? "block text-xs font-medium text-slate-400" : "block text-xs font-medium text-ix-muted";
+  const inputClass = panel ? panelInput : fieldClass;
+  const badClass = panel ? panelBad : bad;
+  const errorClass = panel ? "mt-1 block text-xs text-red-400" : "mt-1.5 text-xs text-red-300";
+
   function field(id: keyof ProductFormValues, label: string, props: React.InputHTMLAttributes<HTMLInputElement> & { hint?: string; optional?: boolean }) {
     const { hint, optional, ...inputProps } = props; // (a field's descriptive hint is no longer shown under the box - only the reason a box is LOCKED is)
     const error = errors[id];
     return (
       <div>
-        <label htmlFor={`product-${id}`} className="block text-xs font-medium text-ix-muted">
+        <label htmlFor={`product-${id}`} className={labelClass}>
           {label}
-          {optional && <span className="ml-1 text-ix-muted/70">(optional)</span>}
+          {optional && <span className="ml-1 opacity-70">(optional)</span>}
         </label>
         <input
           id={`product-${id}`}
@@ -190,10 +200,10 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
           disabled={loading}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `product-${id}-error` : undefined}
-          className={`${fieldClass} ${error ? bad : ""}`}
+          className={`${inputClass} ${error ? badClass : ""}`}
           {...inputProps}
         />
-        {error ? <p id={`product-${id}-error`} className="mt-1.5 text-xs text-red-300">{error}</p> : inputProps.disabled && !loading && hint && <p className="mt-1.5 text-xs text-ix-muted/80">{hint}</p>}
+        {error ? <p id={`product-${id}-error`} className={errorClass}>{error}</p> : inputProps.disabled && !loading && hint && <p className="mt-1.5 text-xs text-ix-muted/80">{hint}</p>}
       </div>
     );
   }
@@ -202,10 +212,11 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
     <form
       onSubmit={onSubmit}
       noValidate
-      className={embedded ? "space-y-5" : "ix-panel space-y-5 p-6"}
+      className={panel ? "space-y-4 rounded-xl border border-indigo-500/30 bg-slate-900/60 p-4 sm:p-5" : embedded ? "space-y-5" : "ix-panel space-y-5 p-6"}
       aria-label={editing ? "Edit product" : "Add product"}
     >
-      {!embedded && (
+      {panel && <h3 className="text-sm font-semibold text-white">New product</h3>}
+      {!embedded && !panel && (
         <div>
           <h2 className="text-base font-semibold text-ix-text">{editing ? `Edit ${product!.name}` : "Add Product"}</h2>
           <p className="text-xs text-ix-muted">
@@ -215,17 +226,17 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
       )}
 
       {formError && (
-        <div role="alert" className="rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{formError}</div>
+        <div role="alert" className={panel ? "rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400" : "rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm text-red-200"}>{formError}</div>
       )}
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className={`grid grid-cols-1 md:grid-cols-3 ${panel ? "gap-4" : "gap-5"}`}>
         {field("sku", "SKU or product code", { type: "text", placeholder: "WID-001", autoComplete: "off", maxLength: 64, hint: "Unique in your catalog. Stored in capitals." })}
         <div className="md:col-span-2">
           {field("name", "Product name", { type: "text", placeholder: "Stainless steel bolt M10", autoComplete: "off", maxLength: 255 })}
         </div>
         <div className="md:col-span-3">
-          <label htmlFor="product-description" className="block text-xs font-medium text-ix-muted">
-            Description <span className="ml-1 text-ix-muted/70">(optional)</span>
+          <label htmlFor="product-description" className={labelClass}>
+            Description <span className="ml-1 opacity-70">(optional)</span>
           </label>
           <textarea
             id="product-description"
@@ -235,9 +246,9 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
             disabled={loading}
             maxLength={2000}
             aria-invalid={errors.description ? true : undefined}
-            className={`${fieldClass} ${errors.description ? bad : ""}`}
+            className={`${inputClass} ${errors.description ? badClass : ""}`}
           />
-          {errors.description && <p className="mt-1.5 text-xs text-red-300">{errors.description}</p>}
+          {errors.description && <p className={errorClass}>{errors.description}</p>}
         </div>
         {field("unit", "Unit of measurement", {
           type: "text", list: "unit-options", placeholder: "pcs", autoComplete: "off", maxLength: 20,
@@ -247,8 +258,8 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
         {field("hsCode", "HS code", { type: "text", placeholder: "7318.15", autoComplete: "off", maxLength: 16, optional: true, hint: "Customs tariff code, e.g. 8517.12.00." })}
         {withBarcode && !editing && (
           <div>
-            <label htmlFor="product-barcode" className="block text-xs font-medium text-ix-muted">
-              Barcode <span className="ml-1 text-ix-muted/70">(if the goods carry one)</span>
+            <label htmlFor="product-barcode" className={labelClass}>
+              Barcode
             </label>
             <input
               id="product-barcode"
@@ -261,45 +272,44 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
               maxLength={200}
               placeholder="Type, or scan into this box"
               aria-invalid={barcodeError ? true : undefined}
-              className={`${fieldClass} font-mono ${barcodeError ? bad : ""}`}
+              className={`${inputClass} font-mono ${barcodeError ? badClass : ""}`}
             />
-            {barcodeError && <p id="product-barcode-hint" className="mt-1.5 text-xs text-red-300">{barcodeError}</p>}
+            {barcodeError && <p id="product-barcode-hint" className={errorClass}>{barcodeError}</p>}
           </div>
         )}
         {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "What it normally costs you. Up to 4 decimals. The price you charge is agreed with each client when you create their order." })}
         {field("currencyCode", "Currency", { type: "text", placeholder: "USD", maxLength: 3, autoComplete: "off", hint: "3-letter code, e.g. USD, EUR.", style: { textTransform: "uppercase" } })}
+        {withOpeningQuantity && !editing && (
+          <div>
+            <label htmlFor="product-opening-quantity" className={labelClass}>
+              Opening quantity <span className="ml-1 opacity-70">(optional{values.unit.trim() ? `, in ${values.unit.trim()}` : ""})</span>
+            </label>
+            <QuantityInput
+              id="product-opening-quantity"
+              aria-label="Opening quantity"
+              aria-invalid={openingError ? true : undefined}
+              value={opening}
+              onChange={(v) => { setOpening(v); setOpeningError(undefined); }}
+              inputMode="decimal"
+              disabled={loading}
+              className="mt-1.5 w-full"
+            />
+            {openingError && <p role="alert" className={errorClass}>{openingError}</p>}
+          </div>
+        )}
       </div>
-      {withOpeningQuantity && !editing && (
-        <section aria-labelledby="opening-quantity-heading" className="space-y-2 rounded-2xl border border-ix-mist/15 bg-ix-mist/5 p-4">
-          <h3 id="opening-quantity-heading" className="text-sm font-semibold text-ix-text">Existing Stock / Opening Quantity</h3>
-          <label htmlFor="product-opening-quantity" className="block text-xs font-medium text-ix-muted">
-            Opening quantity <span className="ml-1 text-ix-muted/70">(optional{values.unit.trim() ? `, counted in ${values.unit.trim()}` : ""})</span>
-          </label>
-          <QuantityInput
-            id="product-opening-quantity"
-            aria-label="Opening quantity"
-            aria-invalid={openingError ? true : undefined}
-            value={opening}
-            onChange={(v) => { setOpening(v); setOpeningError(undefined); }}
-            inputMode="decimal"
-            disabled={loading}
-            className="w-full max-w-xs"
-          />
-          {openingError && <p role="alert" className="text-xs text-red-300">{openingError}</p>}
-        </section>
-      )}
       <datalist id="unit-options">{COMMON_UNITS.map((u) => <option key={u} value={u} />)}</datalist>
       {!editing && (
-        <p className="text-xs text-ix-muted">
+        <p className={panel ? "text-xs text-slate-400" : "text-xs text-ix-muted"}>
           {withOpeningQuantity
             ? "Registering a product adds no stock by itself: stock comes from the opening quantity above (goods you already own) or from confirmed goods receipts."
             : "Registering a product does not add any stock: stock only increases when you confirm a goods receipt (or record stock in Stock)."}
         </p>
       )}
 
-      <div className="flex items-center justify-end gap-3">
-        <button type="button" onClick={onCancel} disabled={loading} className={buttonClass.secondary}>Cancel</button>
-        <button type="submit" disabled={loading} className={buttonClass.primary}>
+      <div className={`flex items-center justify-end ${panel ? "gap-2" : "gap-3"}`}>
+        <button type="button" onClick={onCancel} disabled={loading} className={panel ? "min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-60" : buttonClass.secondary}>Cancel</button>
+        <button type="submit" disabled={loading} className={panel ? "min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60" : buttonClass.primary}>
           {loading && <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-ix-on-accent/25 border-t-ix-on-accent motion-reduce:animate-none" />}
           {loading ? "Saving…" : editing ? "Save changes" : addLabel}
         </button>

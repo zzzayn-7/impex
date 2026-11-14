@@ -64,7 +64,8 @@ describe("Stock: the Total cost section", () => {
   it("shows the sum of (pieces x cost) of ALL products, one total per currency", () => {
     const { rerender } = render(<StockOverview list={listOf([stockRow("A", "10", "50000"), stockRow("B", "5", "30")])} filters={filters} products={[]} totals={[{ currency: "PKR", amount: "500150.0000" }]} />);
     expect(screen.getByTestId("stock-total-cost-PKR").textContent).toBe("500,150.00 PKR");
-    expect(screen.getByTestId("stock-total-cost").textContent).toContain("for all 2 products");
+    expect(screen.getByTestId("stock-total-cost").textContent).toBe("Total cost500,150.00 PKR"); // plain words: no "pieces on hand x cost, for all N products" line
+    expect(screen.getByTestId("stock-total-cost").textContent).not.toContain("pieces on hand");
     rerender(<StockOverview list={listOf([])} filters={filters} products={[]} totals={[{ currency: "PKR", amount: "1.0000" }, { currency: "USD", amount: "2.5000" }]} />);
     expect(screen.getByTestId("stock-total-cost-USD").textContent).toBe("2.50 USD"); // currencies are never added together
   });

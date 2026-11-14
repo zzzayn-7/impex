@@ -2,11 +2,14 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
+import { useVisibleViewport } from "@/lib/visual-viewport";
+
 // A centered glass dialog on the platform's own modal element: the browser traps keyboard focus inside it, closes it on Escape, makes the page
 // behind inert and returns focus to the button that opened it. On top of that:
 //   * the page behind does not scroll while it is open;
 //   * a click on the dim backdrop closes it (unless `dismissable` is false, e.g. while a save is running);
-//   * it never grows beyond 85% of the viewport: the header and the footer stay in view and the BODY scrolls inside it.
+//   * it never grows beyond the part of the screen that is really visible (on a phone: not behind the browser's bars, and above the keyboard while one is typing;
+//     see lib/visual-viewport.ts): the header with its close button and the footer with its buttons stay in view and the BODY scrolls inside it.
 // Where the element is not available (test environments) it is shown as an ordinary open dialog.
 
 export function Modal({ title, subtitle, onClose, children, footer, dismissable = true, size = "lg", labelledBy }: {
@@ -21,6 +24,7 @@ export function Modal({ title, subtitle, onClose, children, footer, dismissable 
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  useVisibleViewport();
   const width = { md: "max-w-lg", lg: "max-w-3xl", xl: "max-w-5xl" }[size];
 
   useEffect(() => {
@@ -47,7 +51,7 @@ export function Modal({ title, subtitle, onClose, children, footer, dismissable 
       aria-labelledby={labelledBy ?? titleId}
       onCancel={(event) => { event.preventDefault(); if (dismissable) onClose(); }}
       onClick={(event) => { if (dismissable && event.target === ref.current) onClose(); }}
-      className={`ix-glass fixed inset-auto left-1/2 top-1/2 !m-0 flex h-fit max-h-[85vh] -translate-x-1/2 -translate-y-1/2 w-[94vw] ${width} flex-col overflow-hidden rounded-[24px] p-0 text-ix-text backdrop:bg-[rgba(8,17,21,0.62)] backdrop:backdrop-blur-[3px] max-sm:max-h-[92vh] max-sm:w-[96vw]`}
+      className={`ix-glass fixed inset-auto left-1/2 top-[calc(var(--ix-vv-top,0px)+var(--ix-vv-h,100dvh)/2)] !m-0 flex h-fit max-h-[calc(var(--ix-vv-h,100dvh)-1.5rem)] -translate-x-1/2 -translate-y-1/2 w-[94vw] ${width} flex-col overflow-hidden rounded-[24px] p-0 text-ix-text backdrop:bg-[rgba(8,17,21,0.62)] backdrop:backdrop-blur-[3px] max-sm:max-h-[calc(var(--ix-vv-h,100dvh)-1rem)] max-sm:w-[calc(100vw-1rem)] max-sm:rounded-[20px]`}
     >
       <header className="relative flex shrink-0 items-start justify-between gap-4 border-b border-ix-mist/10 px-5 py-4 sm:px-6">
         <div className="min-w-0">
