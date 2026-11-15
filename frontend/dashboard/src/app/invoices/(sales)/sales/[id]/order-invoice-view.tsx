@@ -4,11 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { formatMoney } from "@/lib/product-validation";
-import { addDecimal, qty } from "@/lib/sales-browser";
+import { qty } from "@/lib/sales-browser";
 import type { OrderInvoiceDetail } from "@/lib/sales";
 
 // ONE ORDER INVOICE, read-only: who it is for, which order, what is on it, the total. Print and Download give the same PDF (the one template of every invoice). Nothing here can be
 // edited: the invoice was made from the order and is frozen.
+
+// A unit that is a number (a pack of 400) is shown the way it is read: <pieces/total>, e.g. 20/400. A word unit (pcs, kg) stays "20 pcs".
+const quantityText = (quantity: string, unit: string) => (/^\d+(\.\d+)?$/.test(unit.trim()) ? `${qty(quantity)}/${qty(unit.trim())}` : `${qty(quantity)} ${unit}`);
 
 const buttonClass = "inline-flex min-h-10 items-center rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-60";
 
@@ -16,7 +19,6 @@ export default function OrderInvoiceView({ invoice }: { invoice: OrderInvoiceDet
   const router = useRouter();
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const totalPieces = invoice.lines.reduce((sum, line) => addDecimal(sum, line.quantity), "0"); // every line's quantity is shown as <this line / all lines>
 
   // PRINT: the invoice itself - the same PDF Download saves - is fetched with the administrator's session and handed to the browser's print dialog from a hidden frame, so the
   // dashboard (sidebar, header, buttons) is never part of what is printed. If the browser will not print from a frame, the PDF opens in a tab instead.
@@ -86,7 +88,7 @@ export default function OrderInvoiceView({ invoice }: { invoice: OrderInvoiceDet
             {invoice.lines.map((line) => (
               <tr key={line.product_id}>
                 <td className="px-4 py-3"><div className="font-medium text-white">{line.product_name}</div><div className="font-mono text-xs text-indigo-300">{line.product_sku}</div></td>
-                <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{qty(line.quantity)}/{qty(totalPieces)} {line.unit}</td>
+                <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{quantityText(line.quantity, line.unit)}</td>
                 <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap">{formatMoney(line.unit_price, invoice.currency_code)}</td>
                 <td className="px-4 py-3 text-right font-mono text-xs whitespace-nowrap text-white">{formatMoney(line.line_total, invoice.currency_code)}</td>
               </tr>

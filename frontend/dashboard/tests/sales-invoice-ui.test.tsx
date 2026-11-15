@@ -188,10 +188,12 @@ describe("one order invoice", () => {
     expect(container.querySelector("input, textarea, select")).toBeNull();
   });
 
-  it("shows each quantity as <pieces on this line>/<pieces on the whole invoice>", () => {
-    render(<OrderInvoiceView invoice={invoice} />);
-    expect(screen.getByText("10/15 pcs")).toBeTruthy();
-    expect(screen.getByText("5/15 pcs")).toBeTruthy();
+  it("a word unit reads '10 pcs'; a numeric unit reads <pieces/total>, e.g. 20/400", () => {
+    const { rerender } = render(<OrderInvoiceView invoice={invoice} />);
+    expect(screen.getByText("10 pcs")).toBeTruthy();
+    expect(screen.queryByText(/\//)).toBeNull();
+    rerender(<OrderInvoiceView invoice={{ ...invoice, lines: [{ ...invoice.lines[0], quantity: "20.0000", unit: "400" }] }} />);
+    expect(screen.getByText("20/400")).toBeTruthy();
   });
 
   it("Download is a link to the PDF", () => {
