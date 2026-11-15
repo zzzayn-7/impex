@@ -12,7 +12,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = { inventory: "Inventory"
 
 export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Stock and product details, with scanning and a full movement history.",
-  purchasing: "Buying from suppliers and receiving the goods into stock (the receipts are listed under Invoices, as Suppliers Invoice).",
+  purchasing: "Buying from suppliers and receiving the goods into stock (the receipts are kept under Purchase Invoice).",
   sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
   finance: "Your capital, owner investment and profit & loss, built from owner contributions, goods receipts, deliveries and expenses; the accounting records behind them stay available.",
 };
@@ -20,10 +20,9 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
 // The modules a module cannot work without (the Organization Service enforces the same rule when the Super Admin changes them).
 export const MODULE_REQUIRES: Record<ModuleKey, ModuleKey[]> = { inventory: [], purchasing: ["inventory"], sales: ["inventory"], finance: [] };
 
-// What each module contains, as pages in this portal. A page with `group: "invoices"` still BELONGS to its module (it is shown or hidden with it, and the
-// services behind it enforce the module), but the sidebar lists it under the dedicated Invoices group: Suppliers Invoice (the goods receipts) needs
-// Purchasing, Sales Invoice needs Sales, and the Invoices group appears when the organization has at least one of them.
-export type ModulePage = { label: string; href: string; group?: "invoices" };
+// What each module contains, as pages in this portal. There is no separate Invoices module or group: Purchase Invoice is a page of Purchasing and Sales Invoice a page of
+// Sales, shown and hidden with their module (the services behind them enforce the module too).
+export type ModulePage = { label: string; href: string };
 export const MODULE_PAGES: Record<ModuleKey, ModulePage[]> = {
   inventory: [
     { label: "Stock", href: "/stock" },
@@ -32,13 +31,13 @@ export const MODULE_PAGES: Record<ModuleKey, ModulePage[]> = {
   purchasing: [
     { label: "Suppliers", href: "/suppliers" },
     { label: "Purchase Orders", href: "/purchase-orders" },
-    { label: "Suppliers Invoice", href: "/invoices/suppliers", group: "invoices" },
+    { label: "Purchase Invoice", href: "/invoices/suppliers" },
   ],
   sales: [
     { label: "Clients", href: "/clients" },
     { label: "Create Order", href: "/sales-orders/new" },
     { label: "Delivery Lists", href: "/delivery-lists" },
-    { label: "Sales Invoice", href: "/invoices/sales", group: "invoices" },
+    { label: "Sales Invoice", href: "/invoices/sales" },
   ],
   // ONE destination: capital, investment and profit & loss. The accounting pages (accounts, expenses, journal entries) are still served, with all their records and
   // APIs, but are no longer listed in the sidebar: the Finance page links to them.

@@ -172,7 +172,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   if (sales) {
     nodes["org.list.recent-invoices"] = (
       <GlassCard key="invoices" className="p-5 sm:p-6" aria-label="Recent invoices">
-        <CardHeader title="Recent invoices" action={<Link href="/invoices/sales" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
+        <CardHeader title="Recent invoices" action={<Link href="/invoices/sales/history" className="text-xs font-medium text-ix-accent-text hover:text-ix-text">View all</Link>} />
         {sales.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : sales.data.recent.length === 0 ? <CardNote>No invoices yet.</CardNote> : (
           <ul className="divide-y divide-ix-mist/10">
             {sales.data.recent.map((i) => row(i.id,
@@ -236,7 +236,7 @@ export default function DashboardView({ admin, organizationResult, data }: Props
 
   const actions: { label: string; href: string; icon: IconKey; tone: Tone }[] = [];
   if (enabled.includes("inventory")) actions.push({ label: "Adjust stock", href: "/stock", icon: "stock", tone: "yellow" });
-  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "yellow" });
+  if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/sales", icon: "invoices", tone: "yellow" });
   if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "yellow" });
   if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "yellow" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "yellow" });
   actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "yellow" });

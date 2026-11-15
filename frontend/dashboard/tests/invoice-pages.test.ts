@@ -15,7 +15,9 @@ vi.mock("next/navigation", () => ({ usePathname: () => null,
 }));
 
 import InvoicesLayout from "@/app/invoices/(sales)/layout";
-import InvoicesPage from "@/app/invoices/(sales)/sales/page";
+import SalesInvoicePage from "@/app/invoices/(sales)/sales/page";
+import SalesInvoiceHistoryPage from "@/app/invoices/(sales)/sales/history/page";
+import OrderInvoicePage from "@/app/invoices/(sales)/sales/[id]/page";
 import InvoicePage from "@/app/invoices/(sales)/[id]/page";
 import NewInvoicePage from "@/app/invoices/(sales)/new/page";
 import EditInvoicePage from "@/app/invoices/(sales)/[id]/edit/page";
@@ -55,6 +57,23 @@ const detail = (s: ReturnType<typeof summary>, product: string, extra: Record<st
   can_record_payment: s.status === "issued" || s.status === "partially_paid", disclaimer: "This document records goods supplied ... does not certify that this invoice meets any tax or legal requirement.", ...extra,
 });
 
+const A_ORDER1 = "a1111111-1111-4111-8111-0000000000a1";
+const A_ORDER2 = "a1111111-1111-4111-8111-0000000000a2";
+const A_ORDER_INVOICE = "a1111111-1111-4111-8111-0000000000b1";
+const B_ORDER_INVOICE = "b2222222-2222-4222-8222-0000000000b2";
+const order = (id: string, number: string, c: typeof alpha, extra: Record<string, unknown> = {}) => ({
+  id, number, client: c, delivery_list: { id: A_LIST, number: "DL-000009", status: "ready" }, status: "active", reservation_status: "reserved", origin: "order", version: 1, product_count: 2,
+  total_amount: "350.0000", currency_code: "USD", prices_recorded: true, created_by_email: "a@b.c", created_at: now, updated_at: now, ...extra,
+});
+const orderInvoice = (id: string, c: typeof alpha, extra: Record<string, unknown> = {}) => ({
+  id, number: "INV-000007", invoice_date: "2026-11-07", currency_code: "USD", notes: null, client_id: c.id, client_name: c.name, client_address: "1 Main St", seller_name: "Alpha Trading",
+  order_id: A_ORDER1, order_number: "SO-000001", delivery_list_number: "DL-000009", subtotal: "350.0000", total: "350.0000", created_by_email: "a@b.c", created_at: now,
+  lines: [{ product_id: crypto.randomUUID(), product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", quantity: "10.0000", unit_price: "30.0000", line_total: "300.0000" }], ...extra,
+});
+const historyRow = (kind: "order" | "invoice", id: string, number: string | null, c: typeof alpha, extra: Record<string, unknown> = {}) => ({
+  kind, id, number, client_id: c.id, client_name: c.name, invoice_date: "2026-11-07", currency_code: "USD", total: "350.0000", status: "issued", order_number: kind === "order" ? "SO-000001" : null, ...extra,
+});
+
 const fresh = () => {
   const issued = summary(A_ISSUED, "INV-000001", alpha);
   const draft = summary(A_DRAFT, null, alpha, { status: "draft", subtotal: "10.0000", total: "10.0000", outstanding: "10.0000" });
@@ -67,6 +86,10 @@ const fresh = () => {
   return {
     "token-alpha": {
       clients: [clientRow(alpha)],
+      orders: [order(A_ORDER2, "SO-000002", alpha), order(A_ORDER1, "SO-000001", alpha)],
+      refs: [{ order_id: A_ORDER1, invoice_id: A_ORDER_INVOICE, number: "INV-000007" }],
+      history: [historyRow("order", A_ORDER_INVOICE, "INV-000007", alpha), historyRow("invoice", A_ISSUED, "INV-000001", alpha, { invoice_date: "2026-11-01", total: "25.0000" })],
+      orderInvoices: { [A_ORDER_INVOICE]: orderInvoice(A_ORDER_INVOICE, alpha) } as Record<string, any>,
       invoices: [issued, draft, paid],
       details: {
         [A_ISSUED]: detail(issued, "Alpha steel bolt"), [A_DRAFT]: detail(draft, "Alpha steel bolt", { editable: true }),
@@ -83,7 +106,9 @@ const fresh = () => {
       },
     },
     "token-beta": {
-      clients: [clientRow(beta)], invoices: [theirs], details: { [B_INVOICE]: detail(theirs, "Beta silk scarf") } as Record<string, any>, billable: [],
+      clients: [clientRow(beta)], orders: [order("b2222222-2222-4222-8222-0000000000a3", "SO-000001", beta, { delivery_list: null })], refs: [],
+      history: [historyRow("order", B_ORDER_INVOICE, "INV-000001", beta)], orderInvoices: { [B_ORDER_INVOICE]: orderInvoice(B_ORDER_INVOICE, beta, { number: "INV-000001" }) } as Record<string, any>,
+      invoices: [theirs], details: { [B_INVOICE]: detail(theirs, "Beta silk scarf") } as Record<string, any>, billable: [],
       account: { client: beta, balances: [], invoices: [theirs], payments: [] },
     },
   };
@@ -111,6 +136,11 @@ function stubWorld(options: { status?: number } = {}) {
       const params = new URL(url).searchParams;
       const page = (items: any[]) => json(200, { items, total: items.length, limit: Number(params.get("limit")), offset: Number(params.get("offset")) });
       if (path === "/clients") return page(org.clients);
+      if (path === "/orders") return page(org.orders.filter((o: any) => (!params.get("client_id") || o.client.id === params.get("client_id")) && (!params.get("q") || o.number.includes(params.get("q")!.toUpperCase()))));
+      if (path === "/order-invoices/by-order") return json(200, { items: org.refs.filter((r: any) => (params.get("order_ids") ?? "").split(",").includes(r.order_id)) });
+      if (path === "/invoice-history") return page(org.history.filter((h: any) => (!params.get("client_id") || h.client_id === params.get("client_id")) && (!params.get("day") || h.invoice_date === params.get("day"))));
+      const orderInvoiceMatch = path.match(/^\/order-invoices\/([^/]+)$/);
+      if (orderInvoiceMatch) return org.orderInvoices[orderInvoiceMatch[1]] ? json(200, org.orderInvoices[orderInvoiceMatch[1]]) : json(404, { detail: "Invoice not found." });
       if (path === "/invoices") return page(org.invoices.filter((i: any) => (!params.get("status") || i.status === params.get("status")) && (!params.get("client_id") || i.client.id === params.get("client_id"))));
       if (path === "/billable-lines") return org.clients.some((c: any) => c.id === params.get("client_id")) ? json(200, org.billable) : json(404, { detail: "Client not found." });
       let match = path.match(/^\/invoices\/([^/]+)$/);
@@ -133,12 +163,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the Invoices layout", () => {
-  it("is inside the protected frame, with Invoices in the navigation", async () => {
+  it("is inside the protected frame, with Sales Invoice in the Sales menu", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await InvoicesLayout({ children: "x" }));
     expect(html).toContain('href="/invoices/sales"');
-    expect(html).toContain('href="/invoices/suppliers"'); // the same Invoices group also lists the Suppliers Invoice tab
+    expect(html).toContain('href="/invoices/suppliers"'); // Purchase Invoice is in the Purchasing menu
     expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/invoices\/sales"|<a[^>]*href="\/invoices\/sales"[^>]*aria-current="page"/);
   });
   it("sends a visitor without a session to the login page", async () => {
@@ -147,80 +177,153 @@ describe("the Invoices layout", () => {
   });
 });
 
-describe("Invoices page", () => {
-  it("lists the invoices with number, client, dates, amounts and status", async () => {
+describe("Sales Invoice > New invoice", () => {
+  it("lists the prepared orders, newest first, with a Create invoice button, or View invoice for an order that already has one", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = await render(InvoicesPage({ searchParams: {} }));
-    for (const expected of ["Invoices", "INV-000001", "INV-000002", "Draft", "Alpha Metals", "2026-11-01", "25.00", "Issued", "Paid", "All statuses", "All payment statuses", "All clients", "New Invoice", "Showing 1–3 of 3", "never changes your stock"]) {
-      expect(html, expected).toContain(expected);
-    }
-    expect(html).toContain(`href="/invoices/${A_ISSUED}"`);
-    expect(html).toContain('href="/invoices/new"');
+    const html = await render(SalesInvoicePage({ searchParams: {} }));
+    for (const expected of ["New invoice", "History", "SO-000002", "SO-000001", "Alpha Metals", "350.00 USD", "All clients", "Create invoice for SO-000002", "View invoice INV-000007"]) expect(html, expected).toContain(expected);
+    expect(html).not.toContain("Create invoice for SO-000001"); // it has its invoice already
+    expect(html).toContain(`href="/invoices/sales/${A_ORDER_INVOICE}"`);
+    expect(html.indexOf("SO-000002")).toBeLessThan(html.indexOf("SO-000001"));
   });
 
-  it("arriving from Generate Invoice (?generated=<id>) shows the banner and marks that row; a malformed id is ignored", async () => {
+  it("asks the service only for the PREPARED orders, with the whitelisted filters", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = await render(InvoicesPage({ searchParams: { generated: A_ISSUED } }));
-    expect(html).toContain("generated from the dispatched order and saved as a draft");
-    expect(html).toContain(`href="/invoices/${A_ISSUED}"`);
-    expect(html).toContain('data-generated="true"');
-    const existing = await render(InvoicesPage({ searchParams: { generated: A_ISSUED, existing: "1" } }));
-    expect(existing).toContain("This order already had an invoice");
-    for (const bad of ["not-a-uuid", "<script>alert(1)</script>", "' OR 1=1"]) {
-      const page = await render(InvoicesPage({ searchParams: { generated: bad } }));
-      expect(page).not.toContain("data-generated-banner");
-      expect(page).not.toContain("generated from the dispatched order");
-    }
+    await SalesInvoicePage({ searchParams: { client: A_CLIENT, q: "so-2", page: "2", organization_id: B_CLIENT, sort: "x" } });
+    const call = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/orders")!;
+    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ view: "active", booked: "true", limit: "25", offset: "25", q: "so-2", client_id: A_CLIENT });
+    calls = [];
+    await SalesInvoicePage({ searchParams: { client: "' OR 1=1", page: "banana" } });
+    const clean = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/orders")!;
+    expect(Object.fromEntries(new URL(clean.url).searchParams)).toEqual({ view: "active", booked: "true", limit: "25", offset: "0" });
   });
 
-  it("two organizations: each sees only their own invoices", async () => {
+  it("an order made before prices were recorded cannot be invoiced and says so", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const a = await render(InvoicesPage({ searchParams: {} }));
+    orgs["token-alpha"].orders = [order(A_ORDER2, "SO-000002", alpha, { prices_recorded: false, total_amount: null, currency_code: null })];
+    const html = await render(SalesInvoicePage({ searchParams: {} }));
+    expect(html).toContain("No prices");
+    expect(html).not.toContain("Create invoice for SO-000002");
+  });
+
+  it("two organizations: each sees only their own orders", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const a = await render(SalesInvoicePage({ searchParams: {} }));
     jar[TENANT_SESSION_COOKIE] = "token-beta";
-    const b = await render(InvoicesPage({ searchParams: {} }));
+    const b = await render(SalesInvoicePage({ searchParams: {} }));
     expect(a).toContain("Alpha Metals");
     expect(a).not.toContain("Beta Textiles");
     expect(b).toContain("Beta Textiles");
     expect(b).not.toContain("Alpha Metals");
   });
 
-  it("passes only whitelisted filters to the service", async () => {
-    stubWorld();
-    jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    await InvoicesPage({ searchParams: { q: "acme", status: "issued", payment: "overdue", client: A_CLIENT, from: "2026-11-01", to: "2026-11-30", page: "2", organization_id: B_CLIENT, sort: "x" } });
-    const call = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/invoices")!;
-    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({
-      q: "acme", status: "issued", payment_status: "overdue", client_id: A_CLIENT, date_from: "2026-11-01", date_to: "2026-11-30", limit: "25", offset: "25",
-    });
-    calls = [];
-    await InvoicesPage({ searchParams: { status: "shipped", payment: "maybe", client: "' OR 1=1", from: "yesterday", to: "../", page: "banana" } });
-    const clean = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/invoices")!;
-    expect([...new URL(clean.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
-  });
-
   it("redirects without a session / for a Super Admin, calling no sales endpoint", async () => {
     stubWorld();
-    await expect(InvoicesPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    await expect(SalesInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-super";
-    await expect(InvoicesPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    await expect(SalesInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     expect(salesCalls()).toHaveLength(0);
   });
 
   it("explains an inactive organization, an outage and an expired session; and an empty list", async () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     stubWorld({ status: 403 });
-    expect(await render(InvoicesPage({ searchParams: {} }))).toContain("currently inactive or unavailable");
+    expect(await render(SalesInvoicePage({ searchParams: {} }))).toContain("currently inactive or unavailable");
     stubWorld({ status: 503 });
-    expect(await render(InvoicesPage({ searchParams: {} }))).toContain("temporarily unavailable");
+    expect(await render(SalesInvoicePage({ searchParams: {} }))).toContain("temporarily unavailable");
     stubWorld({ status: 401 });
-    await expect(InvoicesPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
-    orgs["token-alpha"].invoices = [];
+    await expect(SalesInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    orgs["token-alpha"].orders = [];
     stubWorld();
-    expect(await render(InvoicesPage({ searchParams: {} }))).toContain("No invoices yet");
-    expect(await render(InvoicesPage({ searchParams: { q: "zzz" } }))).toContain("No invoices match these filters");
+    expect(await render(SalesInvoicePage({ searchParams: {} }))).toContain("No orders waiting to be dispatched");
+    expect(await render(SalesInvoicePage({ searchParams: { q: "zzz" } }))).toContain("No orders found");
+  });
+});
+
+describe("Sales Invoice > History", () => {
+  it("lists every past invoice, newest first: the order invoices and the older ones, each opening its own page", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await render(SalesInvoiceHistoryPage({ searchParams: {} }));
+    for (const expected of ["New invoice", "History", "INV-000007", "INV-000001", "Alpha Metals", "2026-11-07", "2026-11-01", "350.00 USD", "All clients", "Client", "Date"]) expect(html, expected).toContain(expected);
+    expect(html).toContain(`href="/invoices/sales/${A_ORDER_INVOICE}"`); // an order invoice
+    expect(html).toContain(`href="/invoices/${A_ISSUED}"`); // an older invoice keeps its own page, with its payments
+  });
+
+  it("passes the client and the date (alone or together) and nothing else", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    await SalesInvoiceHistoryPage({ searchParams: { client: A_CLIENT, date: "2026-11-07", page: "3", organization_id: B_CLIENT, status: "paid" } });
+    const call = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/invoice-history")!;
+    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ limit: "25", offset: "50", client_id: A_CLIENT, day: "2026-11-07" });
+    calls = [];
+    await SalesInvoiceHistoryPage({ searchParams: { date: "2026-11-07" } });
+    expect(Object.fromEntries(new URL(salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/invoice-history")!.url).searchParams)).toEqual({ limit: "25", offset: "0", day: "2026-11-07" });
+    calls = [];
+    await SalesInvoiceHistoryPage({ searchParams: { client: "' OR 1=1", date: "yesterday", page: "banana" } });
+    expect([...new URL(salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/invoice-history")!.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
+  });
+
+  it("narrows by client, by date, or by both, and says when nothing matches", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const byDay = await render(SalesInvoiceHistoryPage({ searchParams: { date: "2026-11-01" } }));
+    expect(byDay).toContain("INV-000001");
+    expect(byDay).not.toContain("INV-000007");
+    expect(await render(SalesInvoiceHistoryPage({ searchParams: { client: A_CLIENT, date: "2030-01-01" } }))).toContain("No invoices found");
+  });
+
+  it("two organizations: each sees only their own invoices", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const a = await render(SalesInvoiceHistoryPage({ searchParams: {} }));
+    jar[TENANT_SESSION_COOKIE] = "token-beta";
+    const b = await render(SalesInvoiceHistoryPage({ searchParams: {} }));
+    expect(a).not.toContain("Beta Textiles");
+    expect(b).toContain("Beta Textiles");
+    expect(b).not.toContain("Alpha Metals");
+  });
+
+  it("redirects without a session and explains an outage and an empty history", async () => {
+    stubWorld();
+    await expect(SalesInvoiceHistoryPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    stubWorld({ status: 503 });
+    expect(await render(SalesInvoiceHistoryPage({ searchParams: {} }))).toContain("temporarily unavailable");
+    orgs["token-alpha"].history = [];
+    stubWorld();
+    expect(await render(SalesInvoiceHistoryPage({ searchParams: {} }))).toContain("No invoices yet");
+  });
+});
+
+describe("one order invoice", () => {
+  it("shows the order's details read-only, with Print and Download, and nothing to edit", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await render(OrderInvoicePage({ params: { id: A_ORDER_INVOICE } }));
+    for (const expected of ["INV-000007", "Alpha Metals", "1 Main St", "SO-000001", "DL-000009", "2026-11-07", "Steel bolt", "BOLT-1", "300.00 USD", "350.00 USD", "Print", "Download", "Invoice history"]) expect(html, expected).toContain(expected);
+    expect(html).toContain(`href="/api/sales/order-invoices/${A_ORDER_INVOICE}/pdf"`);
+    expect(html).not.toMatch(/<input|<textarea|<select/);
+    for (const absent of ["Record payment", "Void", "Edit draft", "Issue"]) expect(html, absent).not.toContain(absent);
+  });
+
+  it("another organization's invoice is shown exactly like one that does not exist, and a malformed id too", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    expect(await render(OrderInvoicePage({ params: { id: B_ORDER_INVOICE } }))).toContain("Invoice not found.");
+    expect(await render(OrderInvoicePage({ params: { id: "not-a-uuid" } }))).toContain("Invoice not found.");
+  });
+
+  it("redirects an expired session and explains an outage", async () => {
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    stubWorld({ status: 401 });
+    await expect(OrderInvoicePage({ params: { id: A_ORDER_INVOICE } })).rejects.toThrow("REDIRECT:/login");
+    stubWorld({ status: 503 });
+    expect(await render(OrderInvoicePage({ params: { id: A_ORDER_INVOICE } }))).toContain("temporarily unavailable");
   });
 });
 
@@ -280,30 +383,12 @@ describe("one invoice", () => {
   });
 });
 
-describe("new and edited invoices", () => {
-  it("starts by choosing a client and calls no billing endpoint yet", async () => {
+describe("edited invoices", () => {
+  it("the old invoice-from-dispatch address goes to Sales Invoice > New invoice and calls no billing endpoint", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = await render(NewInvoicePage({ searchParams: {} }));
-    expect(html).toContain("Choose the client first");
-    expect(html).toContain("Alpha Metals");
-    expect(salesCalls().some((c) => c.url.includes("/billable-lines"))).toBe(false);
-  });
-
-  it("shows the client's confirmed dispatch lines with how much is left to bill", async () => {
-    stubWorld();
-    jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = await render(NewInvoicePage({ searchParams: { client: A_CLIENT } }));
-    for (const expected of ["New invoice", "DS-000001", "Alpha steel bolt", "SKU-1", "Left to bill", "Bill Alpha steel bolt", "One currency per invoice", "never changes your stock"]) expect(html, expected).toContain(expected);
-    const call = salesCalls().find((c) => c.url.includes("/billable-lines"))!;
-    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ client_id: A_CLIENT });
-  });
-
-  it("another organization's client is not found, and a malformed one falls back to the client picker", async () => {
-    stubWorld();
-    jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    expect(await render(NewInvoicePage({ searchParams: { client: B_CLIENT } }))).toContain("Client not found.");
-    expect(await render(NewInvoicePage({ searchParams: { client: "' OR 1=1" } }))).toContain("Choose the client first");
+    await expect(Promise.resolve().then(() => NewInvoicePage())).rejects.toThrow("REDIRECT:/invoices/sales");
+    expect(salesCalls()).toHaveLength(0);
   });
 
   it("edits a draft but refuses to edit an issued invoice", async () => {
@@ -325,7 +410,8 @@ describe("a client's account", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await page(A_CLIENT);
     for (const expected of ["Alpha Metals", "Outstanding balance", "USD", "PKR", "25.00", "200.00", "INV-000001", "INV-000002", "Recent payments", "WIRE-77", "Nothing is converted or added across currencies", "New invoice"]) expect(html, expected).toContain(expected);
-    expect(html).toContain(`href="/invoices/new?client=${A_CLIENT}"`);
+    expect(html).toContain(`href="/invoices/sales?client=${A_CLIENT}"`); // New invoice: this client's prepared orders
+    expect(html).toContain(`href="/invoices/sales/history?client=${A_CLIENT}"`);
   });
   it("another organization's client is shown exactly like a client that does not exist", async () => {
     stubWorld();

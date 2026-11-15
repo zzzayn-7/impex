@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ supplier: result.data }, { headers: NO_STORE });
 }
 
-// EDIT a supplier (only the fields that are sent). Suppliers are deactivated, never deleted.
+// EDIT a supplier (only the fields that are sent).
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const token = sessionToken(req);
   if (!token) return fail("You are not signed in.", 401);
@@ -52,4 +52,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   if (!result || result.status !== 200) return purchasingFailureResponse(result, "Supplier not found.");
   return NextResponse.json({ supplier: result.data }, { headers: NO_STORE });
+}
+
+// DELETE a supplier that nothing refers to (registered by mistake). The Purchasing Service refuses (409, with the reason in its own words) as soon as the supplier is on a purchase
+// order: those (and their goods receipts) are kept for good, so such a supplier is deactivated instead. Another organization's supplier is "not found".
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = sessionToken(req);
+  if (!token) return fail("You are not signed in.", 401);
+  if (!checkUuid(params.id)) return fail("Supplier not found.", 404);
+  const result = await purchasingRequest("DELETE", `/api/v1/purchasing/suppliers/${params.id}`, token);
+  if (!result || result.status !== 204) return purchasingFailureResponse(result, "Supplier not found.");
+  return NextResponse.json({ deleted: true }, { headers: NO_STORE });
 }

@@ -47,7 +47,7 @@ describe("the module registry of the portal", () => {
     for (const path of ["/api/support/tickets", "/api/auth/login", "/api/auth/logout", "/api/setup/company", "/api/organization/logo", "/api/productsX", "/api/salesforce"]) expect(moduleForApi(path), path).toBeNull();
     expect(Object.keys(MODULE_PAGES)).toEqual(MODULE_KEYS);
     expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Stock", "Movements"]); // the standalone Products page is not in the menu any more
-    expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Suppliers Invoice"]); // Suppliers Invoice = the goods receipts, listed under Invoices in the menu
+    expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Purchase Invoice"]); // Purchase Invoice: new invoice (receive goods) and the history of receipts
     expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Create Order", "Delivery Lists", "Sales Invoice"]);
     expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Finance"]); // Capital, Investment and Profit & Loss: one destination
     expect(MODULE_PAGES.finance.map((p) => p.href)).toEqual(["/finance"]);

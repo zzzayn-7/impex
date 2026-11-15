@@ -68,6 +68,7 @@ function stub() {
     if (url === "/api/purchasing/suppliers" && method === "POST") return json(201, { supplier: supplier(S2, body.name) });
     if (/\/suppliers\/[^/]+\/(activate|deactivate)$/.test(url)) return json(200, { supplier: supplier(S1, "x") });
     if (/\/suppliers\/[^/]+$/.test(url) && method === "PATCH") return json(200, { supplier: supplier(S1, body.name ?? "x") });
+    if (/\/suppliers\/[^/]+$/.test(url) && method === "DELETE") return json(200, { deleted: true });
     return json(404, { error: "not found" });
   }));
 }
@@ -489,10 +490,10 @@ describe("Suppliers", () => {
     expect(within(details).getByRole("link", { name: "Purchase orders" }).getAttribute("href")).toBe(`/purchase-orders?supplier=${S1}`);
   });
 
-  it("edits a supplier, deactivates and reactivates it (no delete exists)", async () => {
+  it("edits a supplier, deactivates and reactivates it", async () => {
     const user = setup();
     const { unmount } = render(<SupplierManager list={{ ok: true, items: [acme], total: 1, limit: 25, offset: 0 }} filters={filters} />);
-    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete Acme Supplies" }).textContent).toBe(""); // an icon, not a word
     await user.click(screen.getByRole("button", { name: "Edit Acme Supplies" }));
     const form = screen.getByRole("form", { name: "Edit supplier" });
     await user.clear(within(form).getByLabelText(/Phone/));
@@ -507,6 +508,43 @@ describe("Suppliers", () => {
     render(<SupplierManager list={{ ok: true, items: [{ ...acme, is_active: false }], total: 1, limit: 25, offset: 0 }} filters={filters} />);
     await user.click(screen.getByRole("button", { name: "Reactivate Acme Supplies" }));
     await screen.findByText(/was reactivated/);
+  });
+
+  describe("the Delete icon (always asks first)", () => {
+    // jsdom has no <dialog>.showModal, so the confirmation falls back to window.confirm (the same question, asked the same way)
+    const answer = (yes: boolean) => { const confirm = vi.fn(() => yes); vi.stubGlobal("confirm", confirm); return confirm; };
+    const mountOne = () => render(<SupplierManager list={{ ok: true, items: [acme], total: 1, limit: 25, offset: 0 }} filters={filters} />);
+    const deletes = () => calls.filter((c) => c.method === "DELETE");
+
+    it("asks first, and saying no sends nothing", async () => {
+      const confirm = answer(false);
+      const user = setup();
+      mountOne();
+      await user.click(screen.getByRole("button", { name: "Delete Acme Supplies" }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(String((confirm.mock.calls[0] as unknown[])[0])).toContain("for good");
+      expect(deletes()).toEqual([]);
+    });
+
+    it("after the confirmation deletes the supplier, says so and re-reads the list", async () => {
+      answer(true);
+      const user = setup();
+      mountOne();
+      await user.click(screen.getByRole("button", { name: "Delete Acme Supplies" }));
+      await screen.findByText("Acme Supplies was deleted.");
+      expect(deletes().map((c) => c.url)).toEqual([`/api/purchasing/suppliers/${S1}`]);
+      expect(router.refresh).toHaveBeenCalled();
+    });
+
+    it("shows the service's reason when the supplier is on a purchase order, and keeps it", async () => {
+      answer(true);
+      server["DELETE /api/purchasing/suppliers/:id"] = () => json(409, { error: "Acme Supplies appears on 3 purchase orders. Those records are kept, so the supplier cannot be deleted: deactivate it instead." });
+      const user = setup();
+      mountOne();
+      await user.click(screen.getByRole("button", { name: "Delete Acme Supplies" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("cannot be deleted: deactivate it instead");
+      expect(router.refresh).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -89,10 +89,31 @@ def test_deactivating_keeps_the_client_and_is_reversible(api):
     assert api.client.post(f"{url}/activate", headers=api.headers).json()["is_active"] is True
 
 
-def test_a_client_can_never_be_deleted(api):
+def test_a_client_nothing_refers_to_can_be_deleted_and_the_name_is_free_again(api):
     acme = api.new_client("Acme Ltd")
-    assert api.client.delete(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 405
-    assert api.client.get(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 200
+    other = api.new_client("Beta Ltd")
+    assert api.client.delete(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 204
+    assert api.client.get(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 404
+    assert api.client.delete(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 404  # already gone
+    assert api.client.get(f"{CLIENTS}/{other['id']}", headers=api.headers).status_code == 200  # others untouched
+    assert api.new_client("Acme Ltd")["name"] == "Acme Ltd"
+
+
+def test_a_client_on_a_record_can_never_be_deleted_only_deactivated(api):
+    acme = api.new_client("Acme Ltd")
+    api.new_list(acme["id"])
+    refused = api.client.delete(f"{CLIENTS}/{acme['id']}", headers=api.headers)
+    assert refused.status_code == 409
+    assert "1 delivery list" in refused.json()["detail"] and "deactivate it instead" in refused.json()["detail"]
+    assert api.client.get(f"{CLIENTS}/{acme['id']}", headers=api.headers).status_code == 200  # still there
+    assert api.client.post(f"{CLIENTS}/{acme['id']}/deactivate", headers=api.headers).status_code == 200
+
+
+def test_one_organization_cannot_delete_another_organizations_client(two_orgs):
+    alpha, beta = two_orgs["alpha"], two_orgs["beta"]
+    mine = alpha.new_client("Mine Ltd")
+    assert beta.client.delete(f"{CLIENTS}/{mine['id']}", headers=beta.headers).status_code == 404
+    assert alpha.client.get(f"{CLIENTS}/{mine['id']}", headers=alpha.headers).status_code == 200
 
 
 def test_unknown_ids_are_404(api):

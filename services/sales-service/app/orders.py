@@ -849,14 +849,14 @@ def detail(db: Session, tenant: TenantContext, gateway: InventoryGateway, order:
     )
 
 
-def list_orders(db: Session, tenant: TenantContext, gateway: InventoryGateway, *, view: str, q: Optional[str], client_id: Optional[uuid.UUID], limit: int, offset: int):
+def list_orders(db: Session, tenant: TenantContext, gateway: InventoryGateway, *, view: str, q: Optional[str], client_id: Optional[uuid.UUID], limit: int, offset: int, booked: bool = False):
     """view=active: orders still to be delivered (newest first). view=delivered: orders completed within the last 24 hours (the cutoff is
     applied HERE, on the server clock, so every administrator and every reload sees the same list)."""
     from app.search import like_pattern
 
     filters = []
     if view == "active":
-        filters.append(SalesOrder.status.in_(("pending_reservation", "active")))
+        filters.append(SalesOrder.status.in_(("active",) if booked else ("pending_reservation", "active")))
         order_by = (SalesOrder.created_at.desc(), SalesOrder.number.desc())
     else:
         filters += [SalesOrder.status.in_(FINISHED), SalesOrder.completed_at > history_cutoff()]

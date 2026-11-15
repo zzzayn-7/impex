@@ -44,7 +44,7 @@ const summary = (id: string, number: string, client: string, count: number, extr
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 type Call = { url: string; method: string; body: any };
 let calls: Call[];
-let server: { drafts: any[]; clients: any[]; addItem: (listId: string, body: any) => Response; patchItem: (body: any) => Response; increase: (body: any) => Response; createList?: (body: any) => Response; createClient?: (body: any) => Response };
+let server: { drafts: any[]; clients: any[]; addItem: (listId: string, body: any) => Response; patchItem: (body: any) => Response; increase: (body: any) => Response; createList?: (body: any) => Response; createClient?: (body: any) => Response; deleteClient?: () => Response };
 
 function stub() {
   calls = [];
@@ -68,6 +68,7 @@ function stub() {
     if (url === "/api/sales/clients" && init.method === "POST") return server.createClient ? server.createClient(body) : json(201, { client: { id: "c-new", name: body.name, is_active: true } });
     if (url === "/api/sales/delivery-lists" && init.method === "POST") return server.createList ? server.createList(body) : json(201, { list: summary("a0000000-0000-4000-8000-0000000000ff", "DL-000003", "Acme Ltd", 0) });
     if (/\/clients\/[^/]+\/(activate|deactivate)$/.test(url)) return json(200, { client: {} });
+    if (/\/api\/sales\/clients\/[^/]+$/.test(url) && init.method === "DELETE") return server.deleteClient ? server.deleteClient() : json(200, { deleted: true });
     if (/\/items\/[^/]+\/increase$/.test(url)) return server.increase(body);
     if (/\/items\/[^/]+$/.test(url) && init.method === "PATCH") return server.patchItem(body);
     if (/\/items\/[^/]+$/.test(url) && init.method === "DELETE") return json(200, { removed: true });
@@ -667,10 +668,10 @@ describe("Clients", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("deactivates a client (no delete exists); its actions are icons only, with no Delivery lists or Invoices shortcut", async () => {
+  it("deactivates a client; its actions are icons only (edit, deactivate, delete), with no Delivery lists or Invoices shortcut", async () => {
     const user = userEvent.setup();
     render(<ClientManager list={{ ok: true, items: [acme], total: 1, limit: 25, offset: 0 }} filters={filters} />);
-    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete Acme Ltd" }).textContent).toBe(""); // an icon, not a word
     expect(screen.queryByRole("link", { name: /Delivery lists/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Invoices/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit Acme Ltd" }).textContent).toBe(""); // an icon, not a word
@@ -678,5 +679,40 @@ describe("Clients", () => {
     await user.click(screen.getByRole("button", { name: "Deactivate Acme Ltd" }));
     await screen.findByText(/Acme Ltd was deactivated\. Its delivery lists are kept/);
     expect(calls.find((c) => c.method === "POST")!.url).toBe(`/api/sales/clients/${C1}/deactivate`);
+  });
+
+  describe("the Delete icon (always asks first)", () => {
+    // jsdom has no <dialog>.showModal, so the confirmation falls back to window.confirm (the same question, asked the same way)
+    const answer = (yes: boolean) => { const confirm = vi.fn(() => yes); vi.stubGlobal("confirm", confirm); return confirm; };
+    const mountOne = () => render(<ClientManager list={{ ok: true, items: [acme], total: 1, limit: 25, offset: 0 }} filters={filters} />);
+    const deletes = () => calls.filter((c) => c.method === "DELETE");
+
+    it("asks first, and saying no sends nothing", async () => {
+      const confirm = answer(false);
+      mountOne();
+      await userEvent.click(screen.getByRole("button", { name: "Delete Acme Ltd" }));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(String((confirm.mock.calls[0] as unknown[])[0])).toContain("for good");
+      expect(deletes()).toEqual([]);
+    });
+
+    it("after the confirmation deletes the client, says so and re-reads the list", async () => {
+      answer(true);
+      mountOne();
+      await userEvent.click(screen.getByRole("button", { name: "Delete Acme Ltd" }));
+      await screen.findByText("Acme Ltd was deleted.");
+      expect(deletes()).toEqual([{ url: `/api/sales/clients/${C1}`, method: "DELETE", body: undefined }]);
+      expect(router.refresh).toHaveBeenCalled();
+    });
+
+    it("shows the service's reason when the client is on a record, and keeps it", async () => {
+      answer(true);
+      server.deleteClient = () => json(409, { error: "Acme Ltd appears on 2 sales orders and 1 invoice. Those records are kept, so the client cannot be deleted: deactivate it instead." });
+      mountOne();
+      await userEvent.click(screen.getByRole("button", { name: "Delete Acme Ltd" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("cannot be deleted: deactivate it instead");
+      expect(router.refresh).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Delete Acme Ltd" })).toBeTruthy();
+    });
   });
 });

@@ -101,7 +101,7 @@ def session_factory(engine):
 def database(engine, session_factory):
     """Every test starts with empty tables and uses the test database."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE sales_order_requests, sales_orders, sales_order_counters, invoice_payments, invoice_allocations, invoice_lines, invoice_requests, invoices, invoice_counters, dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
+        conn.execute(text("TRUNCATE TABLE order_invoice_lines, order_invoices, sales_order_requests, sales_orders, sales_order_counters, invoice_payments, invoice_allocations, invoice_lines, invoice_requests, invoices, invoice_counters, dispatch_lines, dispatch_requests, dispatches, dispatch_counters, delivery_list_items, delivery_lists, delivery_list_counters, clients"))
 
     def override_get_db():
         db = session_factory()

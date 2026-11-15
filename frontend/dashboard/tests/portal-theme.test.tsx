@@ -77,13 +77,13 @@ describe("one shell for the whole portal", () => {
   it("every page key knows its title, route and section, and every module page key is in the module registry", () => {
     for (const [key, meta] of Object.entries(PAGE_META)) {
       expect(meta.title && meta.href.startsWith("/"), key).toBeTruthy();
-      if (key in NAV_MODULE) expect(["inventory", "purchasing", "sales", "invoices", "finance"], key).toContain(meta.section);
+      if (key in NAV_MODULE) expect(["inventory", "purchasing", "sales", "finance"], key).toContain(meta.section);
     }
   });
 
   it("the header names the page; the company and the administrator are in the avatar's card", () => {
     const html = shell("invoices");
-    expect(html).toMatch(/<h1[^>]*>Invoices<\/h1>/);
+    expect(html).toMatch(/<h1[^>]*>Sales Invoice<\/h1>/);
     expect(html).toContain("Acme");
     expect(html).toContain("Olivia Owner");
   });

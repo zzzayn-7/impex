@@ -1,51 +1,36 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { InvoiceFilters, listClientChoices, listInvoices } from "@/lib/sales";
-import { INVOICE_STATUSES, PAYMENT_FILTERS } from "@/lib/sales-routes";
+import { PreparedFilters, listClientChoices, listOrderInvoiceRefs, listPreparedOrders } from "@/lib/sales";
 import { UUID_RE } from "@/lib/stock-validation";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
-import InvoiceIndex from "../invoice-index";
+import NewInvoice from "./new-invoice";
 
 export const metadata: Metadata = {
-  title: "Invoices | Impex Organization Portal",
+  title: "Sales Invoice | Impex Organization Portal",
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Only search text, status, payment status, client, two dates and the page number are read from the URL. There is no organization
-// parameter: whose invoices are shown is decided on the server from the signed-in administrator's session.
-function parseFilters(searchParams: SearchParams): InvoiceFilters {
-  const status = first(searchParams.status) ?? "";
-  const payment = first(searchParams.payment) ?? "";
+// Only the client, the search text and the page number are read from the URL. There is no organization parameter: whose orders are shown is decided on the server from the
+// signed-in administrator's session.
+function parseFilters(searchParams: SearchParams): PreparedFilters {
   const client = (first(searchParams.client) ?? "").trim();
-  const from = (first(searchParams.from) ?? "").trim();
-  const to = (first(searchParams.to) ?? "").trim();
   return {
     q: (first(searchParams.q) ?? "").trim().slice(0, 100),
-    status: (INVOICE_STATUSES as readonly string[]).includes(status) ? (status as InvoiceFilters["status"]) : "",
-    paymentStatus: (PAYMENT_FILTERS as readonly string[]).includes(payment) ? (payment as InvoiceFilters["paymentStatus"]) : "",
     clientId: UUID_RE.test(client) ? client : "",
-    dateFrom: DATE_RE.test(from) ? from : "",
-    dateTo: DATE_RE.test(to) ? to : "",
     page: Math.max(1, Math.min(10000, parseInt(first(searchParams.page) ?? "1", 10) || 1)),
   };
 }
 
-// Arriving from Delivery Lists' Generate Invoice: which invoice was just made (or already existed) for the order. Only a well-formed id is read; whose invoice it is
-// is decided by the list itself (it only contains this organization's invoices).
-function parseGenerated(searchParams: SearchParams): { id: string; existing: boolean } | null {
-  const id = (first(searchParams.generated) ?? "").trim();
-  return UUID_RE.test(id) ? { id, existing: first(searchParams.existing) === "1" } : null;
-}
-
-export default async function InvoicesPage({ searchParams }: { searchParams: SearchParams }) {
+// Sales Invoice > New invoice: the orders that are prepared (booked, waiting to be dispatched), newest first, for one client or for all of them.
+export default async function SalesInvoicePage({ searchParams }: { searchParams: SearchParams }) {
   await requireTenantAdmin();
   const token = getTenantToken() ?? "";
   const filters = parseFilters(searchParams ?? {});
-  const [list, clients] = await Promise.all([listInvoices(token, filters), listClientChoices(token, "all")]);
+  const [list, clients] = await Promise.all([listPreparedOrders(token, filters), listClientChoices(token, "all")]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
-  return <InvoiceIndex list={list} filters={filters} clients={clients} generated={parseGenerated(searchParams ?? {})} />;
+  const refs = list.ok ? await listOrderInvoiceRefs(token, list.items.map((o) => o.id)) : [];
+  return <NewInvoice list={list} filters={filters} clients={clients} refs={refs} />;
 }

@@ -1,41 +1,35 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { ReceiptFilters, listGoodsReceipts, listSupplierChoices } from "@/lib/purchasing";
+import { ReceivableFilters, listReceivableOrders, listSupplierChoices } from "@/lib/purchasing";
 import { UUID_RE } from "@/lib/stock-validation";
 import { getTenantToken, requireTenantAdmin } from "@/lib/tenant-session";
-import ReceiptIndex from "./receipt-index";
+import NewPurchaseInvoice from "./new-purchase-invoice";
 
 export const metadata: Metadata = {
-  title: "Suppliers Invoice | Impex Organization Portal",
+  title: "Purchase Invoice | Impex Organization Portal",
 };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Only search text, status, supplier, two dates and the page number are read from the URL. There is no organization
-// parameter: whose receipts are shown is decided on the server from the signed-in administrator's session.
-function parseFilters(searchParams: SearchParams): ReceiptFilters {
-  const status = first(searchParams.status);
+// Only the supplier, the search text and the page number are read from the URL. There is no organization parameter: whose orders are shown is decided on the server from the
+// signed-in administrator's session.
+function parseFilters(searchParams: SearchParams): ReceivableFilters {
   const supplier = (first(searchParams.supplier) ?? "").trim();
-  const from = (first(searchParams.from) ?? "").trim();
-  const to = (first(searchParams.to) ?? "").trim();
   return {
     q: (first(searchParams.q) ?? "").trim().slice(0, 100),
-    status: status === "draft" || status === "posting" || status === "confirmed" || status === "cancelled" ? status : "",
     supplierId: UUID_RE.test(supplier) ? supplier : "",
-    dateFrom: DATE_RE.test(from) ? from : "",
-    dateTo: DATE_RE.test(to) ? to : "",
     page: Math.max(1, Math.min(10000, parseInt(first(searchParams.page) ?? "1", 10) || 1)),
   };
 }
 
-export default async function GoodsReceiptsPage({ searchParams }: { searchParams: SearchParams }) {
+// Purchase Invoice > New invoice: the purchase orders still waiting for goods, newest first, for one supplier or for all of them. Choosing one opens the form that records the goods.
+export default async function PurchaseInvoicePage({ searchParams }: { searchParams: SearchParams }) {
   await requireTenantAdmin();
   const token = getTenantToken() ?? "";
   const filters = parseFilters(searchParams ?? {});
-  const [list, suppliers] = await Promise.all([listGoodsReceipts(token, filters), listSupplierChoices(token, "all")]);
+  const [list, suppliers] = await Promise.all([listReceivableOrders(token, filters), listSupplierChoices(token, "all")]);
   if (!list.ok && list.reason === "unauthorized") redirect("/login");
-  return <ReceiptIndex list={list} filters={filters} suppliers={suppliers} />;
+  return <NewPurchaseInvoice list={list} filters={filters} suppliers={suppliers} />;
 }

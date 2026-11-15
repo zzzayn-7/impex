@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from conftest import bill
-from test_order_invoice import dispatch_all, generate, goods, make_it_an_older_order, make_order  # noqa: F401  (fixtures and helpers shared with the order tests)
+from test_order_invoice import dispatch_all, goods, make_it_an_older_order, make_order  # noqa: F401  (fixtures and helpers shared with the order tests)
 
 URL = "/internal/v1/organizations/{}/finance-feed"
 KEY = "feed-secret"

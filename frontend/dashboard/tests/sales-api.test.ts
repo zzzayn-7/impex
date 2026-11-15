@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addDecimal, api, exceeds, qty, shortfall } from "@/lib/sales-browser";
 import { describeSalesFailure } from "@/lib/sales";
 import { GET as listClients, POST as createClient } from "@/app/api/sales/clients/route";
-import { PATCH as editClient } from "@/app/api/sales/clients/[id]/route";
+import { DELETE as deleteClient, PATCH as editClient } from "@/app/api/sales/clients/[id]/route";
 import { POST as clientAction } from "@/app/api/sales/clients/[id]/[action]/route";
 import { GET as listLists, POST as createList } from "@/app/api/sales/delivery-lists/route";
 import { GET as getList, PATCH as editList } from "@/app/api/sales/delivery-lists/[id]/route";
@@ -88,6 +88,7 @@ describe("every Sales route is protected by the tenant session", () => {
     ["list clients", () => listClients(request("GET", undefined, { cookie: null }))],
     ["create client", () => createClient(request("POST", { name: "A" }, { cookie: null }))],
     ["edit client", () => editClient(request("PATCH", { name: "A" }, { cookie: null }), ctx)],
+    ["delete client", () => deleteClient(request("DELETE", undefined, { cookie: null }), ctx)],
     ["client action", () => clientAction(request("POST", undefined, { cookie: null }), { params: { id: ID, action: "deactivate" } })],
     ["list lists", () => listLists(request("GET", undefined, { cookie: null }))],
     ["create list", () => createList(request("POST", { clientId: ID }, { cookie: null }))],
@@ -157,6 +158,23 @@ describe("clients", () => {
     fetchMock.mockClear();
     expect((await clientAction(request("POST"), { params: { id: ID, action: "deactivate" } })).status).toBe(200);
     expect(upstream().url).toBe(`${SALES}/api/v1/sales/clients/${ID}/deactivate`);
+  });
+
+  it("deletes a client through its own endpoint as the signed-in administrator, passing the service's reason on when it refuses", async () => {
+    stub(() => new Response(null, { status: 204 }));
+    const res = await deleteClient(request("DELETE", { organization_id: "evil" }), { params: { id: ID } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(upstream().url).toBe(`${SALES}/api/v1/sales/clients/${ID}`);
+    expect(upstream().init.method).toBe("DELETE");
+    expect(upstream().init.body).toBeUndefined();
+    expect((await deleteClient(request("DELETE"), { params: { id: "nope" } })).status).toBe(404);
+    stub(() => json(409, { detail: "Acme appears on 2 sales orders. Those records are kept, so the client cannot be deleted: deactivate it instead." }));
+    const refused = await deleteClient(request("DELETE"), { params: { id: ID } });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain("deactivate it instead");
+    stub(() => json(404, { detail: "Client not found." }));
+    expect((await deleteClient(request("DELETE"), { params: { id: ID } })).status).toBe(404);
   });
 });
 

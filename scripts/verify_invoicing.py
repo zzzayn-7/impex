@@ -505,8 +505,6 @@ def main() -> int:
         check("filtering by status and client works (only the voided INV-000003)", status == 200 and "INV-000003" in html and "INV-000001" not in html, status)
         status, html, _ = page("a", "/invoices?payment=overdue")
         check("the overdue filter loads", status == 200)
-        status, html, _ = page("a", f"/invoices/new?client={acme['id']}")
-        check("New invoice for a client shows their billable dispatch lines", status == 200 and d5["number"] in html and "Left to bill" in html, status)
         status, html, _ = page("a", f"/invoices/{i1['id']}")
         check("an invoice page shows the parties, lines, totals, payments, Print and Download PDF", status == 200 and all(x in html for x in ("INV-000001", "INVA steel bolt", "17.0667", "Payments", "RCPT-1", "Print", "Download PDF", "Reversed")), status)
         status, html, _ = page("a", f"/clients/{acme['id']}")

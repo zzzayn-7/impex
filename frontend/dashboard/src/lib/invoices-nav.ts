@@ -1,5 +1,5 @@
-// The Invoices module: two tabs over two existing systems. "Suppliers Invoice" lists the Goods Receipts of the Purchasing Service; "Sales Invoice" lists the
-// Sales Service's client invoices. Nothing here stores anything: it is only the routes and the compatibility redirects.
+// Purchase Invoice (a page of Purchasing: the Goods Receipts) and Sales Invoice (a page of Sales: the invoices of prepared orders), each with a "New invoice" and a "History" tab.
+// Nothing here stores anything: it is only the routes and the compatibility redirects.
 
 export const SUPPLIER_INVOICES_HREF = "/invoices/suppliers";
 export const SALES_INVOICES_HREF = "/invoices/sales";

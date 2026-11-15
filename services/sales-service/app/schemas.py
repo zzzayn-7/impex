@@ -798,13 +798,6 @@ class OrderSummary(BaseModel):
     notes: Optional[str] = None
 
 
-class GeneratedInvoice(BaseModel):
-    """The answer to Generate Invoice: the draft invoice, and whether it was made by this request (False: the order already had one)."""
-
-    invoice: "InvoiceDetail"
-    created: bool
-
-
 class OrderDetail(OrderSummary):
     lines: List[OrderLineResponse]
     stock_status: Literal["ok", "unavailable"]
@@ -823,3 +816,75 @@ class OrderPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# =====================================================================================================
+# Order invoices (the simple printable invoice of a prepared order) and the invoice history
+# =====================================================================================================
+class OrderInvoiceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: uuid.UUID
+
+
+class OrderInvoiceLineResponse(BaseModel):
+    product_id: uuid.UUID
+    product_sku: str
+    product_name: str
+    unit: str
+    quantity: Decimal
+    unit_price: Decimal
+    line_total: Decimal
+
+
+class OrderInvoiceDetail(BaseModel):
+    id: uuid.UUID
+    number: str
+    invoice_date: date
+    currency_code: str
+    notes: Optional[str] = None
+    client_id: uuid.UUID
+    client_name: str
+    client_address: Optional[str] = None
+    seller_name: Optional[str] = None
+    order_id: uuid.UUID
+    order_number: str
+    delivery_list_number: Optional[str] = None
+    subtotal: Decimal
+    total: Decimal
+    created_by_email: str
+    created_at: datetime
+    lines: List[OrderInvoiceLineResponse]
+
+
+class OrderInvoiceRef(BaseModel):
+    order_id: uuid.UUID
+    invoice_id: uuid.UUID
+    number: str
+
+
+class OrderInvoiceRefs(BaseModel):
+    items: List[OrderInvoiceRef]
+
+
+class HistoryItem(BaseModel):
+    """One row of the invoice history. kind 'order': an order invoice; kind 'invoice': an older (dispatch-based) invoice, whose own page has its payments."""
+
+    kind: Literal["order", "invoice"]
+    id: uuid.UUID
+    number: Optional[str] = None  # an older draft has no number yet
+    client_id: uuid.UUID
+    client_name: Optional[str] = None
+    invoice_date: date
+    currency_code: str
+    total: Decimal
+    status: str
+    order_number: Optional[str] = None
+
+
+class HistoryPage(BaseModel):
+    items: List[HistoryItem]
+    total: int
+    limit: int
+    offset: int
+

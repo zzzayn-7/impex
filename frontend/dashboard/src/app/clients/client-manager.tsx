@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { api, jsonBody } from "@/lib/sales-browser";
 import type { Client, ClientFilters, Paged } from "@/lib/sales";
+import { useConfirm } from "@/components/ui/confirm";
 import { IconAction } from "@/components/ui/icon-action";
 
 type Panel = { mode: "add" } | { mode: "edit"; client: Client } | null;
@@ -37,6 +38,25 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
     startTransition(() => router.refresh());
   }
 
+  const [confirm, confirmDialog] = useConfirm();
+
+  // DELETE (always asks first): only for a client registered by mistake. The service refuses it, in plain words, as soon as the client is on a record (see its message), and then it is deactivated instead.
+  async function remove(client: Client) {
+    const ok = await confirm({
+      title: `Delete ${client.name}?`,
+      message: "It is removed from your directory for good. This is only possible while it is on no sales order, delivery list, dispatch or invoice; otherwise it is kept and can be deactivated instead.",
+      confirmLabel: "Delete client",
+    });
+    if (!ok) return;
+    setBusyId(client.id);
+    setMessage(null);
+    const r = await api(`/api/sales/clients/${client.id}`, { method: "DELETE" });
+    setBusyId(null);
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok) return setMessage({ ok: false, text: r.error });
+    done(`${client.name} was deleted.`);
+  }
+
   async function toggle(client: Client) {
     setBusyId(client.id);
     setMessage(null);
@@ -55,6 +75,7 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">Clients</h2>
@@ -128,6 +149,7 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
                         <div className="flex flex-wrap gap-1.5">
                           <IconAction kind="edit" label="Edit" ariaLabel={`Edit ${client.name}`} onClick={() => { setMessage(null); setPanel({ mode: "edit", client }); }} />
                           <IconAction kind={client.is_active ? "archive" : "restore"} label={client.is_active ? "Deactivate" : "Reactivate"} ariaLabel={`${client.is_active ? "Deactivate" : "Reactivate"} ${client.name}`} onClick={() => toggle(client)} disabled={busyId === client.id} />
+                          <IconAction kind="delete" label="Delete" ariaLabel={`Delete ${client.name}`} onClick={() => remove(client)} disabled={busyId === client.id} />
                         </div>
                       </td>
                     </tr>

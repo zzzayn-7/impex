@@ -319,8 +319,6 @@ def main() -> int:
         check("the recorded payment keeps its own currency", psql("impex_sales", f"SELECT currency_code FROM invoice_payments WHERE invoice_id = '{invoice['id']}'") == "USD")
         s, html, _ = page("a1", "/settings")
         check("Settings shows the saved choices as selected", all(re.search(rf'<option value="{re.escape(o)}" selected', html) for o in ("PKR", "Asia/Karachi", "DD/MM/YYYY", "indian")))
-        s, html, _ = page("a1", f"/invoices/new?client={client_a['id']}")
-        check("a NEW invoice starts in the default currency (PKR)", s == 200 and re.search(r'value="PKR"', html), s)
         s, html, _ = page("a1", f"/invoices/{invoice['id']}")
         check("the ISSUED invoice still shows its own currency (USD), not the new default", s == 200 and "USD" in html and not re.search(r"68[.,]75 PKR", html))
         for label, body in (("an unknown currency", {"default_currency": "USS"}), ("a currency of the wrong length", {"default_currency": "DOLLAR"}), ("an unknown time zone", {"timezone": "Mars/Olympus"}), ("a path as a time zone", {"timezone": "../../etc/passwd"}),

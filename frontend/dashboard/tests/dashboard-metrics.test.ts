@@ -110,26 +110,26 @@ describe("the sidebar lists exactly what the organization can use", () => {
     expect(labels(["finance", "sales", "inventory", "purchasing"])).toEqual([
       ["main", ["Dashboard"]],
       ["inventory", ["Stock", "Movements"]],
-      ["purchasing", ["Suppliers", "Purchase Orders"]],
-      ["sales", ["Clients", "Create Order", "Delivery Lists"]],
-      ["invoices", ["Suppliers Invoice", "Sales Invoice"]],
+      ["purchasing", ["Suppliers", "Purchase Orders", "Purchase Invoice"]],
+      ["sales", ["Clients", "Create Order", "Delivery Lists", "Sales Invoice"]],
       ["finance", ["Finance"]], // ONE destination: the accounting pages are linked from it, not listed
       ["workspace", ["Help & Support", "Settings"]],
     ]);
   });
-  it("the Invoices group has exactly the tabs the organization may use: Suppliers Invoice needs Purchasing, Sales Invoice needs Sales", () => {
-    const tabs = (modules: string[]) => navGroups(modules).filter((g) => g.id === "invoices").flatMap((g) => g.items.map((i) => [i.label, i.href]));
-    expect(tabs(["inventory", "purchasing", "sales"])).toEqual([["Suppliers Invoice", "/invoices/suppliers"], ["Sales Invoice", "/invoices/sales"]]);
-    expect(tabs(["inventory", "purchasing"])).toEqual([["Suppliers Invoice", "/invoices/suppliers"]]);
-    expect(tabs(["inventory", "sales"])).toEqual([["Sales Invoice", "/invoices/sales"]]);
-    expect(tabs(["inventory"])).toEqual([]); // no Invoices group at all
-    expect(tabs(["finance"])).toEqual([]); // Finance alone gives no invoice pages
-    expect(navGroups(["inventory", "purchasing", "sales", "finance"]).map((g) => g.id)).toEqual(["main", "inventory", "purchasing", "sales", "invoices", "finance", "workspace"]);
+  it("there is no separate Invoices group: Purchase Invoice is a page of Purchasing and Sales Invoice a page of Sales, and each needs its own module", () => {
+    const page = (modules: string[], label: string) => navGroups(modules).flatMap((g) => g.items.map((i) => [g.id, i.label, i.href])).filter(([, l]) => l === label);
+    expect(page(["inventory", "purchasing", "sales"], "Purchase Invoice")).toEqual([["purchasing", "Purchase Invoice", "/invoices/suppliers"]]);
+    expect(page(["inventory", "purchasing", "sales"], "Sales Invoice")).toEqual([["sales", "Sales Invoice", "/invoices/sales"]]);
+    expect(page(["inventory", "purchasing"], "Sales Invoice")).toEqual([]);
+    expect(page(["inventory", "sales"], "Purchase Invoice")).toEqual([]);
+    expect(page(["finance"], "Sales Invoice")).toEqual([]); // Finance alone gives no invoice pages
+    expect(navGroups(["inventory", "purchasing", "sales", "finance"]).map((g) => g.id)).toEqual(["main", "inventory", "purchasing", "sales", "finance", "workspace"]);
   });
-  it("Goods Receipts and Invoices are not entries of Purchasing and Sales any more", () => {
+  it("Goods Receipts is not an entry of Purchasing: its list is the Purchase Invoice history", () => {
     const entries = (id: string) => navGroups(["inventory", "purchasing", "sales"]).find((g) => g.id === id)!.items.map((i) => i.label);
-    expect(entries("purchasing")).toEqual(["Suppliers", "Purchase Orders"]);
-    expect(entries("sales")).toEqual(["Clients", "Create Order", "Delivery Lists"]);
+    expect(entries("purchasing")).not.toContain("Goods Receipts");
+    expect(entries("purchasing")).toEqual(["Suppliers", "Purchase Orders", "Purchase Invoice"]);
+    expect(entries("sales")).toEqual(["Clients", "Create Order", "Delivery Lists", "Sales Invoice"]);
   });
   it("Finance shows only when enabled; Sales and Purchasing need Inventory", () => {
     expect(labels(["inventory"]).map(([id]) => id)).toEqual(["main", "inventory", "workspace"]);

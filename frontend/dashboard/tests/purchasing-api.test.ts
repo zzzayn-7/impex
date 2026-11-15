@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lineTotal, sumDecimals, validatePrice } from "@/lib/purchasing-browser";
 import { describePurchasingFailure } from "@/lib/purchasing";
 import { GET as listSuppliers, POST as createSupplier } from "@/app/api/purchasing/suppliers/route";
-import { GET as getSupplier, PATCH as editSupplier } from "@/app/api/purchasing/suppliers/[id]/route";
+import { DELETE as deleteSupplier, GET as getSupplier, PATCH as editSupplier } from "@/app/api/purchasing/suppliers/[id]/route";
 import { POST as supplierAction } from "@/app/api/purchasing/suppliers/[id]/[action]/route";
 import { GET as listOrders, POST as createOrder } from "@/app/api/purchasing/purchase-orders/route";
 import { DELETE as deleteOrder, GET as getOrder, PATCH as editOrder } from "@/app/api/purchasing/purchase-orders/[id]/route";
@@ -104,6 +104,7 @@ describe("every Purchasing route is protected by the tenant session", () => {
     ["create supplier", () => createSupplier(request("POST", { name: "A" }, { cookie: null }))],
     ["get supplier", () => getSupplier(request("GET", undefined, { cookie: null }), ctx)],
     ["edit supplier", () => editSupplier(request("PATCH", { name: "A" }, { cookie: null }), ctx)],
+    ["delete supplier", () => deleteSupplier(request("DELETE", undefined, { cookie: null }), ctx)],
     ["supplier action", () => supplierAction(request("POST", undefined, { cookie: null }), { params: { id: ID, action: "deactivate" } })],
     ["list orders", () => listOrders(request("GET", undefined, { cookie: null }))],
     ["create order", () => createOrder(request("POST", { supplierId: ID, currencyCode: "USD" }, { cookie: null, key: KEY }))],
@@ -385,5 +386,22 @@ describe("DELETE /api/purchasing/purchase-orders/{id}", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     stub(() => { throw new TypeError("down"); });
     expect((await deleteOrder(request("DELETE"), ctx)).status).toBe(503);
+  });
+});
+
+describe("deleting a supplier", () => {
+  it("goes to the supplier's own endpoint as the signed-in administrator, and passes the service's reason on when it refuses", async () => {
+    stub(() => new Response(null, { status: 204 }));
+    const res = await deleteSupplier(request("DELETE", { organization_id: "evil" }), { params: { id: ID } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(upstream().url).toBe(`${PURCHASING}/api/v1/purchasing/suppliers/${ID}`);
+    expect(upstream().init.method).toBe("DELETE");
+    expect(upstream().init.body).toBeUndefined();
+    expect((await deleteSupplier(request("DELETE"), { params: { id: "nope" } })).status).toBe(404);
+    stub(() => json(409, { detail: "Acme appears on 3 purchase orders. Those records are kept, so the supplier cannot be deleted: deactivate it instead." }));
+    const refused = await deleteSupplier(request("DELETE"), { params: { id: ID } });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain("deactivate it instead");
   });
 });

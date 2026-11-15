@@ -537,7 +537,7 @@ describe("the portal shell shows the company identity", () => {
     const links = screen.getAllByRole("link").map((l) => [l.textContent, l.getAttribute("href")]);
     expect(links).toContainEqual(["Dashboard", "/"]);
     expect(links).toContainEqual(["Sales Invoice", "/invoices/sales"]);
-    expect(links).toContainEqual(["Suppliers Invoice", "/invoices/suppliers"]);
+    expect(links).toContainEqual(["Purchase Invoice", "/invoices/suppliers"]);
     expect(links).toContainEqual(["Help & Support", "/support"]);
   });
 });

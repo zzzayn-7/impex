@@ -1,19 +1,23 @@
-"""Generate Invoice: a dispatched sales order becomes a saved DRAFT invoice in one request.
+"""Order invoices: the simple printable invoice of a PREPARED order (booked, still to be dispatched), and the invoice history.
 
-The goods and quantities are the order's confirmed dispatch lines, the unit price is the price AGREED with the client on the order (never the catalog's), the
-currency is the order's, tax and discount are zero. Nothing is invented (an order made before prices were recorded is refused), it can be repeated without a
-second invoice, another organization's order is a 404, and no stock moves.
+The invoice is made from the order's own lines at the prices AGREED on the order (never the catalog's), is a document only (no draft step, no payments, nothing for Finance
+or the stock), is frozen the moment it exists, and there is never a second one for the same order. The history lists these and the older invoices together, newest first,
+with a client filter and a date filter that work alone or together.
 """
 import threading
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from conftest import INVOICES, bearer, sent
 
 ORDERS = "/api/v1/sales/orders"
+ORDER_INVOICES = "/api/v1/sales/order-invoices"
+HISTORY = "/api/v1/sales/invoice-history"
 
 
 def d(value) -> Decimal:
@@ -43,7 +47,7 @@ def make_order(api, client, *lines, key=None, currency="USD"):
 
 
 def dispatch_all(api, order, *lines):
-    """Confirm ONE dispatch of these (product id, quantity) lines of the order's delivery list."""
+    """Confirm ONE dispatch of these (product id, quantity) lines of the order's delivery list (shared with the Finance feed tests)."""
     delivery_list = api.detail(order["delivery_list"]["id"])
     draft = api.draft(delivery_list["id"], [sent(delivery_list, p, q) for p, q in lines])
     confirmed = api.confirm(draft["id"])
@@ -51,201 +55,207 @@ def dispatch_all(api, order, *lines):
     return confirmed.json()
 
 
-def generate(api, order, headers=None):
-    return api.client.post(f"{ORDERS}/{order['id']}/invoice", headers=headers or api.headers)
-
-
 def make_it_an_older_order(session_factory):
     with session_factory() as db:  # what an older order looks like: no agreed prices were ever recorded
         db.execute(text("UPDATE delivery_list_items SET unit_price = NULL"))
-        db.execute(text("UPDATE sales_orders SET currency_code = NULL"))
         db.commit()
 
 
+def invoice_of(api, order, headers=None):
+    return api.client.post(ORDER_INVOICES, json={"order_id": order["id"]}, headers=headers or api.headers)
+
+
 @pytest.fixture
-def delivered(api, goods):
+def prepared(api, goods):
     client = api.new_client("Acme Ltd", address="1 Main St\nBerlin")
     order = make_order(api, client, (goods["bolt"], 10, "30"), (goods["flour"], 4, "12.5"))
-    dispatch_all(api, order, (goods["bolt"], 10), (goods["flour"], 4))
     return {"client": client, "order": order}
 
 
 # =====================================================================================================
-def test_it_makes_a_saved_draft_with_the_dispatched_goods_priced_as_agreed_on_the_order(api, delivered, goods):
-    response = generate(api, delivered["order"])
+def test_it_makes_the_invoice_from_the_order_at_the_agreed_prices_before_anything_is_dispatched(api, prepared):
+    response = invoice_of(api, prepared["order"])
     assert response.status_code == 201, response.text
-    body = response.json()
-    assert body["created"] is True
-    invoice = body["invoice"]
-    assert invoice["status"] == "draft" and invoice["number"] is None and invoice["currency_code"] == "USD"
-    assert invoice["client"]["name"] == "Acme Ltd" and invoice["notes"] == "Generated from sales order SO-000001 (delivery list DL-000001)."
+    invoice = response.json()
+    assert invoice["number"] == "INV-000001" and invoice["currency_code"] == "USD" and invoice["order_number"] == "SO-000001"
+    assert invoice["client_name"] == "Acme Ltd" and invoice["client_address"] == "1 Main St\nBerlin" and invoice["delivery_list_number"] == "DL-000001"
+    assert invoice["invoice_date"] == date.today().isoformat() or invoice["invoice_date"]  # today's date in the service's clock
     lines = {l["product_sku"]: l for l in invoice["lines"]}
     assert set(lines) == {"BOLT-1", "FLOUR"}
     assert (d(lines["BOLT-1"]["quantity"]), d(lines["BOLT-1"]["unit_price"]), d(lines["BOLT-1"]["line_total"])) == (10, 30, 300)  # NOT the catalog's 2.50
     assert (d(lines["FLOUR"]["quantity"]), d(lines["FLOUR"]["unit_price"]), d(lines["FLOUR"]["line_total"])) == (4, Decimal("12.5"), 50)
-    assert all(d(l["discount_amount"]) == 0 and d(l["tax_rate"]) == 0 and d(l["line_tax"]) == 0 for l in invoice["lines"])
     assert d(invoice["subtotal"]) == d(invoice["total"]) == 350
+    assert api.client.get(f"{ORDER_INVOICES}/{invoice['id']}", headers=api.headers).json() == invoice
 
 
 def test_two_clients_ordering_the_same_product_are_invoiced_their_own_prices(api, goods):
-    first, second = api.new_client("Company A"), api.new_client("Company B")
-    a = make_order(api, first, (goods["bolt"], 20, "120000"), currency="PKR")
-    b = make_order(api, second, (goods["bolt"], 20, "110000"), currency="PKR")
-    for order in (a, b):
-        dispatch_all(api, order, (goods["bolt"], 20))
-    invoice_a, invoice_b = generate(api, a).json()["invoice"], generate(api, b).json()["invoice"]
-    assert (invoice_a["currency_code"], d(invoice_a["total"])) == ("PKR", d("2400000"))
-    assert (invoice_b["currency_code"], d(invoice_b["total"])) == ("PKR", d("2200000"))
+    acme, globex = api.new_client("Acme Ltd"), api.new_client("Globex")
+    first = invoice_of(api, make_order(api, acme, (goods["bolt"], 2, "30"))).json()
+    second = invoice_of(api, make_order(api, globex, (goods["bolt"], 2, "45"))).json()
+    assert d(first["lines"][0]["unit_price"]) == 30 and d(second["lines"][0]["unit_price"]) == 45
+    assert first["number"] == "INV-000001" and second["number"] == "INV-000002"
 
 
-def test_a_later_catalog_change_does_not_change_the_invoice_that_is_generated(api, delivered, goods, inventory, two_orgs):
+def test_a_later_catalog_change_or_client_rename_does_not_change_the_invoice(api, prepared, goods, inventory, two_orgs):
+    made = invoice_of(api, prepared["order"]).json()
     inventory.products[two_orgs["alpha_id"]][goods["bolt"]]["price"] = "9999.0000"
-    invoice = generate(api, delivered["order"]).json()["invoice"]
-    assert d(next(l for l in invoice["lines"] if l["product_sku"] == "BOLT-1")["unit_price"]) == 30
+    api.client.patch(f"/api/v1/sales/clients/{prepared['client']['id']}", json={"name": "Renamed Ltd", "address": "Elsewhere"}, headers=api.headers)
+    again = api.client.get(f"{ORDER_INVOICES}/{made['id']}", headers=api.headers).json()
+    assert again == made and again["client_name"] == "Acme Ltd"
 
 
-def test_it_is_saved_so_the_sales_invoice_page_lists_it(api, delivered):
-    made = generate(api, delivered["order"]).json()["invoice"]
-    listed = api.client.get(INVOICES, headers=api.headers).json()
-    assert [i["id"] for i in listed["items"]] == [made["id"]]
-    assert api.get_invoice(made["id"])["status"] == "draft"
+def test_asking_again_returns_the_same_invoice_and_there_is_never_a_second(api, prepared):
+    first = invoice_of(api, prepared["order"])
+    again = invoice_of(api, prepared["order"])
+    assert first.status_code == 201 and again.status_code == 200 and again.json() == first.json()
+    assert api.client.get(f"{HISTORY}", headers=api.headers).json()["total"] == 1
 
 
-def test_each_line_is_backed_by_the_dispatch_line_it_bills(api, delivered):
-    invoice = generate(api, delivered["order"]).json()["invoice"]
-    dispatch = api.client.get("/api/v1/sales/dispatches", headers=api.headers).json()
-    dispatch_line_ids = {l["id"] for item in dispatch["items"] for l in api.get_dispatch(item["id"])["lines"]}
-    allocated = {a["dispatch_line_id"] for l in invoice["lines"] for a in l["allocations"]}
-    assert allocated == dispatch_line_ids and len(allocated) == 2
-
-
-def test_repeating_it_returns_the_same_invoice_and_makes_no_second_one(api, delivered):
-    first = generate(api, delivered["order"])
-    again = generate(api, delivered["order"])
-    assert first.status_code == 201 and again.status_code == 200
-    assert again.json()["created"] is False and again.json()["invoice"]["id"] == first.json()["invoice"]["id"]
-    assert len(api.client.get(INVOICES, headers=api.headers).json()["items"]) == 1
-
-
-def test_an_issued_invoice_for_the_order_is_returned_too_nothing_is_billed_twice(api, delivered):
-    made = generate(api, delivered["order"]).json()["invoice"]
-    assert api.issue(made["id"]).status_code == 200
-    again = generate(api, delivered["order"])
-    assert again.status_code == 200 and again.json()["created"] is False and again.json()["invoice"]["status"] == "issued"
-    assert len(api.client.get(INVOICES, headers=api.headers).json()["items"]) == 1
-
-
-def test_a_voided_invoice_lets_the_order_be_invoiced_again(api, delivered):
-    made = generate(api, delivered["order"]).json()["invoice"]
-    assert api.issue(made["id"]).status_code == 200
-    assert api.void(made["id"]).status_code == 200
-    again = generate(api, delivered["order"])
-    assert again.status_code == 201 and again.json()["created"] is True and again.json()["invoice"]["id"] != made["id"]
-
-
-def test_simultaneous_clicks_make_exactly_one_invoice(api, delivered, client):
+def test_simultaneous_requests_make_exactly_one_invoice(api, prepared):
     results = []
 
     def click():
-        results.append(api.client.post(f"{ORDERS}/{delivered['order']['id']}/invoice", headers=api.headers).status_code)
+        results.append(invoice_of(api, prepared["order"]).status_code)
 
     threads = [threading.Thread(target=click) for _ in range(6)]
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert sorted(results).count(201) == 1 and set(results) <= {200, 201}
-    assert len(api.client.get(INVOICES, headers=api.headers).json()["items"]) == 1
+    assert api.client.get(HISTORY, headers=api.headers).json()["total"] == 1
 
 
-def test_only_what_was_dispatched_is_billed(api, goods):
-    client = api.new_client("Partial Co")
-    order = make_order(api, client, (goods["bolt"], 10, "3"), (goods["flour"], 4, "2"))
-    dispatch_all(api, order, (goods["bolt"], 6))
-    invoice = generate(api, order).json()["invoice"]
-    assert [(l["product_sku"], d(l["quantity"]), d(l["unit_price"])) for l in invoice["lines"]] == [("BOLT-1", 6, 3)]
+def test_the_invoice_is_frozen_by_the_database(api, prepared, session_factory):
+    made = invoice_of(api, prepared["order"]).json()
+    for sql in ("UPDATE order_invoices SET client_name = 'x'", "DELETE FROM order_invoices", "UPDATE order_invoice_lines SET quantity = 1", "DELETE FROM order_invoice_lines"):
+        with session_factory() as db:
+            with pytest.raises(DBAPIError):
+                db.execute(text(sql))
+                db.commit()
+    assert api.client.get(f"{ORDER_INVOICES}/{made['id']}", headers=api.headers).json() == made
 
 
-def test_an_order_with_nothing_dispatched_has_nothing_to_invoice(api, goods):
-    client = api.new_client("Idle Co")
-    order = make_order(api, client, (goods["bolt"], 3, "4"))
-    response = generate(api, order)
-    assert response.status_code == 409 and response.json()["detail"]["code"] == "not_dispatched"
-    assert api.client.get(INVOICES, headers=api.headers).json()["items"] == []
+def test_an_order_made_before_prices_were_recorded_cannot_be_invoiced(api, prepared, session_factory):
+    with session_factory() as db:  # what an older order looks like: no agreed prices were ever recorded
+        db.execute(text("UPDATE delivery_list_items SET unit_price = NULL"))
+        db.commit()
+    refused = invoice_of(api, prepared["order"])
+    assert refused.status_code == 422 and refused.json()["detail"]["code"] == "prices_not_recorded"
+    assert api.client.get(HISTORY, headers=api.headers).json()["total"] == 0
 
 
-def test_an_order_made_before_prices_were_recorded_is_refused_with_the_way_forward(api, goods, session_factory):
-    client = api.new_client("Old Co")
-    order = make_order(api, client, (goods["bolt"], 2, "5"))
-    make_it_an_older_order(session_factory)  # (before the dispatch: a dispatched list's items are frozen by the database)
-    dispatch_all(api, order, (goods["bolt"], 2))
-    response = generate(api, order)
-    assert response.status_code == 422 and response.json()["detail"]["code"] == "prices_not_recorded"
-    assert "by hand" in response.json()["detail"]["message"]
-    assert api.client.get(INVOICES, headers=api.headers).json()["items"] == []
+def test_only_a_prepared_order_can_be_invoiced(api, prepared):
+    cancelled = api.client.post(f"{ORDERS}/{prepared['order']['id']}/cancel", headers=api.headers)
+    assert cancelled.status_code == 200, cancelled.text
+    refused = invoice_of(api, prepared["order"])
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "not_prepared"
 
 
-def test_the_billable_lines_carry_the_agreed_price_and_currency_so_a_manual_invoice_can_start_from_them(api, delivered):
-    lines = api.client.get("/api/v1/sales/billable-lines", params={"client_id": delivered["client"]["id"]}, headers=api.headers).json()
-    agreed = {l["product_sku"]: (d(l["agreed_unit_price"]), l["agreed_currency_code"], l["order_number"]) for l in lines}
-    assert agreed == {"BOLT-1": (30, "USD", "SO-000001"), "FLOUR": (Decimal("12.5"), "USD", "SO-000001")}
+def test_it_changes_no_stock_and_calls_no_other_service(api, prepared, inventory):
+    before_stock, before_calls = dict(inventory.stock), len(inventory.requests)
+    invoice_of(api, prepared["order"])
+    assert inventory.stock == before_stock and len(inventory.requests) == before_calls
 
 
-def test_billable_lines_of_an_older_order_have_no_agreed_price(api, goods, session_factory):
-    client = api.new_client("Old Co")
-    order = make_order(api, client, (goods["bolt"], 2, "5"))
-    make_it_an_older_order(session_factory)  # (before the dispatch: a dispatched list's items are frozen by the database)
-    dispatch_all(api, order, (goods["bolt"], 2))
-    (line,) = api.client.get("/api/v1/sales/billable-lines", params={"client_id": client["id"]}, headers=api.headers).json()
-    assert line["agreed_unit_price"] is None and line["agreed_currency_code"] is None
+def test_it_is_not_a_financial_record(api, prepared, session_factory):
+    invoice_of(api, prepared["order"])
+    with session_factory() as db:
+        assert db.execute(text("SELECT count(*) FROM invoices")).scalar() == 0  # the Finance feed reads only `invoices`
+        assert db.execute(text("SELECT count(*) FROM invoice_payments")).scalar() == 0
 
 
-def test_the_agreed_price_is_a_default_not_a_rule_a_draft_may_still_be_priced_otherwise(api, delivered):
-    made = generate(api, delivered["order"]).json()["invoice"]
-    line = next(l for l in made["lines"] if l["product_sku"] == "BOLT-1")
-    changed = api.client.put(f"{INVOICES}/{made['id']}/lines", json={"lines": [{"dispatch_line_id": line["allocations"][0]["dispatch_line_id"], "quantity": "10", "unit_price": "29"}]}, headers=api.headers)
-    assert changed.status_code == 200 and d(changed.json()["lines"][0]["unit_price"]) == 29  # the invoice's own rules apply; the order's agreed price is untouched
+def test_the_orders_list_can_show_only_the_prepared_ones_and_which_are_invoiced(api, goods):
+    acme, globex = api.new_client("Acme Ltd"), api.new_client("Globex")
+    first = make_order(api, acme, (goods["bolt"], 1, "30"))
+    second = make_order(api, globex, (goods["flour"], 1, "12"))
+    invoice = invoice_of(api, first).json()
+    listed = api.client.get(ORDERS, params={"view": "active", "booked": "true"}, headers=api.headers).json()
+    assert [o["number"] for o in listed["items"]] == ["SO-000002", "SO-000001"]  # newest first
+    only_globex = api.client.get(ORDERS, params={"view": "active", "booked": "true", "client_id": globex["id"]}, headers=api.headers).json()
+    assert [o["number"] for o in only_globex["items"]] == ["SO-000002"]
+    refs = api.client.get(f"{ORDER_INVOICES}/by-order", params={"order_ids": f"{first['id']},{second['id']}"}, headers=api.headers).json()["items"]
+    assert refs == [{"order_id": first["id"], "invoice_id": invoice["id"], "number": invoice["number"]}]
+    assert api.client.get(f"{ORDER_INVOICES}/by-order", params={"order_ids": "nope"}, headers=api.headers).status_code == 422
+    assert api.client.get(f"{ORDER_INVOICES}/by-order", headers=api.headers).json() == {"items": []}
 
 
-def test_a_product_with_no_catalog_price_is_invoiced_at_its_agreed_price(api, goods):
-    client = api.new_client("Acme Ltd")
-    order = make_order(api, client, (goods["plain"], 3, "7"))
-    dispatch_all(api, order, (goods["plain"], 3))
-    invoice = generate(api, order).json()["invoice"]
-    assert d(invoice["total"]) == 21
+# ---- the history -----------------------------------------------------------------------------------------
+def test_the_history_lists_every_invoice_newest_first_and_filters_by_client_and_date(api, goods, session_factory):
+    acme, globex = api.new_client("Acme Ltd"), api.new_client("Globex")
+    a = invoice_of(api, make_order(api, acme, (goods["bolt"], 1, "30"))).json()
+    g = invoice_of(api, make_order(api, globex, (goods["flour"], 2, "12"))).json()
+    with session_factory() as db:  # an older day for the first one (the guard is lifted for this one statement, as a maintenance step)
+        db.execute(text("ALTER TABLE order_invoices DISABLE TRIGGER trg_order_invoices_append_only"))
+        db.execute(text("UPDATE order_invoices SET invoice_date = '2026-01-05' WHERE id = :i"), {"i": a["id"]})
+        db.execute(text("ALTER TABLE order_invoices ENABLE TRIGGER trg_order_invoices_append_only"))
+        db.commit()
+    everything = api.client.get(HISTORY, headers=api.headers).json()
+    assert [i["number"] for i in everything["items"]] == [g["number"], a["number"]] and everything["total"] == 2  # newest first
+    assert everything["items"][0] == {"kind": "order", "id": g["id"], "number": g["number"], "client_id": globex["id"], "client_name": "Globex", "invoice_date": g["invoice_date"],
+                                      "currency_code": "USD", "total": "24.0000", "status": "issued", "order_number": "SO-000002"}
+    by_client = api.client.get(HISTORY, params={"client_id": acme["id"]}, headers=api.headers).json()
+    assert [i["number"] for i in by_client["items"]] == [a["number"]]
+    by_day = api.client.get(HISTORY, params={"day": "2026-01-05"}, headers=api.headers).json()
+    assert [i["number"] for i in by_day["items"]] == [a["number"]]
+    both = api.client.get(HISTORY, params={"client_id": globex["id"], "day": "2026-01-05"}, headers=api.headers).json()
+    assert both["items"] == [] and both["total"] == 0  # together they narrow it further
+    paged = api.client.get(HISTORY, params={"limit": 1, "offset": 1}, headers=api.headers).json()
+    assert paged["total"] == 2 and [i["number"] for i in paged["items"]] == [a["number"]]
+    assert api.client.get(HISTORY, params={"day": "not-a-date"}, headers=api.headers).status_code == 422
 
 
-def test_an_inventory_outage_does_not_matter_the_prices_are_the_orders_own(api, delivered, inventory):
-    inventory.mode = "down"
-    response = generate(api, delivered["order"])
-    inventory.mode = None
-    assert response.status_code == 201 and d(response.json()["invoice"]["total"]) == 350
+def test_the_history_also_lists_the_older_invoices_and_the_numbers_never_collide(api, goods, session_factory):
+    acme = api.new_client("Acme Ltd")
+    order = make_order(api, acme, (goods["bolt"], 3, "30"))
+    delivery_list = api.detail(order["delivery_list"]["id"])
+    confirmed = api.confirm(api.draft(delivery_list["id"], [sent(delivery_list, goods["bolt"], 3)])["id"])
+    assert confirmed.status_code == 200, confirmed.text
+    billable = api.client.get("/api/v1/sales/billable-lines", params={"client_id": acme["id"]}, headers=api.headers).json()
+    old = api.issued_invoice(acme["id"], [{"dispatch_line_id": billable[0]["dispatch_line_id"], "quantity": "3", "unit_price": "30"}])
+    newer = invoice_of(api, make_order(api, acme, (goods["flour"], 1, "12"))).json()
+    assert newer["number"] == "INV-000002"  # the same counter as the older invoices
+    history = api.client.get(HISTORY, headers=api.headers).json()
+    assert [(i["kind"], i["number"]) for i in history["items"]] == [("order", "INV-000002"), ("invoice", "INV-000001")] and history["total"] == 2
+    assert api.client.get(HISTORY, params={"client_id": acme["id"]}, headers=api.headers).json()["total"] == 2
 
 
-def test_an_inactive_client_gets_no_new_invoice(api, delivered):
-    api.client.post(f"/api/v1/sales/clients/{delivered['client']['id']}/deactivate", headers=api.headers)
-    refused = generate(api, delivered["order"])
-    assert refused.status_code == 409 and "inactive" in str(refused.json()["detail"])
-    assert api.client.get(INVOICES, headers=api.headers).json()["items"] == []
+# ---- the printable document ------------------------------------------------------------------------------
+def test_the_pdf_is_the_same_template_as_a_plain_document_without_payment_lines(api, prepared):
+    made = invoice_of(api, prepared["order"]).json()
+    shown = api.client.get(f"{ORDER_INVOICES}/{made['id']}/pdf", params={"inline": "true"}, headers=api.headers)
+    assert shown.status_code == 200 and shown.headers["content-type"] == "application/pdf" and shown.content.startswith(b"%PDF")
+    assert shown.headers["content-disposition"].startswith("inline") and "INV-000001.pdf" in shown.headers["content-disposition"]
+    download = api.client.get(f"{ORDER_INVOICES}/{made['id']}/pdf", headers=api.headers)
+    assert download.headers["content-disposition"].startswith("attachment")
+    body = shown.content
+    for expected in (b"INVOICE", b"INV-000001", b"Acme Ltd", b"BILLED TO", b"GRAND TOTAL", b"SO-000001"):
+        assert expected in body, expected
+    for absent in (b"Due Date", b"Payment Status", b"Balance due", b"Amount paid"):
+        assert absent not in body, absent
 
 
-def test_it_changes_no_stock(api, delivered, inventory):
-    before = dict(inventory.stock)
-    writes = list(inventory.deduction_writes())
-    generate(api, delivered["order"])
-    assert inventory.stock == before and inventory.deduction_writes() == writes
-
-
-def test_another_organizations_order_is_a_404_and_nothing_is_made(two_orgs, delivered):
+# ---- access and isolation ----------------------------------------------------------------------------------
+def test_another_organization_can_neither_invoice_nor_read(two_orgs, prepared):
     beta = two_orgs["beta"]
-    response = generate(beta, delivered["order"])
-    assert response.status_code == 404
-    assert beta.client.get(INVOICES, headers=beta.headers).json()["items"] == []
-    assert generate(two_orgs["alpha"], {"id": str(uuid.uuid4())}).status_code == 404
+    assert invoice_of(beta, prepared["order"]).status_code == 404
+    made = invoice_of(two_orgs["alpha"], prepared["order"]).json()
+    assert beta.client.get(f"{ORDER_INVOICES}/{made['id']}", headers=beta.headers).status_code == 404
+    assert beta.client.get(f"{ORDER_INVOICES}/{made['id']}/pdf", headers=beta.headers).status_code == 404
+    assert beta.client.get(HISTORY, headers=beta.headers).json() == {"items": [], "total": 0, "limit": 25, "offset": 0}
+    assert beta.client.get(f"{ORDER_INVOICES}/by-order", params={"order_ids": prepared["order"]["id"]}, headers=beta.headers).json() == {"items": []}
+    assert invoice_of(two_orgs["alpha"], {"id": str(uuid.uuid4())}).status_code == 404
 
 
-def test_it_needs_a_signed_in_organization_administrator(api, delivered, client):
-    assert client.post(f"{ORDERS}/{delivered['order']['id']}/invoice").status_code == 401
-    assert client.post(f"{ORDERS}/{delivered['order']['id']}/invoice", headers=bearer("nobody")).status_code == 401
+def test_every_route_needs_a_signed_in_organization_administrator(api, prepared, client):
+    made = invoice_of(api, prepared["order"]).json()
+    for method, url in (("post", ORDER_INVOICES), ("get", HISTORY), ("get", f"{ORDER_INVOICES}/by-order"), ("get", f"{ORDER_INVOICES}/{made['id']}"), ("get", f"{ORDER_INVOICES}/{made['id']}/pdf")):
+        assert getattr(client, method)(url).status_code == 401, url
+        assert getattr(client, method)(url, headers=bearer("nobody")).status_code == 401, url
 
 
-def test_a_malformed_id_is_a_422(api):
-    assert api.client.post(f"{ORDERS}/not-a-uuid/invoice", headers=api.headers).status_code == 422
+def test_a_malformed_order_id_is_a_422_and_nothing_else_is_accepted(api):
+    assert api.client.post(ORDER_INVOICES, json={"order_id": "not-a-uuid"}, headers=api.headers).status_code == 422
+    assert api.client.post(ORDER_INVOICES, json={"order_id": str(uuid.uuid4()), "total": "1"}, headers=api.headers).status_code == 422  # nothing but the order can be sent
+
+
+def test_the_generate_invoice_after_dispatch_endpoint_is_gone(api, prepared):
+    assert api.client.post(f"{ORDERS}/{prepared['order']['id']}/invoice", headers=api.headers).status_code in (404, 405)

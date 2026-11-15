@@ -561,3 +561,68 @@ class SalesOrderRequest(TenantOwnedMixin, Base):
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     order_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# =====================================================================================================
+# Order invoices: the simple, printable invoice made from a PREPARED ORDER (before it is dispatched).
+# =====================================================================================================
+class OrderInvoice(TenantOwnedMixin, Base):
+    """The invoice of ONE sales order, made from the order's own lines at the prices agreed on it, and kept as it was made (a printable document: no draft step, no payments, no
+    voiding, and nothing for Finance). The client, the seller and every line are copied into it, so later changes to the client, the catalog or the order never change a printed
+    invoice. One order has at most one invoice. Rows are never edited or deleted (a database guard); its number comes from the same counter as the older invoices, so no two
+    invoices of an organization share a number."""
+
+    __tablename__ = "order_invoices"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_order_invoices_organization_id_id"),
+        UniqueConstraint("organization_id", "number", name="uq_order_invoices_organization_id_number"),
+        UniqueConstraint("organization_id", "order_id", name="uq_order_invoices_organization_id_order_id"),
+        ForeignKeyConstraint(["organization_id", "order_id"], ["sales_orders.organization_id", "sales_orders.id"], name="fk_order_invoices_order_same_organization", ondelete="RESTRICT"),
+        ForeignKeyConstraint(["organization_id", "client_id"], ["clients.organization_id", "clients.id"], name="fk_order_invoices_client_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_format"),
+        CheckConstraint("subtotal >= 0 AND total = subtotal", name="total_matches"),
+        Index("ix_order_invoices_organization_id_client_id", "organization_id", "client_id"),
+        Index("ix_order_invoices_organization_id_invoice_date", "organization_id", "invoice_date"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    client_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    number: Mapped[str] = mapped_column(String(32), nullable=False)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    seller_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # snapshots
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    order_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    delivery_list_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrderInvoiceLine(TenantOwnedMixin, Base):
+    """One line of an order invoice: product, SKU, name and unit as they were on the order, the quantity ordered and the unit price agreed for it."""
+
+    __tablename__ = "order_invoice_lines"
+    __table_args__ = (
+        ForeignKeyConstraint(["organization_id", "invoice_id"], ["order_invoices.organization_id", "order_invoices.id"], name="fk_order_invoice_lines_invoice_same_organization", ondelete="RESTRICT"),
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("unit_price >= 0", name="unit_price_non_negative"),
+        CheckConstraint("line_total = round(quantity * unit_price, 4)", name="total_matches"),
+        Index("ix_order_invoice_lines_organization_id_invoice_id", "organization_id", "invoice_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    product_sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    line_total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)

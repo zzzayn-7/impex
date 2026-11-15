@@ -280,7 +280,8 @@ describe("modules that are not enabled", () => {
     for (const href of ["/", "/stock", "/movements", "/suppliers", "/purchase-orders", "/invoices/suppliers", "/clients", "/delivery-lists", "/invoices/sales",
       "/finance", "/support", "/settings"]) expect(html, href).toContain(`href="${href}"`);
     for (const gone of ["/finance/accounts", "/finance/expenses", "/finance/journal"]) expect(html, gone).not.toContain(`href="${gone}"`); // Finance is ONE entry; the accounting pages are linked from its page
-    for (const group of ["main", "inventory", "purchasing", "sales", "invoices", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
+    for (const group of ["main", "inventory", "purchasing", "sales", "finance", "workspace"]) expect(html).toContain(`data-nav-group="${group}"`);
+    expect(html).not.toContain('data-nav-group="invoices"'); // there is no separate Invoices group
   });
 
   it("Scan Product is not a menu entry or a dashboard shortcut: scanning happens inside the workflows", async () => {

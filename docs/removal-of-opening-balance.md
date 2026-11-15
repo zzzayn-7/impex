@@ -32,4 +32,4 @@ Nothing recorded was changed, deleted or reset. **No database migration was need
 
 ## Verification
 
-Inventory Service tests, Finance Service tests, dashboard tests (`tests/no-opening-balance.test.ts` fails if the removed endpoints or wording come back) and the live checks `verify_add_stock.py`, `verify_stock_management.py`, `verify_capital_pnl.py`, `verify_trading_flow.py`, `verify_generate_invoice.py`.
+Inventory Service tests, Finance Service tests, dashboard tests (`tests/no-opening-balance.test.ts` fails if the removed endpoints or wording come back) and the live checks `verify_add_stock.py`, `verify_stock_management.py`, `verify_capital_pnl.py`, `verify_trading_flow.py`.

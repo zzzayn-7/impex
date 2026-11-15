@@ -505,3 +505,68 @@ export function salesFailureResponse(result: SalesResult, notFound?: string) {
   const { status, message, ...rest } = describeSalesFailure(result, notFound);
   return NextResponse.json({ error: message, ...rest }, { status, headers: { "Cache-Control": "no-store" } });
 }
+
+
+// ---- Sales Invoice: New invoice (prepared orders), History, and the order invoice ---------------------------------------------------------------------------------------
+/** The PREPARED orders of a client (or of everyone): booked and ready to be dispatched, newest first. The order search matches the order number, the list number and the client. */
+export type PreparedFilters = { q: string; clientId: string; page: number };
+export function listPreparedOrders(token: string, filters: PreparedFilters) {
+  const params = new URLSearchParams({ view: "active", booked: "true", limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.clientId) params.set("client_id", filters.clientId);
+  return getPaged<OrderSummary>("/api/v1/sales/orders", params, token);
+}
+
+export type OrderInvoiceRef = { order_id: string; invoice_id: string; number: string };
+/** Which of these orders already have an invoice. An outage is "none": the list still works and Create invoice is simply answered by the service (it returns the existing one). */
+export async function listOrderInvoiceRefs(token: string, orderIds: string[]): Promise<OrderInvoiceRef[]> {
+  if (orderIds.length === 0) return [];
+  const result = await salesRequest("GET", `/api/v1/sales/order-invoices/by-order?${new URLSearchParams({ order_ids: orderIds.join(",") })}`, token);
+  return result?.status === 200 && Array.isArray(result.data?.items) ? result.data.items : [];
+}
+
+/** One row of the invoice history: an order invoice (kind "order") or an older, dispatch-based invoice (kind "invoice", which has its own page with its payments). */
+export type HistoryItem = {
+  kind: "order" | "invoice";
+  id: string;
+  number: string | null;
+  client_id: string;
+  client_name: string | null;
+  invoice_date: string;
+  currency_code: string;
+  total: string;
+  status: string;
+  order_number: string | null;
+};
+export type HistoryFilters = { clientId: string; day: string; page: number };
+export function listInvoiceHistory(token: string, filters: HistoryFilters) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.clientId) params.set("client_id", filters.clientId);
+  if (filters.day) params.set("day", filters.day);
+  return getPaged<HistoryItem>("/api/v1/sales/invoice-history", params, token);
+}
+
+export type OrderInvoiceDetail = {
+  id: string;
+  number: string;
+  invoice_date: string;
+  currency_code: string;
+  notes: string | null;
+  client_id: string;
+  client_name: string;
+  client_address: string | null;
+  seller_name: string | null;
+  order_id: string;
+  order_number: string;
+  delivery_list_number: string | null;
+  subtotal: string;
+  total: string;
+  created_by_email: string;
+  created_at: string;
+  lines: { product_id: string; product_sku: string; product_name: string; unit: string; quantity: string; unit_price: string; line_total: string }[];
+};
+export async function getOrderInvoice(token: string, id: string): Promise<{ ok: true; invoice: OrderInvoiceDetail } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/order-invoices/${id}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, invoice: result.data };
+}

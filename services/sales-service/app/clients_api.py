@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
-from app.models import Client
+from app.models import Client, DeliveryList, Dispatch, Invoice, SalesOrder
 from app.schemas import ClientCreate, ClientList, ClientResponse, ClientUpdate
 from app.search import like_pattern
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
@@ -108,8 +108,38 @@ def _set_active(db: Session, tenant: TenantContext, client_id: uuid.UUID, active
 
 @router.post("/clients/{client_id}/deactivate", response_model=ClientResponse, tags=["Clients"])
 def deactivate_client(client_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    """Deactivate (never delete): the client stays on its existing delivery lists but gets no new ones."""
+    """Deactivate: the client stays on its existing records but gets no new ones. (A client with no records at all can be deleted.)"""
     return _set_active(db, tenant, client_id, False)
+
+
+# What a client can be on record for. A client that appears on any of these can never be deleted (those records are kept, and the database refuses it too): it is deactivated instead.
+RECORDS = ((SalesOrder, "sales order", "sales orders"), (DeliveryList, "delivery list", "delivery lists"), (Dispatch, "dispatch", "dispatches"), (Invoice, "invoice", "invoices"))
+
+
+def _still_on_record(db: Session, tenant: TenantContext, client: Client) -> HTTPException:
+    found = []
+    for model, singular, plural in RECORDS:
+        count = db.scalar(scoped_count(model, tenant, model.client_id == client.id)) or 0
+        if count:
+            found.append(f"{count} {singular if count == 1 else plural}")
+    detail = (f"{client.name} appears on {', '.join(found)}" if found else f"{client.name} appears on records") + \
+        ". Those records are kept, so the client cannot be deleted: deactivate it instead."
+    return HTTPException(status.HTTP_409_CONFLICT, detail)
+
+
+@router.delete("/clients/{client_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Clients"])
+def delete_client(client_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """DELETE a client that nothing refers to (a client registered by mistake). Refused (409) as soon as it is on a sales order, delivery list, dispatch or invoice: those are
+    kept for good, so such a client is deactivated, never deleted."""
+    client = get_scoped_or_404(db, Client, tenant, client_id, "Client")
+    if any(db.scalar(scoped_count(model, tenant, model.client_id == client.id)) for model, _, _ in RECORDS):
+        raise _still_on_record(db, tenant, client)
+    try:
+        db.delete(client)
+        db.commit()
+    except IntegrityError:  # something this check could not see refers to it (the database's own RESTRICT)
+        db.rollback()
+        raise _still_on_record(db, tenant, client)
 
 
 @router.post("/clients/{client_id}/activate", response_model=ClientResponse, tags=["Clients"])

@@ -35,7 +35,8 @@ Inventory Service's own audited, idempotent operation:
 | `POST /clients` | register a client (name unique per organization, ignoring case and spacing) |
 | `GET /clients?q=&status=active\|inactive\|all` | list / search (name, contact, e-mail, phone) |
 | `GET /clients/{id}` / `PATCH /clients/{id}` | view / edit |
-| `POST /clients/{id}/deactivate` / `activate` | deactivate (never deleted) / reactivate |
+| `POST /clients/{id}/deactivate` / `activate` | deactivate (hide it, keep everything) / reactivate |
+| `DELETE /clients/{id}` | delete a client that nothing refers to (`204`). `409` as soon as it is on a sales order, delivery list, dispatch or invoice (the message says how many): those are kept, so such a client is deactivated instead. Another organization's id is `404` |
 | `POST /delivery-lists` | start a **draft** list for a client (`client_id`, optional `external_reference`, `notes`); the number `DL-000001`, ... is assigned here |
 | `GET /delivery-lists?client_id=&status=&q=` | list / filter / search (number, reference, client name) |
 | `GET /delivery-lists/{id}` | the list, its items and the **live** stock of each product |
@@ -46,7 +47,7 @@ Inventory Service's own audited, idempotent operation:
 | `POST /delivery-lists/{id}/items/{item_id}/increase` | add an explicit amount to an existing line |
 | `DELETE /delivery-lists/{id}/items/{item_id}` | remove a line |
 
-Lists and clients are never deleted. Items can be changed only while the list is a **draft** (the database enforces it, and an item can never be moved to another list).
+Lists are never deleted, and neither is a client that is on any record (see `DELETE /clients/{id}`). Items can be changed only while the list is a **draft** (the database enforces it, and an item can never be moved to another list).
 
 ## Dispatches (Step 17A)
 
@@ -120,6 +121,9 @@ writes no stock movement. It bills goods that were **already dispatched**: every
 | Method & path | Purpose |
 | :--- | :--- |
 | `GET /billable-lines?client_id=&delivery_list_id=` | the confirmed dispatch lines of one client with *dispatched*, *invoiced* (issued invoices), *in drafts* (information only) and *remaining* |
+| `POST /order-invoices` | the invoice of one **prepared** order (`{order_id}`): lines at the agreed prices, no draft step. `201`, or `200` if it already exists; `409 not_prepared` once dispatched |
+| `GET /order-invoices/{id}` / `/{id}/pdf` / `/by-order?order_ids=` | one such invoice, its PDF, and which orders already have one |
+| `GET /invoice-history?client_id=&day=` | every invoice (these and the older ones), newest first |
 | `POST /invoices` | start a **draft** for a client and a currency, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
 | `GET /invoices?client_id=&status=&payment_status=unpaid\|partial\|paid\|overdue&q=&date_from=&date_to=` | list / filter / search (number, client, notes) |
 | `GET /invoices/{id}` | the invoice, its lines (with the dispatches they bill), its payments and what may be done to it |

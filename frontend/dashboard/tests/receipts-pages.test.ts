@@ -15,7 +15,8 @@ vi.mock("next/navigation", () => ({ usePathname: () => null,
 }));
 
 import GoodsReceiptsLayout from "@/app/goods-receipts/layout";
-import GoodsReceiptsPage from "@/app/invoices/suppliers/page";
+import PurchaseInvoicePage from "@/app/invoices/suppliers/page";
+import PurchaseHistoryPage from "@/app/invoices/suppliers/history/page";
 import GoodsReceiptPage from "@/app/goods-receipts/[id]/page";
 import ReceiveGoodsPage from "@/app/purchase-orders/[id]/receive/page";
 import PurchaseOrderPage from "@/app/purchase-orders/[id]/page";
@@ -25,6 +26,7 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 const now = "2026-11-07T10:00:00+00:00";
 const A_ORDER = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60718";
 const B_ORDER = "9d4f3b3d-4e5f-4a6b-9bc3-d4e5f6071829";
+const A_ORDER2 = "8c3e2a2c-3d4e-4f5a-8ab2-c3d4e5f60719";
 const A_RECEIPT = "a1111111-1111-4111-8111-aaaaaaaaaaaa";
 const B_RECEIPT = "b2222222-2222-4222-8222-bbbbbbbbbbbb";
 const A_DRAFT = "a1111111-1111-4111-8111-dddddddddddd";
@@ -67,7 +69,10 @@ const fresh = () => {
   return {
     "token-alpha": {
       receipts: [aReceipt, aDraft], details: { [A_RECEIPT]: receiptDetail(aReceipt, "Alpha steel bolt"), [A_DRAFT]: receiptDetail(aDraft, "Alpha steel bolt", { editable: true }) } as Record<string, any>,
-      orders: { [A_ORDER]: orderDetail(A_ORDER, "PO-000001", alpha, "Alpha steel bolt", { receipts: [aReceipt, aDraft] }) } as Record<string, any>,
+      orders: {
+        [A_ORDER]: orderDetail(A_ORDER, "PO-000001", alpha, "Alpha steel bolt", { receipts: [aReceipt, aDraft] }),
+        [A_ORDER2]: orderDetail(A_ORDER2, "PO-000002", alpha, "Alpha washer", { status: "partially_received", order_date: "2026-11-08" }),
+      } as Record<string, any>,
     },
     "token-beta": {
       receipts: [bReceipt], details: { [B_RECEIPT]: receiptDetail(bReceipt, "Beta silk scarf") } as Record<string, any>,
@@ -98,6 +103,9 @@ function stubWorld(options: { status?: number } = {}) {
       const params = new URL(url).searchParams;
       const page = (items: any[]) => json(200, { items, total: items.length, limit: Number(params.get("limit")), offset: Number(params.get("offset")) });
       if (path === "/suppliers") return page([]);
+      if (path === "/purchase-orders") {
+        return page(Object.values(org.orders).filter((o: any) => (!params.get("status") || o.status === params.get("status")) && (!params.get("supplier_id") || o.supplier.id === params.get("supplier_id")) && (!params.get("q") || o.number.includes(params.get("q")!.toUpperCase()))));
+      }
       if (path === "/goods-receipts") return page(org.receipts.filter((r: any) => !params.get("status") || r.status === params.get("status")));
       let match = path.match(/^\/goods-receipts\/([^/]+)$/);
       if (match) return org.details[match[1]] ? json(200, org.details[match[1]]) : json(404, { detail: "Goods receipt not found." });
@@ -119,63 +127,121 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Goods Receipts page", () => {
-  it("lists the receipts with number, order, supplier, date, lines and status", async () => {
+describe("Purchase Invoice > New invoice", () => {
+  it("lists the purchase orders still waiting for goods, newest first, each with a Receive goods link", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const html = await render(GoodsReceiptsPage({ searchParams: {} }));
-    for (const expected of ["Invoices", "Goods receipt", "Suppliers Invoice", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All statuses", "All suppliers", "Showing 1–2 of 2", "stock is added only when a receipt is confirmed"]) {
-      expect(html, expected).toContain(expected);
-    }
-    expect(html).toContain(`href="/goods-receipts/${A_RECEIPT}"`);
+    const html = await render(PurchaseInvoicePage({ searchParams: {} }));
+    for (const expected of ["New invoice", "History", "PO-000001", "PO-000002", "Alpha Metals", "All suppliers", "Receive goods for PO-000001", "Receive goods for PO-000002"]) expect(html, expected).toContain(expected);
+    expect(html).toContain(`href="/purchase-orders/${A_ORDER}/receive"`);
+    expect(html.indexOf("PO-000002")).toBeLessThan(html.indexOf("PO-000001")); // the newer order is first
   });
 
-  it("two organizations: each sees only their own receipts", async () => {
+  it("asks for the orders that can still receive goods, with only whitelisted filters", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    const a = await render(GoodsReceiptsPage({ searchParams: {} }));
+    await PurchaseInvoicePage({ searchParams: { supplier: A_SUPPLIER, q: "po-1", page: "1", organization_id: B_SUPPLIER, sort: "x" } });
+    const orderCalls = purchasingCalls().filter((c) => new URL(c.url).pathname === "/api/v1/purchasing/purchase-orders");
+    expect(orderCalls.map((c) => new URL(c.url).searchParams.get("status")).sort()).toEqual(["ordered", "partially_received"]);
+    for (const c of orderCalls) expect(Object.fromEntries(new URL(c.url).searchParams)).toMatchObject({ supplier_id: A_SUPPLIER, q: "po-1" });
+    for (const c of orderCalls) expect([...new URL(c.url).searchParams.keys()].sort()).toEqual(["limit", "offset", "q", "status", "supplier_id"]);
+    calls = [];
+    await PurchaseInvoicePage({ searchParams: { supplier: "' OR 1=1", page: "banana" } });
+    for (const c of purchasingCalls().filter((x) => new URL(x.url).pathname === "/api/v1/purchasing/purchase-orders")) expect([...new URL(c.url).searchParams.keys()].sort()).toEqual(["limit", "offset", "status"]);
+  });
+
+  it("two organizations: each sees only their own orders", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const a = await render(PurchaseInvoicePage({ searchParams: {} }));
     jar[TENANT_SESSION_COOKIE] = "token-beta";
-    const b = await render(GoodsReceiptsPage({ searchParams: {} }));
+    const b = await render(PurchaseInvoicePage({ searchParams: {} }));
     expect(a).toContain("Alpha Metals");
     expect(a).not.toContain("Beta Textiles");
     expect(b).toContain("Beta Textiles");
     expect(b).not.toContain("Alpha Metals");
   });
 
-  it("passes only whitelisted filters to the service", async () => {
-    stubWorld();
-    jar[TENANT_SESSION_COOKIE] = "token-alpha";
-    await GoodsReceiptsPage({ searchParams: { q: "dn", status: "confirmed", supplier: A_SUPPLIER, warehouse: W1, from: "2026-11-01", to: "2026-11-30", page: "2", organization_id: B_SUPPLIER, sort: "x" } });
-    const call = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!;
-    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({
-      q: "dn", status: "confirmed", supplier_id: A_SUPPLIER, date_from: "2026-11-01", date_to: "2026-11-30", limit: "25", offset: "25",
-    });
-    calls = [];
-    await GoodsReceiptsPage({ searchParams: { status: "shipped", supplier: "' OR 1=1", warehouse: "x", from: "yesterday", to: "../", page: "banana" } });
-    const clean = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!;
-    expect([...new URL(clean.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
-  });
-
   it("redirects without a session / for a Super Admin, calling no purchasing endpoint", async () => {
     stubWorld();
-    await expect(GoodsReceiptsPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    await expect(PurchaseInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-super";
-    await expect(GoodsReceiptsPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    await expect(PurchaseInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     expect(purchasingCalls()).toHaveLength(0);
   });
 
   it("explains an inactive organization, an outage and an expired session; and an empty list", async () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     stubWorld({ status: 403 });
-    expect(await render(GoodsReceiptsPage({ searchParams: {} }))).toContain("currently inactive or unavailable");
+    expect(await render(PurchaseInvoicePage({ searchParams: {} }))).toContain("currently inactive or unavailable");
     stubWorld({ status: 503 });
-    expect(await render(GoodsReceiptsPage({ searchParams: {} }))).toContain("temporarily unavailable");
+    expect(await render(PurchaseInvoicePage({ searchParams: {} }))).toContain("temporarily unavailable");
     stubWorld({ status: 401 });
-    await expect(GoodsReceiptsPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    await expect(PurchaseInvoicePage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    orgs["token-alpha"].orders = {};
+    stubWorld();
+    expect(await render(PurchaseInvoicePage({ searchParams: {} }))).toContain("No orders waiting for goods");
+    expect(await render(PurchaseInvoicePage({ searchParams: { q: "zzz" } }))).toContain("No orders found");
+  });
+});
+
+describe("Purchase Invoice > History", () => {
+  it("lists the receipts with number, supplier, order, date and status, each opening its own page", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await render(PurchaseHistoryPage({ searchParams: {} }));
+    for (const expected of ["New invoice", "History", "GR-000001", "GR-000002", "PO-000001", "Alpha Metals", "2026-11-07", "Confirmed", "Draft", "All suppliers", "Supplier", "Date", "Showing 1–2 of 2"]) {
+      expect(html, expected).toContain(expected);
+    }
+    expect(html).toContain(`href="/goods-receipts/${A_RECEIPT}"`);
+  });
+
+  it("passes the supplier and the date (alone or together) and nothing else", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    await PurchaseHistoryPage({ searchParams: { supplier: A_SUPPLIER, date: "2026-11-07", page: "2", status: "draft", q: "x", warehouse: W1, organization_id: B_SUPPLIER } });
+    const call = purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!;
+    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ supplier_id: A_SUPPLIER, date_from: "2026-11-07", date_to: "2026-11-07", limit: "25", offset: "25" });
+    calls = [];
+    await PurchaseHistoryPage({ searchParams: { date: "2026-11-07" } });
+    expect(Object.fromEntries(new URL(purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!.url).searchParams)).toEqual({ date_from: "2026-11-07", date_to: "2026-11-07", limit: "25", offset: "0" });
+    calls = [];
+    await PurchaseHistoryPage({ searchParams: { supplier: "' OR 1=1", date: "yesterday", page: "banana" } });
+    expect([...new URL(purchasingCalls().find((c) => new URL(c.url).pathname === "/api/v1/purchasing/goods-receipts")!.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
+  });
+
+  it("two organizations: each sees only their own receipts", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const a = await render(PurchaseHistoryPage({ searchParams: {} }));
+    jar[TENANT_SESSION_COOKIE] = "token-beta";
+    const b = await render(PurchaseHistoryPage({ searchParams: {} }));
+    expect(a).toContain("Alpha Metals");
+    expect(a).not.toContain("Beta Textiles");
+    expect(b).toContain("Beta Textiles");
+    expect(b).not.toContain("Alpha Metals");
+  });
+
+  it("redirects without a session / for a Super Admin, calling no purchasing endpoint", async () => {
+    stubWorld();
+    await expect(PurchaseHistoryPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    jar[TENANT_SESSION_COOKIE] = "token-super";
+    await expect(PurchaseHistoryPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+    expect(purchasingCalls()).toHaveLength(0);
+  });
+
+  it("explains an inactive organization, an outage and an expired session; and an empty history", async () => {
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    stubWorld({ status: 403 });
+    expect(await render(PurchaseHistoryPage({ searchParams: {} }))).toContain("currently inactive or unavailable");
+    stubWorld({ status: 503 });
+    expect(await render(PurchaseHistoryPage({ searchParams: {} }))).toContain("temporarily unavailable");
+    stubWorld({ status: 401 });
+    await expect(PurchaseHistoryPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
     orgs["token-alpha"].receipts = [];
     stubWorld();
-    expect(await render(GoodsReceiptsPage({ searchParams: {} }))).toContain("No goods receipts yet");
-    expect(await render(GoodsReceiptsPage({ searchParams: { q: "zzz" } }))).toContain("No goods receipts match these filters");
+    expect(await render(PurchaseHistoryPage({ searchParams: {} }))).toContain("No invoices yet");
+    expect(await render(PurchaseHistoryPage({ searchParams: { date: "2030-01-01" } }))).toContain("No invoices found");
   });
 });
 
@@ -319,7 +385,7 @@ describe("navigation", () => {
     await expect((GoodsReceiptsLayout as any)({ children: null })).rejects.toThrow("REDIRECT:/login");
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = renderToStaticMarkup(await (GoodsReceiptsLayout as any)({ children: "PAGE" }));
-    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Suppliers Invoice"); // a receipt belongs to that tab
+    expect((html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? "").replace(/<[^>]+>/g, "")).toBe("Purchase Invoice"); // a receipt belongs to that page
     for (const href of ["/", "/stock", "/movements", "/delivery-lists", "/clients", "/suppliers", "/purchase-orders", "/invoices/suppliers"]) expect(html).toContain(`href="${href}"`);
   });
 });

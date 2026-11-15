@@ -9,7 +9,6 @@ vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ro
 import ClientAccountView from "@/app/clients/[id]/client-account";
 import InvoiceDetailView from "@/app/invoices/(sales)/[id]/invoice-detail";
 import InvoiceForm from "@/app/invoices/(sales)/invoice-form";
-import InvoiceIndex from "@/app/invoices/(sales)/invoice-index";
 import PortalShell from "@/components/dashboard/frame";
 import DispatchDetailView from "@/app/dispatches/[id]/dispatch-detail";
 
@@ -94,99 +93,12 @@ const user = () => userEvent.setup();
 // =====================================================================================================
 // Index
 // =====================================================================================================
-describe("Invoices index", () => {
-  const filters = { q: "", status: "" as const, paymentStatus: "" as const, clientId: "", dateFrom: "", dateTo: "", page: 1 };
-  const page = (items: any[], extra: Record<string, unknown> = {}) => ({ ok: true as const, items, total: items.length, limit: 25, offset: 0, ...extra });
-  const mount = (list: any, f: Record<string, unknown> = {}) => render(<InvoiceIndex list={list} filters={{ ...filters, ...f } as any} clients={clients as any} />);
-
-  it("arriving from Generate Invoice: says the invoice was generated and saved as a draft, links to it, and marks its row", () => {
-    const made = "9f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
-    render(<InvoiceIndex list={page([summary({ id: made, number: null, status: "draft" }), summary()]) as any} filters={filters as any} clients={clients as any} generated={{ id: made, existing: false }} />);
-    const banner = screen.getByRole("status");
-    expect(banner.textContent).toContain("generated from the dispatched order and saved as a draft");
-    expect(within(banner).getByRole("link", { name: "Open the invoice" }).getAttribute("href")).toBe(`/invoices/${made}`);
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows[0].getAttribute("data-generated")).toBe("true");
-    expect(rows[0].textContent).toContain("Draft");
-    expect(rows[1].getAttribute("data-generated")).toBeNull();
-  });
-
-  it("arriving for an order that already had an invoice: says so, and points at it", () => {
-    const made = "9f1c0e0a-1b2c-4d3e-8f90-a1b2c3d4e5f6";
-    render(<InvoiceIndex list={page([summary({ id: made })]) as any} filters={filters as any} clients={clients as any} generated={{ id: made, existing: true }} />);
-    expect(screen.getByRole("status").textContent).toContain("This order already had an invoice");
-  });
-
-  it("without a generated invoice there is no banner", () => {
-    mount(page([summary()]));
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(document.querySelector("[data-generated-banner]")).toBeNull();
-  });
-
-  it("shows each invoice with amounts, a draft without a number and an overdue date", () => {
-    mount(page([summary(), summary({ id: "x2", number: null, status: "draft", delivery_list: null }), summary({ id: "x3", number: "INV-000003", overdue: true, due_date: "2025-01-31", paid_total: "5.0000", outstanding: "20.0000", status: "partially_paid" })]));
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(3);
-    expect(rows[0].textContent).toContain("INV-000001");
-    expect(rows[0].textContent).toContain("25.00 USD");
-    expect(rows[1].textContent).toContain("Draft");
-    expect(rows[2].textContent).toContain("overdue");
-    expect(rows[2].textContent).toContain("Partially paid");
-    expect(screen.getByRole("link", { name: "INV-000001" }).getAttribute("href")).toBe(`/invoices/${INVOICE}`);
-    expect(screen.getByRole("link", { name: "New Invoice" }).getAttribute("href")).toBe("/invoices/new");
-  });
-
-  it("each filter changes the address and returns to page 1", async () => {
-    mount(page([summary()], { total: 80 }), { page: 3 });
-    const u = user();
-    await u.selectOptions(screen.getByLabelText("Status"), "issued");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?status=issued");
-    await u.selectOptions(screen.getByLabelText("Payment"), "overdue");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?payment=overdue&page=3".replace("&page=3", ""));
-    await u.selectOptions(screen.getByLabelText("Client"), CLIENT);
-    expect(router.push).toHaveBeenLastCalledWith(`/invoices/sales?client=${CLIENT}`);
-    await u.type(screen.getByRole("searchbox"), "acme");
-    await u.click(screen.getByRole("button", { name: "Search" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=acme");
-  });
-
-  it("lists every status, payment status and client (inactive ones marked)", () => {
-    mount(page([summary()]));
-    expect(within(screen.getByLabelText("Status")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All statuses", "Draft", "Issued", "Partially paid", "Paid", "Void"]);
-    expect(within(screen.getByLabelText("Payment")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All payment statuses", "Unpaid", "Partially paid", "Paid", "Overdue"]);
-    expect(within(screen.getByLabelText("Client")).getAllByRole("option").map((o) => o.textContent)).toEqual(["All clients", "Acme Ltd", "Zenith Ltd", "Dormant Ltd (inactive)"]);
-  });
-
-  it("paging, and showing everything again with the \"All\" options (there is no Clear filters button)", async () => {
-    mount(page([summary()], { total: 80 }), { page: 2, status: "paid", q: "x" });
-    const u = user();
-    await u.click(screen.getByRole("button", { name: "Next" }));
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=x&status=paid&page=3");
-    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
-    await u.selectOptions(screen.getByLabelText("Status"), "");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/sales?q=x");
-  });
-
-  it("says what to do when there are none, and when a search finds none", () => {
-    const { unmount } = mount(page([]));
-    expect(screen.getByText(/No invoices yet/)).toBeTruthy();
-    unmount();
-    mount(page([]), { q: "zzz" });
-    expect(screen.getByText("No invoices match these filters.")).toBeTruthy();
-  });
-
-  it("explains an unavailable service", () => {
-    mount({ ok: false, reason: "unavailable" });
-    expect(screen.getByRole("alert").textContent).toContain("temporarily unavailable");
-  });
-});
-
 describe("navigation", () => {
-  it("has a Sales Invoice link in the Invoices group of the shared sidebar (the current page is highlighted from the address)", () => {
+  it("has a Sales Invoice link in the Sales group of the shared sidebar (the current page is highlighted from the address)", () => {
     render(<PortalShell admin={{ full_name: "Olivia Owner", email: "o@x.y" } as any} current="invoices" organization={{ name: "Acme", modules: ["inventory", "sales"] }}>{null}</PortalShell>);
     const link = screen.getByRole("link", { name: "Sales Invoice" });
     expect(link.getAttribute("href")).toBe("/invoices/sales");
-    expect(screen.queryByRole("link", { name: "Suppliers Invoice" })).toBeNull(); // no Purchasing in this organization
+    expect(screen.queryByRole("link", { name: "Purchase Invoice" })).toBeNull(); // no Purchasing in this organization
     expect(screen.queryByRole("link", { name: "Dispatches" })).toBeNull(); // dispatching happens inside Delivery Lists
     expect(screen.getByRole("link", { name: "Delivery Lists" }).getAttribute("href")).toBe("/delivery-lists");
   });
@@ -772,18 +684,15 @@ describe("Invoice: reversing a payment", () => {
   });
 });
 
-describe("the dispatch page links to invoicing", () => {
-  it("a confirmed dispatch offers to create an invoice for its client", () => {
+describe("the dispatch page does not offer an invoice any more", () => {
+  it("a confirmed dispatch has no Create invoice link: invoices are made from the order, before dispatch", () => {
     const dispatch = {
       id: DISPATCH, number: "DS-000001", status: "confirmed", delivery_list: { id: LIST, number: "DL-000001", status: "dispatched" }, client: acme, dispatch_date: "2026-11-05", tracking_reference: null,
       line_count: 0, created_by_email: "a@b.c", created_at: now, confirmed_at: now, confirmed_by_email: "a@b.c", cancelled_at: null, cancelled_by_email: null, updated_at: now,
       delivery_address: null, transport_details: null, notes: null, lines: [], posting: { attempts: 1, started_at: now, last_attempt_at: now, last_error: null }, inventory_operation_id: null,
       editable: false, stock_status: "not-needed", lines_exceeding_stock: 0, stock_notice: "x",
     };
-    const { unmount } = render(<DispatchDetailView dispatch={dispatch as any} />);
-    expect(screen.getByRole("link", { name: "Create invoice" }).getAttribute("href")).toBe(`/invoices/new?client=${CLIENT}`);
-    unmount();
-    render(<DispatchDetailView dispatch={{ ...dispatch, status: "draft", editable: true } as any} />);
+    render(<DispatchDetailView dispatch={dispatch as any} />);
     expect(screen.queryByRole("link", { name: "Create invoice" })).toBeNull();
   });
 });
@@ -825,7 +734,7 @@ describe("A client's account", () => {
 
   it("offers a new invoice only for an active client, and says when there is nothing yet", () => {
     const { unmount } = render(<ClientAccountView account={account() as any} />);
-    expect(screen.getByRole("link", { name: "New invoice" }).getAttribute("href")).toBe(`/invoices/new?client=${CLIENT}`);
+    expect(screen.getByRole("link", { name: "New invoice" }).getAttribute("href")).toBe(`/invoices/sales?client=${CLIENT}`);
     unmount();
     render(<ClientAccountView account={account({ client: { ...acme, is_active: false }, balances: [], invoices: [], payments: [] }) as any} />);
     expect(screen.queryByRole("link", { name: "New invoice" })).toBeNull();

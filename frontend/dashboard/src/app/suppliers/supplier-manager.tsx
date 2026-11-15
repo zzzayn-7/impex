@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { api, jsonBody } from "@/lib/sales-browser";
 import type { Paged, Supplier, SupplierFilters } from "@/lib/purchasing";
+import { useConfirm } from "@/components/ui/confirm";
 import { IconAction } from "@/components/ui/icon-action";
 
 type Panel = { mode: "add" } | { mode: "edit"; supplier: Supplier } | null;
@@ -39,6 +40,25 @@ export default function SupplierManager({ list, filters }: { list: Paged<Supplie
     startTransition(() => router.refresh());
   }
 
+  const [confirm, confirmDialog] = useConfirm();
+
+  // DELETE (always asks first): only for a supplier registered by mistake. The service refuses it, in plain words, as soon as the supplier is on a record (see its message), and then it is deactivated instead.
+  async function remove(supplier: Supplier) {
+    const ok = await confirm({
+      title: `Delete ${supplier.name}?`,
+      message: "It is removed from your directory for good. This is only possible while it is on no purchase order; otherwise it is kept and can be deactivated instead.",
+      confirmLabel: "Delete supplier",
+    });
+    if (!ok) return;
+    setBusyId(supplier.id);
+    setMessage(null);
+    const r = await api(`/api/purchasing/suppliers/${supplier.id}`, { method: "DELETE" });
+    setBusyId(null);
+    if (r.status === 401) return router.replace("/login");
+    if (!r.ok) return setMessage({ ok: false, text: r.error });
+    done(`${supplier.name} was deleted.`);
+  }
+
   async function toggle(supplier: Supplier) {
     setBusyId(supplier.id);
     setMessage(null);
@@ -56,6 +76,7 @@ export default function SupplierManager({ list, filters }: { list: Paged<Supplie
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">Suppliers</h2>
@@ -151,6 +172,7 @@ export default function SupplierManager({ list, filters }: { list: Paged<Supplie
                         <div className="flex flex-wrap gap-1.5">
                           <IconAction kind="edit" label="Edit" ariaLabel={`Edit ${supplier.name}`} onClick={() => { setMessage(null); setDetails(null); setPanel({ mode: "edit", supplier }); }} />
                           <IconAction kind={supplier.is_active ? "archive" : "restore"} label={supplier.is_active ? "Deactivate" : "Reactivate"} ariaLabel={`${supplier.is_active ? "Deactivate" : "Reactivate"} ${supplier.name}`} onClick={() => toggle(supplier)} disabled={busyId === supplier.id} />
+                          <IconAction kind="delete" label="Delete" ariaLabel={`Delete ${supplier.name}`} onClick={() => remove(supplier)} disabled={busyId === supplier.id} />
                         </div>
                       </td>
                     </tr>

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
-from app.models import Supplier
+from app.models import PurchaseOrder, Supplier
 from app.schemas import SupplierCreate, SupplierList, SupplierResponse, SupplierUpdate
 from app.search import like_pattern
 from app.tenancy import create_for_tenant, get_scoped_or_404, scoped_count, scoped_select
@@ -121,8 +121,32 @@ def _set_active(db: Session, tenant: TenantContext, supplier_id: uuid.UUID, acti
 
 @router.post("/suppliers/{supplier_id}/deactivate", response_model=SupplierResponse, tags=["Suppliers"])
 def deactivate_supplier(supplier_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    """Deactivate (never delete): the supplier stays on its existing orders but gets no new ones until reactivated."""
+    """Deactivate: the supplier stays on its existing orders but gets no new ones until reactivated. (A supplier with no orders at all can be deleted.)"""
     return _set_active(db, tenant, supplier_id, False)
+
+
+def _still_on_orders(db: Session, tenant: TenantContext, supplier: Supplier) -> HTTPException:
+    count = db.scalar(scoped_count(PurchaseOrder, tenant, PurchaseOrder.supplier_id == supplier.id)) or 0
+    what = f"{count} purchase order{'' if count == 1 else 's'}" if count else "purchase orders"
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        f"{supplier.name} appears on {what}. Those records are kept, so the supplier cannot be deleted: deactivate it instead.",
+    )
+
+
+@router.delete("/suppliers/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Suppliers"])
+def delete_supplier(supplier_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
+    """DELETE a supplier that nothing refers to (a supplier registered by mistake). Refused (409) as soon as it is on a purchase order (and so on its goods receipts): those are
+    kept for good, so such a supplier is deactivated, never deleted."""
+    supplier = get_scoped_or_404(db, Supplier, tenant, supplier_id, "Supplier")
+    if db.scalar(scoped_count(PurchaseOrder, tenant, PurchaseOrder.supplier_id == supplier.id)):
+        raise _still_on_orders(db, tenant, supplier)
+    try:
+        db.delete(supplier)
+        db.commit()
+    except IntegrityError:  # something this check could not see refers to it (the database's own RESTRICT)
+        db.rollback()
+        raise _still_on_orders(db, tenant, supplier)
 
 
 @router.post("/suppliers/{supplier_id}/activate", response_model=SupplierResponse, tags=["Suppliers"])

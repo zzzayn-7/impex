@@ -100,10 +100,31 @@ def test_deactivating_keeps_the_supplier_and_is_reversible(api):
     assert api.client.post(f"{url}/activate", headers=api.headers).json()["is_active"] is True
 
 
-def test_a_supplier_can_never_be_deleted(api):
+def test_a_supplier_nothing_refers_to_can_be_deleted_and_the_name_is_free_again(api):
     acme = api.supplier("Acme")
-    assert api.client.delete(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 405
-    assert api.client.get(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 200
+    other = api.supplier("Beta")
+    assert api.client.delete(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 204
+    assert api.client.get(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 404
+    assert api.client.delete(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 404  # already gone
+    assert api.client.get(f"{SUPPLIERS}/{other['id']}", headers=api.headers).status_code == 200  # others untouched
+    assert api.supplier("Acme")["name"] == "Acme"
+
+
+def test_a_supplier_on_a_purchase_order_can_never_be_deleted_only_deactivated(api):
+    acme = api.supplier("Acme")
+    api.order(acme["id"])
+    refused = api.client.delete(f"{SUPPLIERS}/{acme['id']}", headers=api.headers)
+    assert refused.status_code == 409
+    assert "1 purchase order" in refused.json()["detail"] and "deactivate it instead" in refused.json()["detail"]
+    assert api.client.get(f"{SUPPLIERS}/{acme['id']}", headers=api.headers).status_code == 200  # still there
+    assert api.client.post(f"{SUPPLIERS}/{acme['id']}/deactivate", headers=api.headers).status_code == 200
+
+
+def test_one_organization_cannot_delete_another_organizations_supplier(two_orgs):
+    alpha, beta = two_orgs["alpha"], two_orgs["beta"]
+    mine = alpha.supplier("Mine")
+    assert beta.client.delete(f"{SUPPLIERS}/{mine['id']}", headers=beta.headers).status_code == 404
+    assert alpha.client.get(f"{SUPPLIERS}/{mine['id']}", headers=alpha.headers).status_code == 200
 
 
 def test_unknown_ids_are_404(api):

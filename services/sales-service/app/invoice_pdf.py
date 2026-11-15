@@ -150,7 +150,10 @@ def _terms_flowables(text: str) -> List[Paragraph]:
     return out
 
 
-def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, contact_person: Optional[str] = None, confidential: Optional[bool] = None) -> bytes:
+def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, contact_person: Optional[str] = None, confidential: Optional[bool] = None, document: bool = False,
+              order_number: Optional[str] = None) -> bytes:
+    """`document=True` is the simple invoice of an order (see order_invoices.py): the same layout, but with no due date, no payment status and no paid / balance lines, because it has
+    no payments; the order number is shown instead."""
     branding = branding or Branding()
     name = invoice.seller_name or branding.name or "Organization"
     show_stamp = confidential_stamp_enabled() if confidential is None else confidential
@@ -188,10 +191,14 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
     status_text = payment_status(invoice)
     status_color = "#C0392B" if status_text in ("OVERDUE", "VOID") else "#102B53"
     meta = [Paragraph("INVOICE META", heading), Spacer(1, 2 * mm),
-            Paragraph(f"<font color='#5B6B7F'>Invoice Date:</font> <b>{invoice.invoice_date.strftime('%d %b %Y')}</b>", value),
-            Paragraph(f"<font color='#5B6B7F'>Due Date:</font> {invoice.due_date.strftime('%d %b %Y')}", value),
-            Paragraph(f"<font color='#5B6B7F'>Payment Status:</font> <b><font color='{status_color}'>{status_text}</font></b>", value),
-            Paragraph(f"<font color='#5B6B7F'>Currency:</font> {escape(invoice.currency_code)}", value)]
+            Paragraph(f"<font color='#5B6B7F'>Invoice Date:</font> <b>{invoice.invoice_date.strftime('%d %b %Y')}</b>", value)]
+    if document:
+        if order_number:
+            meta.append(Paragraph(f"<font color='#5B6B7F'>Order:</font> {escape(order_number)}", value))
+    else:
+        meta += [Paragraph(f"<font color='#5B6B7F'>Due Date:</font> {invoice.due_date.strftime('%d %b %Y')}", value),
+                 Paragraph(f"<font color='#5B6B7F'>Payment Status:</font> <b><font color='{status_color}'>{status_text}</font></b>", value)]
+    meta.append(Paragraph(f"<font color='#5B6B7F'>Currency:</font> {escape(invoice.currency_code)}", value))
     if invoice.delivery_list:
         meta.append(Paragraph(f"<font color='#5B6B7F'>Delivery List:</font> {escape(invoice.delivery_list.number)}", value))
     panels = Table([[billed, "", meta]], colWidths=[CONTENT / 2 - 2 * mm, 4 * mm, CONTENT / 2 - 2 * mm])
@@ -250,7 +257,7 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
                              ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))
     closing.append(bar)
     # what has been paid and what is still owed: never hidden
-    if invoice.status in ("issued", "partially_paid", "paid") or invoice.payments:
+    if not document and (invoice.status in ("issued", "partially_paid", "paid") or invoice.payments):
         owed = Table([["Amount paid", money(invoice.paid_total)], ["Balance due", money(invoice.outstanding)]], colWidths=[34 * mm, 44 * mm], hAlign="RIGHT")
         owed.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), BASE), ("FONTNAME", (0, 1), (-1, 1), BOLD), ("FONTSIZE", (0, 0), (-1, -1), 9.5), ("TEXTCOLOR", (0, 0), (0, -1), GREY),
                                   ("TEXTCOLOR", (1, 1), (1, 1), RED if invoice.outstanding > 0 and invoice.overdue else NAVY), ("ALIGN", (1, 0), (1, -1), "RIGHT"),

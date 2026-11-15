@@ -31,7 +31,8 @@ through the Inventory Service's own audited, idempotent operation:
 | `POST /suppliers` | register a supplier (name unique per organization ignoring case/spacing; optional code unique per organization; country as ISO 2-letter code; optional tax id) |
 | `GET /suppliers?q=&status=active\|inactive\|all` | list / search (name, code, contact, e-mail, phone, tax id) |
 | `GET /suppliers/{id}` / `PATCH /suppliers/{id}` | view / edit |
-| `POST /suppliers/{id}/deactivate` / `activate` | deactivate (never deleted) / reactivate |
+| `POST /suppliers/{id}/deactivate` / `activate` | deactivate (hide it, keep everything) / reactivate |
+| `DELETE /suppliers/{id}` | delete a supplier that nothing refers to (`204`). `409` as soon as it is on a purchase order (and so on its goods receipts): those are kept, so such a supplier is deactivated instead. Another organization's id is `404` |
 | `POST /purchase-orders` | start a **draft** order. **Requires an `Idempotency-Key` header.** `201` the first time, `200` with the same order on a retry |
 | `GET /purchase-orders?supplier_id=&status=&q=&date_from=&date_to=` | list / filter / search (number, supplier reference, supplier name) |
 | `GET /purchase-orders/{id}` | the order, its lines and the **calculated** total |

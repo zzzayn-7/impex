@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const FIELDS: [string, string, number][] = [["name", "name", 255], ["contactPerson", "contact_person", 255], ["email", "email", 320], ["phone", "phone", 50], ["address", "address", 500]];
 
-// EDIT a client (only the fields that are sent). Clients are deactivated, never deleted.
+// EDIT a client (only the fields that are sent).
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const token = sessionToken(req);
   if (!token) return fail("You are not signed in.", 401);
@@ -34,4 +34,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (result?.status === 409 && typeof result.data?.detail === "string") return fail(result.data.detail, 409, { fieldErrors: { name: result.data.detail } });
   if (!result || result.status !== 200) return salesFailureResponse(result, "Client not found.");
   return NextResponse.json({ client: result.data }, { headers: NO_STORE });
+}
+
+// DELETE a client that nothing refers to (registered by mistake). The Sales Service refuses (409, with the reason in its own words) as soon as the client is on a sales order,
+// delivery list, dispatch or invoice: those are kept for good, so such a client is deactivated instead. Another organization's client is "not found".
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = sessionToken(req);
+  if (!token) return fail("You are not signed in.", 401);
+  if (!checkUuid(params.id)) return fail("Client not found.", 404);
+  const result = await salesRequest("DELETE", `/api/v1/sales/clients/${params.id}`, token);
+  if (!result || result.status !== 204) return salesFailureResponse(result, "Client not found.");
+  return NextResponse.json({ deleted: true }, { headers: NO_STORE });
 }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,8 @@ const router = { replace: vi.fn(), refresh: vi.fn(), push: vi.fn() };
 vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => router }));
 
 import ReceiptDetailView from "@/app/goods-receipts/[id]/receipt-detail";
-import ReceiptIndex from "@/app/invoices/suppliers/receipt-index";
+import PurchaseHistory from "@/app/invoices/suppliers/history/purchase-history";
+import NewPurchaseInvoice from "@/app/invoices/suppliers/new-purchase-invoice";
 import ReceiveForm from "@/app/purchase-orders/[id]/receive/receive-form";
 
 const now = "2026-11-07T10:00:00+00:00";
@@ -417,25 +418,63 @@ describe("a goods receipt page", () => {
 });
 
 // ---- the list ---------------------------------------------------------------------------------------------------------------------------
-describe("the goods receipts list", () => {
+describe("Purchase Invoice > History", () => {
   const list = { ok: true as const, items: [{ ...(detailOf() as any), line_count: 1 }], total: 1, limit: 25, offset: 0 };
   const filters = { q: "", status: "" as const, supplierId: "", dateFrom: "", dateTo: "", page: 1 };
+  const suppliers = [{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any];
 
-  it("changing a filter navigates with only whitelisted query parameters", async () => {
-    render(<ReceiptIndex list={list} filters={filters} suppliers={[{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any]} />);
-    const u = user();
-    await u.selectOptions(screen.getByLabelText("Status"), "confirmed");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?status=confirmed");
-    expect(screen.queryByLabelText("Warehouse")).toBeNull();
-    await u.type(screen.getByLabelText("Search"), "dn-7{enter}");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?q=dn-7");
+  it("has the New invoice and History tabs, History current", () => {
+    render(<PurchaseHistory list={list} filters={filters} suppliers={suppliers} />);
+    expect(screen.getByRole("link", { name: "New invoice" }).getAttribute("href")).toBe("/invoices/suppliers");
+    expect(screen.getByRole("link", { name: "History" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("shows the right empty state, and the 'All statuses' option (not a Clear filters button) shows everything again", async () => {
-    render(<ReceiptIndex list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, status: "draft" }} suppliers={[]} />);
-    expect(screen.getByText("No goods receipts match these filters.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
-    await user().selectOptions(screen.getByLabelText("Status"), "");
-    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers");
+  it("the supplier and the date each narrow the list, alone or together, through whitelisted query parameters", async () => {
+    const { rerender } = render(<PurchaseHistory list={list} filters={filters} suppliers={suppliers} />);
+    const u = user();
+    await u.selectOptions(screen.getByLabelText("Supplier"), SUPPLIER);
+    expect(router.push).toHaveBeenLastCalledWith(`/invoices/suppliers/history?supplier=${SUPPLIER}`);
+    rerender(<PurchaseHistory list={list} filters={{ ...filters, supplierId: SUPPLIER }} suppliers={suppliers} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-11-07" } });
+    expect(router.push).toHaveBeenLastCalledWith(`/invoices/suppliers/history?supplier=${SUPPLIER}&date=2026-11-07`);
+    rerender(<PurchaseHistory list={list} filters={{ ...filters, dateFrom: "2026-11-07", dateTo: "2026-11-07" }} suppliers={suppliers} />);
+    await u.selectOptions(screen.getByLabelText("Supplier"), "");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers/history?date=2026-11-07");
+  });
+
+  it("shows the right empty state, and Clear shows everything again", async () => {
+    render(<PurchaseHistory list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, dateFrom: "2026-11-07", dateTo: "2026-11-07" }} suppliers={[]} />);
+    expect(screen.getByText("No invoices found.")).toBeTruthy();
+    await user().click(screen.getByRole("button", { name: "Clear" }));
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers/history");
+  });
+});
+
+describe("Purchase Invoice > New invoice", () => {
+  const order = { id: "5a5a5a5a-1111-4222-8333-444444444444", number: "PO-000005", supplier: { id: SUPPLIER, name: "Acme Supplies" }, order_date: "2026-11-06", total_amount: "62.5000", currency_code: "USD" } as any;
+  const filters = { q: "", supplierId: "", page: 1 };
+  const suppliers = [{ id: SUPPLIER, name: "Acme Supplies", is_active: true } as any];
+
+  it("each order has a Receive goods link to the receive-goods form, and the New invoice tab is current", () => {
+    render(<NewPurchaseInvoice list={{ ok: true, items: [order], total: 1, limit: 25, offset: 0 }} filters={filters} suppliers={suppliers} />);
+    expect(screen.getByRole("link", { name: "Receive goods for PO-000005" }).getAttribute("href")).toBe(`/purchase-orders/${order.id}/receive`);
+    expect(screen.getByRole("link", { name: "New invoice" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("the supplier and the search narrow the list", async () => {
+    render(<NewPurchaseInvoice list={{ ok: true, items: [order], total: 1, limit: 25, offset: 0 }} filters={filters} suppliers={suppliers} />);
+    const u = user();
+    await u.selectOptions(screen.getByLabelText("Supplier"), SUPPLIER);
+    expect(router.push).toHaveBeenLastCalledWith(`/invoices/suppliers?supplier=${SUPPLIER}`);
+    await u.type(screen.getByLabelText("Search"), "po-5{enter}");
+    expect(router.push).toHaveBeenLastCalledWith("/invoices/suppliers?q=po-5");
+  });
+
+  it("shows the empty states", () => {
+    const { unmount } = render(<NewPurchaseInvoice list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={filters} suppliers={[]} />);
+    expect(screen.getByText("No orders waiting for goods.")).toBeTruthy();
+    unmount();
+    render(<NewPurchaseInvoice list={{ ok: true, items: [], total: 0, limit: 25, offset: 0 }} filters={{ ...filters, q: "zzz" }} suppliers={[]} />);
+    expect(screen.getByText("No orders found.")).toBeTruthy();
   });
 });

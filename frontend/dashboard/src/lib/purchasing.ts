@@ -260,3 +260,22 @@ export function purchasingFailureResponse(result: PurchasingResult, notFound?: s
   const { status, message, ...rest } = describePurchasingFailure(result, notFound);
   return NextResponse.json({ error: message, ...rest }, { status, headers: { "Cache-Control": "no-store" } });
 }
+
+
+// ---- Purchase Invoice > New invoice: the purchase orders still waiting for goods -------------------------------------------------------------------------------------------
+export type ReceivableFilters = { q: string; supplierId: string; page: number };
+/** The purchase orders that can still receive goods (Ordered, or Partially received), newest first, for one supplier or for all of them. */
+export async function listReceivableOrders(token: string, filters: ReceivableFilters): Promise<Paged<PurchaseOrderSummary>> {
+  const ask = (status: "ordered" | "partially_received") => {
+    const params = new URLSearchParams({ status, limit: "100", offset: "0" });
+    if (filters.q) params.set("q", filters.q);
+    if (filters.supplierId) params.set("supplier_id", filters.supplierId);
+    return getPaged<PurchaseOrderSummary>("/api/v1/purchasing/purchase-orders", params, token);
+  };
+  const [ordered, partial] = await Promise.all([ask("ordered"), ask("partially_received")]);
+  if (!ordered.ok) return ordered;
+  if (!partial.ok) return partial;
+  const all = [...ordered.items, ...partial.items].sort((a, b) => b.order_date.localeCompare(a.order_date) || b.number.localeCompare(a.number));
+  const offset = (filters.page - 1) * PAGE_SIZE;
+  return { ok: true, items: all.slice(offset, offset + PAGE_SIZE), total: ordered.total + partial.total, limit: PAGE_SIZE, offset };
+}

@@ -82,7 +82,7 @@ def test_saving_does_not_create_movements_anywhere(api, shop, inventory, session
     assert tables == {"alembic_version", "clients", "delivery_list_counters", "delivery_lists", "delivery_list_items",
                       "dispatches", "dispatch_lines", "dispatch_counters", "dispatch_requests",
                       "invoices", "invoice_lines", "invoice_allocations", "invoice_payments", "invoice_counters", "invoice_requests",
-                      "sales_orders", "sales_order_counters", "sales_order_requests"}
+                      "sales_orders", "sales_order_counters", "sales_order_requests", "order_invoices", "order_invoice_lines"}
     assert inventory.deduction_writes() == []
 
 

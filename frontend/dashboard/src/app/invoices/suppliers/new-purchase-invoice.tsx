@@ -1,0 +1,106 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import InvoiceTabs, { PURCHASE_BASE } from "@/components/invoices/invoice-tabs";
+import { formatMoney } from "@/lib/product-validation";
+import type { Paged, PurchaseOrderSummary, ReceivableFilters, Supplier } from "@/lib/purchasing";
+
+// PURCHASE INVOICE > NEW INVOICE. The purchase orders still waiting for goods, newest first. Pick a supplier to see only theirs, or search an order number. "Receive goods" opens the
+// form that records what arrived against that order.
+
+const selectClass = "mt-1.5 block w-56 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
+
+export default function NewPurchaseInvoice({ list, filters, suppliers }: { list: Paged<PurchaseOrderSummary>; filters: ReceivableFilters; suppliers: Supplier[] }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [search, setSearch] = useState(filters.q);
+
+  function navigate(next: Partial<ReceivableFilters>) {
+    const merged = { ...filters, page: 1, ...next };
+    const params = new URLSearchParams();
+    if (merged.supplierId) params.set("supplier", merged.supplierId);
+    if (merged.q) params.set("q", merged.q);
+    if (merged.page > 1) params.set("page", String(merged.page));
+    const query = params.toString();
+    startTransition(() => router.push(query ? `${PURCHASE_BASE}?${query}` : PURCHASE_BASE));
+  }
+
+  const total = list.ok ? list.total : 0;
+  const first = list.ok && list.items.length > 0 ? list.offset + 1 : 0;
+  const last = list.ok ? list.offset + list.items.length : 0;
+  const filtered = Boolean(filters.q || filters.supplierId);
+
+  return (
+    <div className="space-y-4">
+      <InvoiceTabs base={PURCHASE_BASE} current="new" />
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs font-medium text-slate-400">
+          Supplier
+          <select aria-label="Supplier" value={filters.supplierId} onChange={(e) => navigate({ supplierId: e.target.value })} className={selectClass}>
+            <option value="">All suppliers</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.is_active ? "" : " (inactive)"}</option>)}
+          </select>
+        </label>
+        <form onSubmit={(e) => { e.preventDefault(); navigate({ q: search.trim() }); }} className="flex min-w-[14rem] flex-1 items-end gap-2" role="search">
+          <label className="flex-1 text-xs font-medium text-slate-400">
+            Search
+            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order number" maxLength={100}
+              className="mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500" />
+          </label>
+          <button type="submit" className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Search</button>
+        </form>
+      </div>
+
+      <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>
+        {!list.ok ? (
+          <div role="alert" className="rounded-lg border border-slate-700 bg-slate-950/50 px-4 py-3 text-sm text-slate-300">
+            {list.reason === "forbidden" ? "Your organization is currently inactive or unavailable. Please contact your platform administrator." : "Orders are temporarily unavailable. Please refresh in a moment."}
+          </div>
+        ) : list.items.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-500">{filtered ? "No orders found." : "No orders waiting for goods."}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/30">
+            <table className="w-full text-left text-sm text-slate-300">
+              <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Order</th>
+                  <th className="px-4 py-3 font-semibold">Supplier</th>
+                  <th className="hidden px-4 py-3 font-semibold sm:table-cell">Date</th>
+                  <th className="hidden px-4 py-3 text-right font-semibold sm:table-cell">Total</th>
+                  <th className="px-4 py-3 font-semibold"><span className="sr-only">Receive</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {list.items.map((order) => (
+                  <tr key={order.id} className="hover:bg-slate-800/30">
+                    <td className="px-3 py-3 font-mono text-sm font-semibold whitespace-nowrap text-white sm:px-4">{order.number}<span className="mt-0.5 block font-sans text-xs font-normal text-slate-400 sm:hidden">{order.order_date}</span></td>
+                    <td className="px-3 py-3 sm:px-4">{order.supplier.name}</td>
+                    <td className="hidden px-4 py-3 text-xs whitespace-nowrap sm:table-cell">{order.order_date}</td>
+                    <td className="hidden px-4 py-3 text-right font-mono text-xs whitespace-nowrap sm:table-cell">{formatMoney(order.total_amount, order.currency_code)}</td>
+                    <td className="px-3 py-3 text-right sm:px-4">
+                      <Link href={`/purchase-orders/${order.id}/receive`} aria-label={`Receive goods for ${order.number}`} className="inline-flex min-h-10 items-center rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Receive goods</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {list.ok && total > 0 && (
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span>Showing {first}–{last} of {total}</span>
+          <div className="flex gap-2">
+            <button type="button" disabled={filters.page <= 1 || isPending} onClick={() => navigate({ page: filters.page - 1 })} className="rounded-md border border-slate-700 px-3 py-1.5 text-slate-200 hover:bg-slate-800 disabled:opacity-40">Previous</button>
+            <button type="button" disabled={last >= total || isPending} onClick={() => navigate({ page: filters.page + 1 })} className="rounded-md border border-slate-700 px-3 py-1.5 text-slate-200 hover:bg-slate-800 disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
