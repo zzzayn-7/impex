@@ -65,13 +65,19 @@ describe("every stock route is protected by the tenant session", () => {
 describe("POST /api/stock/[action]", () => {
   beforeEach(() => stub(() => json(201, operation)));
 
-  it.each(["opening", "in", "out"])("%s: forwards whitelisted fields, the key and the Bearer token", async (action) => {
+  it.each(["in", "out"])("%s: forwards whitelisted fields, the key and the Bearer token", async (action) => {
     const res = await stockAction(request("POST", { ...stockBody, organization_id: "evil", balance_after: "999", movement_type: "in" }, { key: KEY }), act(action));
     expect(res.status).toBe(201);
     expect(upstream().url).toBe(`${INVENTORY}/api/v1/inventory/stock/${action}`);
     expect(upstream().init.headers["Idempotency-Key"]).toBe(KEY);
     expect(upstream().init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
     expect(JSON.parse(upstream().init.body)).toEqual({ product_id: P, quantity: "5", reason: "Delivery" });
+  });
+
+  it("there is no opening balance action any more: it is refused before anything is sent", async () => {
+    const res = await stockAction(request("POST", stockBody, { key: KEY }), act("opening"));
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("never forwards a warehouse, and there is no transfer action any more", async () => {

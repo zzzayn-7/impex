@@ -119,7 +119,7 @@ describe("Stock page", () => {
     stubWorld(normalWorld());
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(StockPage as Page);
-    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add Stock", "Opening Balance", "Total cost"]) {
+    for (const expected of ["Stock", "alpha steel bolt", "ALPHA-BOLT", "1,234", "pcs", "0.1", "kg", "Add Stock", "Stock In", "Total cost"]) {
       expect(html, expected).toContain(expected);
     }
     expect(html).not.toContain("Remove Stock");
@@ -134,7 +134,8 @@ describe("Stock page", () => {
     const html = await render(StockPage as Page);
     expect(html).toContain("No products yet");
     expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Add Stock/); // registering the first product is always possible
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Opening Balance/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Stock In/);
+    expect(html).not.toContain("Opening Balance");
   });
 
   it("passes only whitelisted filters; a warehouse, the old in-stock filter and a page number in the URL are ignored (the list scrolls, it has no pages)", async () => {
@@ -166,7 +167,7 @@ describe("Movements page", () => {
     const pid = "11111111-1111-4111-8111-111111111111";
     const wid = "22222222-2222-4222-8222-222222222222";
     const html = await render(MovementsPage as Page, { product: pid, warehouse: wid, type: "out", page: "3" });
-    for (const label of ["All products", "All activity", "Activity", "Out", "In (opening balance)"]) expect(html, label).toContain(label);
+    for (const label of ["All products", "All activity", "Activity", "Out", "In"]) expect(html, label).toContain(label);
     expect(html.toLowerCase()).not.toContain("warehouse");
     expect(html).not.toContain("Transfer");
     const call = inventoryCalls().find((c) => new URL(c.url).pathname.endsWith("/stock/movements"))!;

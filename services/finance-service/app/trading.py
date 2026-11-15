@@ -2,7 +2,7 @@
 
 THE RULES (docs/finance.md, "Capital, Investment and Profit & Loss"):
 
-  * Owner capital changes ONLY by an owner contribution or withdrawal (`CapitalRecord`) or an opening position. A purchase of stock - however it is paid for - is
+  * Owner capital changes ONLY by an owner contribution or withdrawal (`CapitalRecord`). A purchase of stock - however it is paid for - is
     an INVESTMENT ACTIVITY (a cost-basis movement), never a contribution; a customer payment is never profit.
   * Profit is recognised ONCE, when a dispatch is CONFIRMED (the goods left): revenue = delivered quantity x the unit price agreed on the sales order line,
     cost = the ACTUAL weighted-average cost of that quantity from the goods receipts (and the costs of stock the person entered) - never the product's editable

@@ -37,7 +37,7 @@ export const EXPENSE_NOTICE =
 
 export const SYNC_NOTICE =
   "Finance posts entries automatically from your issued invoices, recorded payments and confirmed goods receipts (a purchase order alone creates nothing). " +
-  "Only events from after Finance was switched on are posted; bring earlier balances in with an opening-balance journal entry.";
+  "Only events from after Finance was switched on are posted; earlier history is not back-filled.";
 
 const MONEY_ZERO = "0";
 

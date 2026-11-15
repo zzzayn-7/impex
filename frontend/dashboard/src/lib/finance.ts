@@ -266,6 +266,7 @@ export type PeriodKey = "1d" | "1w" | "1m" | "6m" | "1y";
 export type ChangeFigure = { absolute: string; percent: string | null; state: "value" | "new"; direction: "up" | "down" | "flat" };
 export type CurrencyBlock = {
   currency_code: string;
+  // basis "opening_position" is history recorded before opening positions were removed; new figures are built from owner_records (investments)
   capital: { ready: boolean; basis: "opening_position" | "owner_records" | null; closing?: string; opening?: string; change?: ChangeFigure };
   investment: { closing: string; opening: string; change: ChangeFigure; contributions: string; withdrawals: string; net_invested: string; inventory_purchases: string };
   profit_loss: { net: string; gross_profit: string; revenue: string; cost_of_goods_sold: string; expenses: string; adjustments: string; needs_cost_count: number; needs_cost_revenue: string };
@@ -279,7 +280,6 @@ export type FinanceSummary = {
   combined_note: string | null;
   setup_required: boolean;
   setup_message: string | null;
-  has_opening_position: boolean;
   reconciliation: { needs_cost: number; needs_price: number; total: number };
   by_currency: Record<string, CurrencyBlock>;
 };

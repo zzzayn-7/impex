@@ -46,7 +46,7 @@ from app.units import allows_fractions
 
 QUANT = Decimal("0.0001")
 ZERO = Decimal("0")
-DEFAULT_REASONS = {"opening": "Opening balance", "in": "Stock in", "out": "Stock out", "receipt": "Goods receipt", "dispatch": "Client dispatch"}
+DEFAULT_REASONS = {"in": "Stock in", "out": "Stock out", "receipt": "Goods receipt", "dispatch": "Client dispatch"}
 
 
 # --- small helpers -----------------------------------------------------------------------------------
@@ -227,7 +227,7 @@ def _add_movement(
     return movement
 
 
-# --- opening balance, stock in, stock out ----------------------------------------------------------------
+# --- stock in, stock out -----------------------------------------------------------------------------------
 def execute_change(db: Session, tenant: TenantContext, kind: str, payload: StockChange, key: str) -> StockOperationResult:
     reason = payload.reason or DEFAULT_REASONS[kind]
     request_hash = fingerprint(kind, product=payload.product_id, quantity=canonical(payload.quantity), reason=reason)
@@ -242,15 +242,7 @@ def execute_change(db: Session, tenant: TenantContext, kind: str, payload: Stock
         _check_quantity_for_unit(product, payload.quantity)
 
         balance = _lock_balances(db, tenant, [product.id])[product.id]
-        if kind == "opening":
-            history = scoped_count(StockMovement, tenant, StockMovement.product_id == product.id)
-            if db.scalar(history) > 0:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT,
-                    f"{product.name} already has stock history. An opening balance can only be recorded "
-                    "before any other movement; use Stock In or Stock Out on the product instead.",
-                )
-        new_balance = balance.quantity + payload.quantity if kind in ("opening", "in") else balance.quantity - payload.quantity
+        new_balance = balance.quantity + payload.quantity if kind == "in" else balance.quantity - payload.quantity
         if new_balance < balance.reserved_quantity:  # also covers < 0: stock booked for orders cannot be taken
             raise _insufficient(product, balance.quantity - balance.reserved_quantity, payload.quantity, balance.reserved_quantity)
 
@@ -505,7 +497,9 @@ def list_movements(
     ]
     if product_id:
         filters.append(StockMovement.product_id == product_id)
-    if movement_type:
+    if movement_type == "in":
+        filters.append(StockMovement.movement_type.in_(("in", "opening")))  # movements recorded as an "opening balance" before it was removed are stock in too
+    elif movement_type:
         filters.append(StockMovement.movement_type == movement_type)
     total = db.scalar(scoped_count(StockMovement, tenant, *filters))
     rows = db.execute(

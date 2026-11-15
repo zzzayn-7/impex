@@ -1,4 +1,4 @@
-"""The things a person records: owner contributions and withdrawals, the opening position, the cost of stock already held, and the reconciliation of a delivery.
+"""The things a person records: owner contributions and withdrawals, the cost of stock already held, and the reconciliation of a delivery.
 
 Every operation adds to the caller's transaction (the API route commits) and writes its audit line in it. Nothing here edits a recorded row: a mistake is reversed by a
 new row that names the original, who made it and why.
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app import trading
 from app.auth import TenantContext
 from app.common import Actor, audit, conflict, unprocessable
-from app.models import CapitalRecord, CostEntry, OpeningPosition, TradeDelivery
+from app.models import CapitalRecord, CostEntry, TradeDelivery
 from app.tenancy import scoped_select
 
 KIND_LABEL = {"contribution": "Owner contribution", "withdrawal": "Owner withdrawal"}
@@ -29,7 +29,7 @@ def _not_future(tenant: TenantContext, day) -> None:
 
 # --- owner capital ---------------------------------------------------------------------------------------------------------------------------
 def record_capital(db: Session, tenant: TenantContext, actor: Actor, payload) -> CapitalRecord:
-    """An owner contribution or withdrawal (cash, or an asset / stock given in kind, valued at `amount`). It is the ONLY way owner capital changes, apart from the opening position."""
+    """An owner contribution or withdrawal (cash, or an asset / stock given in kind, valued at `amount`). It is the ONLY way owner capital changes."""
     _not_future(tenant, payload.effective_date)
     currency = payload.currency_code or tenant.default_currency
     description = payload.description or (f"{KIND_LABEL[payload.kind]} ({TYPE_LABEL[payload.entry_type]})")
@@ -67,40 +67,10 @@ def reverse_capital(db: Session, tenant: TenantContext, actor: Actor, record_id:
     return row
 
 
-# --- the opening position ---------------------------------------------------------------------------------------------------------------------
-def set_opening(db: Session, tenant: TenantContext, actor: Actor, payload) -> OpeningPosition:
-    """What the organization owned and owed on the day it starts using Finance, in one currency. The owner's equity is the difference. One active position per currency."""
-    _not_future(tenant, payload.effective_date)
-    currency = payload.currency_code or tenant.default_currency
-    active = db.scalar(select(OpeningPosition.id).where(OpeningPosition.organization_id == tenant.organization_id, OpeningPosition.currency_code == currency, OpeningPosition.status == "active"))
-    if active is not None:
-        raise conflict("opening_exists", f"An opening position in {currency} already exists. Reverse it first if it was wrong.")
-    row = OpeningPosition(
-        organization_id=tenant.organization_id, currency_code=currency, effective_date=payload.effective_date, assets=payload.assets, liabilities=payload.liabilities,
-        equity=payload.assets - payload.liabilities, notes=payload.notes, created_by=actor.user_id, created_by_email=actor.email,
-    )
-    db.add(row)
-    db.flush()
-    audit(db, tenant.organization_id, "opening", row.id, "recorded", actor, f"assets {format(row.assets, 'f')}, liabilities {format(row.liabilities, 'f')}, equity {format(row.equity, 'f')} {currency} on {row.effective_date}")
-    return row
-
-
-def reverse_opening(db: Session, tenant: TenantContext, actor: Actor, position_id: uuid.UUID, payload) -> OpeningPosition:
-    row = db.scalar(scoped_select(OpeningPosition, tenant).where(OpeningPosition.id == position_id).with_for_update())
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Opening position not found.")
-    if row.status != "active":
-        raise conflict("already_reversed", "This opening position was already reversed.")
-    row.status, row.reversed_at, row.reversed_by_email, row.reversal_reason = "reversed", datetime.now(timezone.utc), actor.email, payload.reason
-    db.flush()
-    audit(db, tenant.organization_id, "opening", row.id, "reversed", actor, payload.reason)
-    return row
-
-
 # --- the cost of stock already held -----------------------------------------------------------------------------------------------------------
 def add_basis(db: Session, tenant: TenantContext, actor: Actor, payload) -> CostEntry:
-    """What stock already held (opening stock, or stock given in kind) cost, per unit: it becomes the cost basis the next deliveries take their cost of goods sold from.
-    It changes NO capital figure: the value of such stock is already part of the opening position or of the in-kind contribution - it is only a cost record."""
+    """What stock already held (stock owned before using Impex, or stock given in kind) cost, per unit: it becomes the cost basis the next deliveries take their cost of goods sold from.
+    It changes NO capital figure: the value of such stock is already part of an owner contribution - it is only a cost record."""
     _not_future(tenant, payload.effective_date)
     currency = payload.currency_code or tenant.default_currency
     effective_at = trading.start_of_day(payload.effective_date, trading.zone_of(tenant.timezone))

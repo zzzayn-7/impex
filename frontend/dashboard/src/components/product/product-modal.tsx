@@ -16,7 +16,7 @@ import { IconAction } from "@/components/ui/icon-action";
 // user's chosen theme, and both talk only to the portal's /api/products routes; the Inventory Service remains the one place products are stored.
 //
 // Product INFORMATION (name, SKU, unit, prices, barcodes, status) is edited here; stock QUANTITIES are never touched here (they have their own Stock In /
-// Stock Out / Opening balance forms and the goods receipt). Editing cannot break history: the unit of a product that already has stock movements is locked,
+// Stock In / Stock Out forms and the goods receipt). Editing cannot break history: the unit of a product that already has stock movements is locked,
 // and old orders, receipts, invoices and movements keep the names and prices they were created with.
 
 type Loaded = { product: Product; identifiers: Identifier[]; label: Label | null };

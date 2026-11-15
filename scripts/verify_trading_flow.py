@@ -158,7 +158,7 @@ def main() -> int:
         # an EXISTING product (registered before, with stock): it must stay fully usable once the Products tab is gone
         s, body = register_product("a", "TF-LEGACY", "TF legacy hammer", cost="8.00", selling="12.50")
         legacy = body.get("product", {})
-        portal("a", "POST", "/api/stock/opening", {"product_id": legacy.get("id"), "quantity": "20"}, {"Idempotency-Key": f"tf-{uuid.uuid4()}"})
+        portal("a", "POST", "/api/stock/in", {"product_id": legacy.get("id"), "quantity": "20"}, {"Idempotency-Key": f"tf-{uuid.uuid4()}"})
         check("an existing product with 20 in stock is set up", s == 201 and figures(legacy["id"])[0] == Decimal("20"), (s, body))
 
         print("\n== 1. navigation: Stock and Movements, no Products entry; the old page still answers")

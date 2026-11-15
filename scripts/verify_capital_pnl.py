@@ -9,7 +9,7 @@ the specification: the owner puts in 5,000,000; 50 laptops are bought at 100,000
 20 are delivered at 120,000 (gross profit 400,000, recognised ONCE when the goods leave, from the ACTUAL cost - not the product's cost-price field); an invoice and
 its payment recognise nothing again; a loss-making sale lowers capital; partial deliveries are recognised in proportion; an invoice discount is an auditable
 adjustment (reversed when the invoice is voided); an expense reduces the net result; a delivery with no reliable cost shows no profit and asks for reconciliation;
-the periods, the percentages, currencies (never added), the opening position, tenant isolation, idempotency and the database's own refusal to rewrite a fact.
+the periods, the percentages, currencies (never added), capital from an investment alone (no opening position), tenant isolation, idempotency and the database's own refusal to rewrite a fact.
 It also proves the old accounting pages and records are still there.
 
 It creates two throwaway organizations ("PnL Check Alpha / Beta") and deletes exactly what it created, by id, afterwards.
@@ -338,7 +338,7 @@ def main() -> int:
 
         print("\n== 8. A delivery with no reliable cost shows no profit and asks for reconciliation")
         orphan = register("a", "PC-ORPHAN", "Cisco Router (stock from before Finance)", cost="1")
-        api("a", "POST", "/api/stock/opening", {"product_id": orphan["id"], "quantity": "10"}, key())
+        api("a", "POST", "/api/stock/in", {"product_id": orphan["id"], "quantity": "10"}, key())
         order4 = order_for("a", company_a["id"], [(orphan["id"], "4", "50000")])
         dispatch("a", order4, [(orphan["id"], "4")])
         sync()
@@ -385,16 +385,12 @@ def main() -> int:
               and body["by_currency"]["USD"]["capital"]["closing"] == "20000.0000", body.get("combined_note"))
         check("PKR capital is unaffected by the USD contribution", body["by_currency"]["PKR"]["capital"]["closing"] == "5430000.0000", body["by_currency"]["PKR"]["capital"])
 
-        print("\n== 11. The opening position (organization B, which has no history)")
-        s, body = api("b", "POST", "/api/finance/opening-positions", {"currencyCode": "PKR", "effectiveDate": time.strftime("%Y-%m-%d"), "assets": "8000000", "liabilities": "3000000", "notes": "Balance sheet at the start"}, key())
-        check("an opening position (assets 8,000,000, liabilities 3,000,000) is recorded", s == 201 and body.get("position", {}).get("equity") == "5000000.0000", (s, body))
-        pb = pkr("b")
-        check("capital = the opening equity 5,000,000, from the opening position; a second position in the same currency is refused", pb["capital"]["closing"] == "5000000.0000" and pb["capital"]["basis"] == "opening_position"
-              and api("b", "POST", "/api/finance/opening-positions", {"currencyCode": "PKR", "effectiveDate": time.strftime("%Y-%m-%d"), "assets": "1", "liabilities": "0"}, key())[0] == 409, pb["capital"])
-        position_id = body["position"]["id"]
-        s, body = api("b", "POST", f"/api/finance/opening-positions/{position_id}/reverse", {"reason": "Verification: reversing it"})
-        check("reversing it keeps the record (with who and why) and capital needs a setup again - nothing is invented", s == 200 and body["position"]["status"] == "reversed" and summary("b")["setup_required"] is True
-              and psql("impex_finance", f"SELECT count(*) FROM opening_positions WHERE id = '{position_id}'") == "1")
+        print("\n== 11. There is no opening position any more; capital asks for an investment (organization B, which has no history)")
+        s, body = api("b", "POST", "/api/finance/opening-positions", {"currencyCode": "PKR", "effectiveDate": time.strftime("%Y-%m-%d"), "assets": "8000000", "liabilities": "3000000"}, key())
+        check("the opening position endpoint no longer exists (404/405) and records nothing", s in (404, 405) and psql("impex_finance", f"SELECT count(*) FROM opening_positions WHERE organization_id = '{org_ids['b']}'") == "0", (s, body))
+        sb = summary("b")
+        check("with nothing invested, capital cannot be calculated and the page asks for an INVESTMENT, never for an opening position",
+              sb["setup_required"] is True and "investment" in (sb["setup_message"] or "") and "opening" not in (sb["setup_message"] or "").lower() and "has_opening_position" not in sb, sb)
 
         print("\n== 12. Tenant isolation")
         check("B sees nothing of A's capital, history, costs or deliveries", summary("b")["currencies"] == [] and history("b").get("total") == 0 and api("b", "GET", "/api/finance/inventory-costs")[1].get("items") == []

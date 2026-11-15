@@ -9,12 +9,12 @@ import { PageHeader, SectionHeader } from "@/components/ui/page";
 import type { Account, CurrencyBlock, FinanceHistory, FinanceSummary, HistoryCategory, HistoryRow, PeriodKey, PnlTrend } from "@/lib/finance";
 import { api } from "@/lib/finance-browser";
 import { FINANCE_PAGE_NOTE, PERIODS, RECONCILIATION_HELP, SUBTITLE, TITLE } from "@/lib/finance-view";
-import { ExpenseModal, OpeningPositionModal, RecordInvestmentModal, ReconcileModal, ReverseModal, StockCostModal } from "./finance-modals";
+import { ExpenseModal, RecordInvestmentModal, ReconcileModal, ReverseModal, StockCostModal } from "./finance-modals";
 import HistoryPanel from "./history-panel";
 import PnlChart, { type PnlState } from "./pnl-chart";
 import { SummaryCards, TrendChart } from "./summary-cards";
 
-type Modal = null | { kind: "investment" } | { kind: "expense" } | { kind: "opening" } | { kind: "stock" } | { kind: "reconcile"; focus: string | null } | { kind: "reverse"; row: HistoryRow };
+type Modal = null | { kind: "investment" } | { kind: "expense" } | { kind: "stock" } | { kind: "reconcile"; focus: string | null } | { kind: "reverse"; row: HistoryRow };
 
 /** A currency with no records yet: all zeros (nothing is shown as a figure that was never calculated). */
 function emptyBlock(currency: string): CurrencyBlock {
@@ -79,7 +79,6 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
     <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Finance actions">
       <button type="button" className={buttonClass.primary} onClick={() => setModal({ kind: "investment" })}>Record Investment</button>
       <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "expense" })}>Add Expense</button>
-      <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "opening" })}>Opening position</button>
       <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "stock" })}>Stock cost</button>
     </div>
   );
@@ -111,8 +110,7 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
         <GlassCard className="flex flex-wrap items-center justify-between gap-3 p-4" role="status" data-testid="setup-banner">
           <p className="min-w-0 flex-1 text-sm text-ix-accent">{summary.setup_message}</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "opening" })}>Set opening position</button>
-            <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "investment" })}>Record contribution</button>
+            <button type="button" className={buttonClass.secondary} onClick={() => setModal({ kind: "investment" })}>Record investment</button>
           </div>
         </GlassCard>
       )}
@@ -139,7 +137,7 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
       )}
 
       <div aria-busy={busy} className={busy ? "opacity-70 transition-opacity" : "transition-opacity"}>
-        <SummaryCards summary={summary} block={block} currency={active} onSetup={() => setModal({ kind: "opening" })} onInventoryActivity={showInvestments} />
+        <SummaryCards summary={summary} block={block} currency={active} onSetup={() => setModal({ kind: "investment" })} onInventoryActivity={showInvestments} />
       </div>
 
       <GlassCard className="p-5" aria-label="Capital trend">
@@ -165,7 +163,6 @@ export default function FinanceView({ initialSummary, initialHistory, expenseCat
 
       {modal?.kind === "investment" && <RecordInvestmentModal defaultCurrency={active} onClose={() => setModal(null)} onDone={reload} />}
       {modal?.kind === "expense" && <ExpenseModal categories={expenseCategories} defaultCurrency={active} onClose={() => setModal(null)} onDone={reload} />}
-      {modal?.kind === "opening" && <OpeningPositionModal defaultCurrency={active} onClose={() => setModal(null)} onDone={reload} />}
       {modal?.kind === "stock" && <StockCostModal defaultCurrency={active} onClose={() => setModal(null)} onDone={reload} />}
       {modal?.kind === "reconcile" && <ReconcileModal focus={modal.focus} onClose={() => setModal(null)} onDone={() => void fetchAll({ period, category, currency, offset: 0 })} />}
       {modal?.kind === "reverse" && <ReverseModal row={modal.row} onClose={() => setModal(null)} onDone={reload} />}

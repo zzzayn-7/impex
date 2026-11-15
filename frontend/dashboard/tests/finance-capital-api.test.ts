@@ -1,15 +1,13 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseCostBody, parseInvestmentBody, parseOpeningBody, parseReconcileBody } from "@/lib/finance-routes";
+import { parseCostBody, parseInvestmentBody, parseReconcileBody } from "@/lib/finance-routes";
 import { GET as getSummary } from "@/app/api/finance/summary/route";
 import { GET as getPnlTrend } from "@/app/api/finance/pnl-trend/route";
 import { GET as getHistory } from "@/app/api/finance/history/route";
 import { GET as getReconciliation } from "@/app/api/finance/reconciliation/route";
 import { POST as postInvestment } from "@/app/api/finance/investments/route";
 import { POST as reverseInvestment } from "@/app/api/finance/investments/[id]/reverse/route";
-import { GET as listPositions, POST as postPosition } from "@/app/api/finance/opening-positions/route";
-import { POST as reversePosition } from "@/app/api/finance/opening-positions/[id]/reverse/route";
 import { GET as listCosts, POST as postCost } from "@/app/api/finance/inventory-costs/route";
 import { POST as reconcileDelivery } from "@/app/api/finance/deliveries/[id]/reconcile/route";
 
@@ -59,12 +57,6 @@ describe("parsing what the browser sends", () => {
     expect(parseInvestmentBody({ amount: "1", effectiveDate: "05/11/2026" })).toMatchObject({ ok: false, fieldErrors: { effectiveDate: "Enter a valid date." } });
     expect(parseInvestmentBody({ amount: "1", effectiveDate: "2026-11-05", currencyCode: "EURO" })).toMatchObject({ ok: false, fieldErrors: { currencyCode: expect.any(String) } });
     expect(parseInvestmentBody({ amount: "1", effectiveDate: "2026-11-05", notes: "x".repeat(501) })).toMatchObject({ ok: false, fieldErrors: { notes: expect.any(String) } });
-  });
-
-  it("an opening position treats an empty side as zero and rejects negatives", () => {
-    expect(parseOpeningBody({ effectiveDate: "2026-11-05", assets: "8000000", liabilities: "", currencyCode: "pkr" })).toEqual({ ok: true, value: { effective_date: "2026-11-05", assets: "8000000", liabilities: "0", currency_code: "PKR" } });
-    expect(parseOpeningBody({ effectiveDate: "2026-11-05", assets: "-1", liabilities: "0" })).toMatchObject({ ok: false, fieldErrors: { assets: expect.any(String) } });
-    expect(parseOpeningBody({ effectiveDate: "x", assets: "1", liabilities: "1.00001" })).toMatchObject({ ok: false, fieldErrors: { effectiveDate: expect.any(String), liabilities: expect.any(String) } });
   });
 
   it("a stock cost needs a product id, a quantity and the cost of ONE unit - above zero", () => {
@@ -181,23 +173,13 @@ describe("Record Investment", () => {
   });
 });
 
-describe("the opening position", () => {
-  it("is listed, set once per request key and reversed with a reason", async () => {
-    expect((await listPositions(request("GET", undefined, { cookie: null }))).status).toBe(401);
-    stub(() => json(200, { items: [{ id: ID }] }));
-    expect((await (await listPositions(request("GET"))).json()).items).toHaveLength(1);
-    stub(() => json(201, { id: ID, equity: "5000000.0000" }));
-    const set = await postPosition(request("POST", { effectiveDate: "2026-11-05", assets: "8000000", liabilities: "3000000", currencyCode: "pkr", organization_id: "evil" }, { key: KEY }));
-    expect(set.status).toBe(201);
-    expect(sentBody()).toEqual({ effective_date: "2026-11-05", assets: "8000000", liabilities: "3000000", currency_code: "PKR" });
-    expect(upstream().init.headers["Idempotency-Key"]).toBe(KEY);
-    expect((await postPosition(request("POST", { effectiveDate: "2026-11-05", assets: "1", liabilities: "0" }))).status).toBe(400); // no key
-    stub(() => json(409, { detail: { code: "opening_exists", message: "An opening position in PKR already exists." } }));
-    expect((await postPosition(request("POST", { effectiveDate: "2026-11-05", assets: "1", liabilities: "0" }, { key: KEY }))).status).toBe(409);
-    stub(() => json(200, { id: ID, status: "reversed" }));
-    expect((await reversePosition(request("POST", { reason: "Wrong balance sheet" }), params())).status).toBe(200);
-    expect((await reversePosition(request("POST", { reason: "" }), params())).status).toBe(400);
-    expect((await reversePosition(request("POST", { reason: "no id" }), { params: { id: "x" } })).status).toBe(404);
+describe("the opening position is gone", () => {
+  it("has no route, no request parser and no browser call any more", async () => {
+    const { existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    expect(existsSync(join(__dirname, "..", "src", "app", "api", "finance", "opening-positions"))).toBe(false);
+    const routes = await import("@/lib/finance-routes");
+    expect((routes as Record<string, unknown>).parseOpeningBody).toBeUndefined();
   });
 });
 

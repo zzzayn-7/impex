@@ -8,7 +8,7 @@ export type StockPost =
   | { ok: true; replayed: boolean }
   | { ok: false; status: number; message: string; unreachable?: boolean; unauthorized?: boolean };
 
-export async function postStockChange(action: "opening" | "in" | "out", body: { product_id: string; quantity: string; reason?: string }, key: string = newIdempotencyKey()): Promise<StockPost> {
+export async function postStockChange(action: "in" | "out", body: { product_id: string; quantity: string; reason?: string }, key: string = newIdempotencyKey()): Promise<StockPost> {
   try {
     const res = await fetch(`/api/stock/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => null);

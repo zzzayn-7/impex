@@ -32,7 +32,7 @@ function block(over: Partial<CurrencyBlock> = {}, currency = "PKR"): CurrencyBlo
 }
 const summary = (over: Partial<FinanceSummary> = {}, period: "1w" | "1m" | "1y" = "1m"): FinanceSummary => ({
   period: { key: period, label: { "1w": "1 Week", "1m": "1 Month", "1y": "1 Year" }[period], start: "2026-10-11T10:00:00+00:00", end: "2026-11-11T10:00:00+00:00", timezone: "Asia/Karachi" },
-  default_currency: "PKR", currencies: ["PKR"], combined_available: true, combined_note: null, setup_required: false, setup_message: null, has_opening_position: false,
+  default_currency: "PKR", currencies: ["PKR"], combined_available: true, combined_note: null, setup_required: false, setup_message: null,
   reconciliation: { needs_cost: 0, needs_price: 0, total: 0 }, by_currency: { PKR: block() }, ...over,
 });
 
@@ -85,7 +85,6 @@ function stubRoutes(overrides: Record<string, (url: string, init: any) => Respon
     if (url.startsWith("/api/finance/summary")) { const p = new URL(url, "http://x").searchParams.get("period") as any; return json(200, { ...current(), period: { ...current().period, key: p, label: { "1w": "1 Week", "1m": "1 Month", "1y": "1 Year" }[p as "1w"] } }); }
     if (url.startsWith("/api/finance/history")) return json(200, history());
     if (url.startsWith("/api/finance/pnl-trend")) return json(200, pnlTrend());
-    if (url.startsWith("/api/finance/opening-positions")) return json(200, { items: [] });
     if (url.startsWith("/api/finance/inventory-costs")) return json(200, { items: [] });
     if (url.startsWith("/api/finance/reconciliation")) return json(200, { items: [] });
     return json(200, {});
@@ -184,7 +183,7 @@ describe("the Finance Overview", () => {
 });
 
 describe("when capital cannot be established", () => {
-  const none = summary({ currencies: [], setup_required: true, setup_message: "Capital cannot be calculated yet. Set up your opening position or record an owner contribution - no starting balance is assumed.", by_currency: {} });
+  const none = summary({ currencies: [], setup_required: true, setup_message: "Capital cannot be calculated yet. Record an investment (an owner contribution) - no starting balance is assumed.", by_currency: {} });
 
   it("says Setup required instead of showing a figure, and shows no trend", () => {
     mount({ summary: none, history: history([]) });
@@ -196,10 +195,12 @@ describe("when capital cannot be established", () => {
     expect(screen.getByText(/No transactions in this period/)).toBeTruthy();
   });
 
-  it("offers the opening position and an owner contribution right there", async () => {
+  it("asks for an investment right there, and offers no opening position", async () => {
     mount({ summary: none, history: history([]) });
     const banner = screen.getByTestId("setup-banner");
-    await userEvent.click(within(banner).getByRole("button", { name: "Record contribution" }));
+    expect(banner.textContent).not.toMatch(/opening/i);
+    expect(within(banner).queryByRole("button", { name: /opening/i })).toBeNull();
+    await userEvent.click(within(banner).getByRole("button", { name: "Record investment" }));
     expect(screen.getByRole("dialog", { name: "Record Investment" })).toBeTruthy();
   });
 });
@@ -434,35 +435,17 @@ describe("Add Expense", () => {
   });
 });
 
-describe("the opening position", () => {
-  it("previews the owner's equity exactly and records it", async () => {
-    stubRoutes({ "/api/finance/opening-positions": (_url, init) => (init.method === "POST" ? json(201, { position: { id: "p1" } }) : json(200, { items: [] })) });
+describe("the opening position is gone from the Finance page", () => {
+  it("has no Opening position button, dialog or request", async () => {
     mount();
-    await userEvent.click(screen.getByRole("button", { name: "Opening position" }));
-    const dialog = screen.getByRole("dialog", { name: "Opening position" });
-    await userEvent.type(within(dialog).getByLabelText("Assets"), "8000000.1");
-    await userEvent.type(within(dialog).getByLabelText("Liabilities"), "3000000.3");
-    expect(within(dialog).getByTestId("equity-preview").textContent).toContain("PKR 4,999,999.80"); // exact: no floating point
-    await userEvent.click(within(dialog).getByRole("button", { name: "Set opening position" }));
-    await waitFor(() => expect(byUrl("/api/finance/opening-positions").filter((c) => c.init.method === "POST")).toHaveLength(1));
-    expect(bodyOf(byUrl("/api/finance/opening-positions").filter((c) => c.init.method === "POST")[0])).toMatchObject({ currencyCode: "PKR", assets: "8000000.1", liabilities: "3000000.3" });
+    expect(screen.queryByRole("button", { name: /opening position/i })).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(expect.arrayContaining(["Record Investment", "Add Expense", "Stock cost"]));
+    expect(byUrl("/api/finance/opening-positions")).toHaveLength(0);
   });
 
-  it("an existing position is shown and can only be reversed, with a reason", async () => {
-    const position = { id: "p1", currency_code: "PKR", effective_date: "2026-11-01", assets: "8000000.0000", liabilities: "3000000.0000", equity: "5000000.0000", status: "active", reversal_reason: null, notes: null };
-    stubRoutes({ "/api/finance/opening-positions": (url, init) => (url.endsWith("/reverse") ? json(200, { position: {} }) : init.method === "POST" ? json(201, {}) : json(200, { items: [position] })) });
-    mount();
-    await userEvent.click(screen.getByRole("button", { name: "Opening position" }));
-    const dialog = screen.getByRole("dialog", { name: "Opening position" });
-    expect((await within(dialog).findByTestId("active-position")).textContent).toContain("owner equity PKR 5,000,000.00");
-    expect(within(dialog).queryByRole("button", { name: "Set opening position" })).toBeNull(); // one active position per currency
-    await userEvent.click(within(dialog).getByRole("button", { name: "Reverse to correct it" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Reverse it" }));
-    expect(within(dialog).getAllByRole("alert")[0].textContent).toContain("at least 3 characters");
-    await userEvent.type(within(dialog).getByLabelText("Reason"), "Wrong balance sheet");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Reverse it" }));
-    await waitFor(() => expect(byUrl("/api/finance/opening-positions/p1/reverse")).toHaveLength(1));
-    expect(bodyOf(byUrl("/api/finance/opening-positions/p1/reverse")[0])).toEqual({ reason: "Wrong balance sheet" });
+  it("a capital figure built on a position recorded earlier says where it comes from", () => {
+    mount({ summary: summary({ by_currency: { PKR: block({ capital: { ready: true, basis: "opening_position", closing: "5400000.0000", opening: "5000000.0000", change: up("400000.0000", "8.0") } }) } }) });
+    expect(screen.getByText(/From the opening position recorded earlier, plus everything since\./)).toBeTruthy();
   });
 });
 

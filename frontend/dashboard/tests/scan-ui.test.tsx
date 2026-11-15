@@ -654,26 +654,26 @@ describe("Codes & labels page", () => {
 });
 
 
-// The shared stock form offers opening / add / remove only: there are no transfers any more.
+// The shared stock form offers Stock In / Remove Stock only: there is no opening balance and there are no transfers.
 describe("StockForm: no transfers, no warehouses", () => {
   const renderForm = () =>
     render(<StockForm initialAction="in" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
 
-  it("offers the three operations by default", () => {
+  it("offers the two operations by default", () => {
     renderForm();
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening Balance", "Stock In", "Remove Stock"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Stock In", "Remove Stock"]);
     expect(screen.queryByLabelText("Warehouse")).toBeNull();
   });
 
-  it("records an opening balance for the product alone", async () => {
+  it("records a first stock in for the product alone", async () => {
     const user = setup();
-    render(<StockForm initialAction="opening" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
-    const form = screen.getByRole("form", { name: "Opening Balance" });
+    render(<StockForm initialAction="in" initialProductId={BOLT_ID} products={[bolt as any]} requireConfirmation onDone={vi.fn()} onCancel={vi.fn()} />);
+    const form = screen.getByRole("form", { name: "Stock In" });
     await user.type(within(form).getByLabelText(/^Quantity/), "5");
     await user.click(within(form).getByRole("button", { name: "Review" }));
-    expect((await screen.findByRole("alertdialog")).textContent).toContain("Record an opening balance of 5 pcs of Steel bolt?");
+    expect((await screen.findByRole("alertdialog")).textContent).toContain("Add 5 pcs of Steel bolt to stock?");
     await user.click(screen.getByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/opening"]));
+    await waitFor(() => expect(stockCalls().map((c) => c.url)).toEqual(["/api/stock/in"]));
     expect(JSON.parse(stockCalls()[0].init.body)).toEqual({ product_id: BOLT_ID, quantity: "5" });
   });
 });

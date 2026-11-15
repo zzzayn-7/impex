@@ -86,7 +86,8 @@ describe("Stock: the Total cost section", () => {
   it("has no Remove Stock button", () => {
     render(<StockOverview list={listOf([stockRow("A", "10", "5")])} filters={filters} products={[{ id: "x" } as any]} totals={[]} />);
     expect(screen.queryByRole("button", { name: "Remove Stock" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Opening Balance" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stock In" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Opening Balance" })).toBeNull();
   });
 });
 
@@ -119,7 +120,7 @@ describe("Stock Movements page", () => {
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText("In")).toBeTruthy();
     expect(within(rows[1]).getByText("Out")).toBeTruthy();
-    expect(within(rows[2]).getByText("In")).toBeTruthy(); // an opening balance puts stock in
+    expect(within(rows[2]).getByText("In")).toBeTruthy(); // a movement recorded as an opening balance earlier still reads In
     expect(within(rows[0]).getByText("11/11/2026 | 03:00 PM")).toBeTruthy();
     expect(within(rows[1]).getByText("12/11/2026 | 03:30 AM")).toBeTruthy();
     expect(within(rows[0]).getByText("admin@example.org")).toBeTruthy();

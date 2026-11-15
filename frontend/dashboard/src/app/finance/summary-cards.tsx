@@ -23,8 +23,8 @@ function SetupNeeded({ message, onSetup }: { message: string | null; onSetup: ()
   return (
     <div data-testid="capital-setup" className="space-y-3">
       <p className="text-base font-semibold text-ix-accent">Setup required</p>
-      <p className="text-xs leading-relaxed text-ix-muted">{message ?? "Set your opening position or record an owner contribution."}</p>
-      <button type="button" onClick={onSetup} className={`${buttonClass.secondary} !min-h-9 !px-3 !py-1.5 text-xs`}>Set opening position</button>
+      <p className="text-xs leading-relaxed text-ix-muted">{message ?? "Record an investment (an owner contribution)."}</p>
+      <button type="button" onClick={onSetup} className={`${buttonClass.secondary} !min-h-9 !px-3 !py-1.5 text-xs`}>Record investment</button>
     </div>
   );
 }
@@ -50,7 +50,7 @@ export function SummaryCards({ summary, block, currency, onSetup, onInventoryAct
             <p data-testid="capital-value" className="text-2xl font-semibold tracking-tight text-ix-text">{withCurrency(capital.closing, currency)}</p>
             <Change view={changeView(capital.change, currency)} testId="capital-change" />
             <p className="mt-3 text-xs text-ix-muted">
-              {capital.basis === "opening_position" ? "From your opening position, plus everything since." : "From the owner contributions recorded, plus profit since. Set an opening position to include earlier history."}
+              {capital.basis === "opening_position" ? "From the opening position recorded earlier, plus everything since." : "From the investments recorded, plus profit since."}
             </p>
           </>
         ) : (

@@ -58,7 +58,7 @@ export default function StockList({ initial, total: initialTotal, filters, full 
 
   const hasMore = items.length < total;
 
-  // The page re-reads its first rows after something changed outside this list (a product was added, an opening balance recorded). If those rows differ from the
+  // The page re-reads its first rows after something changed outside this list (a product was added, stock was entered with Stock In). If those rows differ from the
   // top of what is shown, start again from them; if they are the same (our own change, already re-read), the reader keeps the place in the list.
   const shown = useRef(items);
   shown.current = items;

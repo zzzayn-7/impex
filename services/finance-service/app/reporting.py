@@ -2,18 +2,18 @@
 
 THE DEFINITIONS (the page shows exactly these; docs/finance.md repeats them):
 
-  Investment (total)   what the owner has put in and left in, as of a moment: opening-position equity + owner contributions - owner withdrawals.
+  Investment (total)   what the owner has put in and left in, as of a moment: owner contributions - owner withdrawals (plus the equity of a legacy opening position, see below).
                        Buying stock is NOT here: it is an investment ACTIVITY (a change in the form of the money), shown beside it.
   Profit & Loss        gross trading profit of deliveries (revenue - actual cost of goods sold) + invoice adjustments - expenses, over the period.
                        Deliveries that need a price or a cost reconciliation are NOT in it: they are counted and listed instead.
-  Capital              Investment + the net profit accumulated since the opening position (or since the beginning when there is none).
+  Capital              Investment + the net profit accumulated since the beginning (for an organization that recorded a legacy opening position before they were removed: since that position's date).
                        So: contributing 5,000,000 and buying stock with it leaves Capital at 5,000,000; delivering part of it at a profit raises it by exactly that profit.
   Period               1 Day / 1 Week / 1 Month / 6 Months / 1 Year ROLLING, ending now, measured in the organization's time zone. Capital and Investment are balances AS OF the end of the
                        period compared with the same balance at its start; Profit & Loss is what happened DURING it.
   Change               ((closing - opening) / |opening|) x 100. A zero opening is "New" (with the absolute change) - never a percentage of zero. Never infinity.
 
 Everything is computed PER CURRENCY. Different currencies are never added together or converted: when records exist in more than one currency each is reported on its own and a
-combined figure is declared unavailable. Capital is shown only when it can be established (an opening position or an owner contribution exists in that currency); otherwise
+combined figure is declared unavailable. Capital is shown only when it can be established (an owner contribution exists in that currency, or a legacy opening position); otherwise
 the response says a setup is required - no starting balance is ever invented.
 """
 import calendar
@@ -168,7 +168,7 @@ def capital_at(ds: Dataset, currency: str, moment: datetime, items: Optional[lis
 
 
 def capital_basis(ds: Dataset, currency: str) -> Optional[str]:
-    """How capital in this currency can be established: from an opening position, or from owner contributions alone - or not at all (None: a setup is required)."""
+    """How capital in this currency can be established: from owner contributions (the normal way) or, for history recorded before opening positions were removed, from such a position - or not at all (None: an investment must be recorded first)."""
     if _opening(ds, currency) is not None:
         return "opening_position"
     if any(r.currency_code == currency for r in ds.capital):
@@ -228,16 +228,16 @@ def summary(ds: Dataset, period: str, now: datetime, default_currency: str) -> d
     missing = [c for c in ordered if capital_basis(ds, c) is None]
     combined = len(ordered) <= 1
     if not ordered:
-        message = "Capital cannot be calculated yet. Set up your opening position or record an owner contribution - no starting balance is assumed."
+        message = "Capital cannot be calculated yet. Record an investment (an owner contribution) - no starting balance is assumed."
     elif missing:
-        message = f"Capital cannot be calculated in {', '.join(missing)} yet: set up the opening position or record an owner contribution in that currency."
+        message = f"Capital cannot be calculated in {', '.join(missing)} yet: record an investment (an owner contribution) in that currency."
     else:
         message = None
     return {
         "period": {"key": period, "label": PERIODS[period], "start": start.isoformat(), "end": end.isoformat(), "timezone": str(ds.zone)},
         "default_currency": default_currency, "currencies": ordered, "combined_available": combined,
         "combined_note": None if combined else "Records exist in more than one currency and Impex holds no exchange rates, so each currency is reported on its own and a combined figure is not available.",
-        "setup_required": bool(missing) or not ordered, "setup_message": message, "has_opening_position": bool(ds.openings),
+        "setup_required": bool(missing) or not ordered, "setup_message": message,
         "reconciliation": {**needs, "total": needs["needs_cost"] + needs["needs_price"]}, "by_currency": by_currency,
     }
 

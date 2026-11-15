@@ -19,7 +19,7 @@ import StockList from "./stock-list";
 //
 // The two buttons at the top are about the WHOLE inventory:
 //   Add Stock         REGISTER A NEW PRODUCT (a form on this page, drawn like the Add Client form), optionally with the quantity the organization already owns;
-//   Opening Balance   the starting quantity of an already registered product that has no stock history yet.
+//   Stock In          enter stock of a product that is already registered: its FIRST quantity or more later. It is the one way stock is entered by hand (there is no opening balance).
 // Above the list: search (SKU or name), a scanner icon (scan a barcode / QR code to search for that product) and the Active / Archived / All filter.
 // A row's Actions (see stock-list.tsx) are Edit, Archive (or Restore) and Delete. Archive keeps everything and can be undone; Delete removes the product for good.
 // Goods bought from now on are not added here at all: they arrive through Purchase Order -> confirmed Goods Receipt. A product can also be registered while buying
@@ -33,11 +33,11 @@ type Props = {
   totals?: { currency: string; amount: string }[]; // what ALL the products of this filter are worth at cost (never added across currencies)
 };
 
-/** Opened from a button above the table (Opening Balance: pick the product). */
+/** Opened from a button above the table (Stock In: pick the product). */
 type Panel = { action: StockAction; productId?: string; scope: "top" } | null;
 
 // There is no "Remove Stock" button: a product is archived or deleted from its row.
-const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "opening", label: "Opening Balance" }];
+const TOP_ACTIONS: { action: StockAction; label: string }[] = [{ action: "in", label: "Stock In" }];
 
 export default function StockOverview({ list, filters, products, totals = [] }: Props) {
   const router = useRouter();
@@ -131,7 +131,7 @@ export default function StockOverview({ list, filters, products, totals = [] }: 
           key={`${panel.scope}-${panel.action}-${panel.productId ?? ""}`}
           initialAction={panel.action}
           initialProductId={panel.productId}
-          actions={["opening"]}
+          actions={["in"]}
           products={products}
           onDone={done}
           onCancel={() => setPanel(null)}

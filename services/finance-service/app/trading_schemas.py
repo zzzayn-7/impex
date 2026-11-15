@@ -38,24 +38,6 @@ class InvestmentReverse(ReasonBody):
     effective_date: Optional[date] = None
 
 
-class OpeningCreate(Strict):
-    currency_code: Optional[str] = None
-    effective_date: date
-    assets: Money
-    liabilities: Money
-    notes: Optional[str] = Field(default=None, max_length=500)
-
-    @field_validator("currency_code")
-    @classmethod
-    def _check_currency(cls, value):
-        return _currency(value)
-
-    @field_validator("notes")
-    @classmethod
-    def _check_blank(cls, value):
-        return _blank_to_none(value)
-
-
 class BasisCreate(Strict):
     product_id: uuid.UUID
     sku: str = Field(min_length=1, max_length=64)

@@ -82,8 +82,8 @@ def test_the_lock_is_permanent_even_when_the_stock_is_back_to_zero(api, setup):
     assert patch(api, product, unit="kg").status_code == 409
 
 
-def test_an_opening_balance_also_locks_the_unit(api, setup):
-    api.add(setup["product"], 5, action="opening")
+def test_the_first_stock_in_also_locks_the_unit(api, setup):
+    api.add(setup["product"], 5, action="in")
     assert patch(api, setup["product"], unit="kg").status_code == 409
 
 

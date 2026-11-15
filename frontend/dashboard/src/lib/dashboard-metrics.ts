@@ -103,7 +103,7 @@ export function movementActivity(movements: MovementLike[], days: string[], time
     const day = dayInZone(m.created_at, timezone);
     const bucket = day ? byDay.get(day) : undefined;
     if (!bucket) continue;
-    if (m.movement_type === "in" || m.movement_type === "opening") bucket.added += 1;
+    if (m.movement_type === "in" || m.movement_type === "opening") bucket.added += 1; // "opening": movements recorded before opening balances were removed still count as stock added
     else if (m.movement_type === "out") bucket.removed += 1;
   }
   return days.map((day) => byDay.get(day)!);

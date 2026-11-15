@@ -170,31 +170,54 @@ def test_capital_is_never_invented_when_nothing_establishes_it(api, org):
     assert pkr["profit_loss"]["expenses"] == "500.0000"  # but what happened is still reported
 
 
-# ====================================================================================================== the opening position
-def test_the_opening_position_establishes_capital_as_assets_minus_liabilities(api, org):
-    response = api.client.post(OPENING, json={"currency_code": "PKR", "effective_date": today(), "assets": "8000000", "liabilities": "3000000", "notes": "Balance sheet of 31 October"},
-                               headers={**api.headers, "Idempotency-Key": api.key()})
-    assert response.status_code == 201 and response.json()["equity"] == "5000000.0000"
+# ====================================================================================================== the opening position (removed; history kept)
+LEGACY_OPENING = ("INSERT INTO opening_positions (organization_id, currency_code, effective_date, assets, liabilities, equity, created_by, created_by_email) "
+                  "VALUES (:o, :c, CAST(:d AS date), CAST(:a AS numeric), CAST(:l AS numeric), CAST(:a AS numeric) - CAST(:l AS numeric), gen_random_uuid(), 'legacy@example.org')")
+
+
+def legacy_opening(session_factory, org, assets, liabilities, *, day=0, currency="PKR"):
+    """A position recorded before opening positions were removed (nothing in the application can create one any more, so the test writes the row the way it was left)."""
+    with session_factory() as db:
+        db.execute(text(LEGACY_OPENING), {"o": org, "c": currency, "d": today(day), "a": assets, "l": liabilities})
+        db.commit()
+
+
+def test_there_is_no_way_to_create_list_or_reverse_an_opening_position_any_more(api, org):
+    body = {"currency_code": "PKR", "effective_date": today(), "assets": "8000000", "liabilities": "3000000"}
+    assert api.client.post(OPENING, json=body, headers={**api.headers, "Idempotency-Key": api.key()}).status_code in (404, 405)
+    assert api.client.get(OPENING, headers=api.headers).status_code in (404, 405)
+    assert api.client.post(f"{OPENING}/{uuid.uuid4()}/reverse", json={"reason": "x"}, headers=api.headers).status_code in (404, 405)
+    assert not any("opening" in path for path in api.client.get("/openapi.json").json()["paths"])
+    body = summary(api)
+    assert "has_opening_position" not in body and body["setup_required"] is True
+    assert "opening" not in body["setup_message"].lower() and "investment" in body["setup_message"]  # it asks for an investment, never for an opening position
+
+
+def test_capital_and_investment_are_established_by_an_investment_alone(api, org):
+    invest(api, 5 * M, currency="PKR")
+    pkr = block(api)
+    assert pkr["capital"]["ready"] is True and pkr["capital"]["basis"] == "owner_records"
+    assert pkr["capital"]["closing"] == "5000000.0000" and pkr["investment"]["closing"] == "5000000.0000"
+    assert summary(api)["setup_required"] is False
+
+
+def test_a_legacy_opening_position_still_counts_so_existing_figures_do_not_change(api, org, session_factory):
+    legacy_opening(session_factory, org, "8000000", "3000000")
     pkr = block(api)
     assert pkr["capital"]["closing"] == "5000000.0000" and pkr["capital"]["basis"] == "opening_position" and pkr["investment"]["closing"] == "5000000.0000"
-    assert summary(api)["setup_required"] is False and summary(api)["has_opening_position"] is True
-    again = api.client.post(OPENING, json={"currency_code": "PKR", "effective_date": today(), "assets": "1", "liabilities": "0"}, headers={**api.headers, "Idempotency-Key": api.key()})
-    assert again.status_code == 409 and again.json()["detail"]["code"] == "opening_exists"
-    reversed_ = api.client.post(f"{OPENING}/{response.json()['id']}/reverse", json={"reason": "Wrong balance sheet"}, headers=api.headers)
-    assert reversed_.status_code == 200 and reversed_.json()["status"] == "reversed"
-    assert summary(api)["setup_required"] is True  # nothing establishes capital any more, and nothing is invented
-    listed = api.get(OPENING).json()["items"]
-    assert [(o["status"], o["reversal_reason"]) for o in listed] == [("reversed", "Wrong balance sheet")]  # kept, with why
-    fresh = api.client.post(OPENING, json={"currency_code": "PKR", "effective_date": today(), "assets": "6000000", "liabilities": "1000000"}, headers={**api.headers, "Idempotency-Key": api.key()})
-    assert fresh.status_code == 201 and block(api)["capital"]["closing"] == "5000000.0000"
+    assert summary(api)["setup_required"] is False
+    invest(api, M, currency="PKR")  # an investment goes on top of it
+    assert block(api)["investment"]["closing"] == "6000000.0000" and block(api)["capital"]["closing"] == "6000000.0000"
+    rows = [r for r in history(api)["items"] if r["kind"] == "opening_position"]
+    assert len(rows) == 1 and rows[0]["amount"] == "5000000.0000" and rows[0]["can_reverse"] is False  # listed as history, and nothing can reverse it
 
 
-def test_activity_before_the_opening_position_is_part_of_it_not_added_again(api, org, feeds, run_sync):
+def test_activity_before_a_legacy_opening_position_is_part_of_it_not_added_again(api, org, feeds, run_sync, session_factory):
     item = product()
     stocked(api, org, feeds, run_sync, qty="10", price="100", currency="PKR", item=item, when=ago(days=5))
     deliver(feeds, org, item, "5", "300", when=ago(days=3), currency="PKR")  # a profit of 1,000 three days ago
     settle(run_sync, org)
-    api.client.post(OPENING, json={"currency_code": "PKR", "effective_date": today(1), "assets": "50000", "liabilities": "0"}, headers={**api.headers, "Idempotency-Key": api.key()})
+    legacy_opening(session_factory, org, "50000", "0", day=1)
     pkr = block(api)
     assert pkr["profit_loss"]["gross_profit"] == "1000.0000"  # the period still reports what was earned in it
     assert pkr["capital"]["closing"] == "50000.0000"  # but the opening equity already contains it
@@ -539,7 +562,7 @@ def test_different_currencies_are_never_added_and_combined_capital_is_unavailabl
     assert summary(api)["default_currency"] == "USD" and summary(api)["currencies"][0] == "USD"  # the organization's own currency first
 
 
-def test_a_currency_without_an_opening_or_a_contribution_asks_for_a_setup_while_the_other_is_ready(api, org):
+def test_a_currency_without_an_investment_asks_for_one_while_the_other_is_ready(api, org):
     invest(api, 1000, currency="PKR")
     api.expense(post=True, amount="5", currency_code="EUR", expense_date=today())
     body = summary(api)

@@ -41,8 +41,7 @@ const selectClass =
 const fieldBorder = (error?: string) => (error ? "border-red-500/60 focus:border-red-500 focus:ring-red-500" : "border-slate-800 focus:border-indigo-500 focus:ring-indigo-500");
 
 const HELP: Record<StockAction, string> = {
-  opening: "The starting quantity of a product you already registered. Only possible before any other movement of it (a new product can be given its opening quantity right when you add it).",
-  in: "Increase the quantity of an existing product, for example after a recount or a return. Goods you bought are added by confirming their goods receipt, not here.",
+  in: "Add stock of a product you hold: its first quantity, or more later (for example after a recount or a return). Goods you bought are added by confirming their goods receipt, not here.",
   out: "Stock leaving. Only the available quantity can be removed: stock reserved for customer orders cannot be taken.",
 };
 
@@ -95,7 +94,6 @@ export default function StockForm({
     switch (action) {
       case "in": return `Add ${what} to stock?`;
       case "out": return `Remove ${what} from stock?`;
-      case "opening": return `Record an opening balance of ${what}?`;
     }
   }
 

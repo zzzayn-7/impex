@@ -6,7 +6,7 @@
 
 It creates two throwaway organizations ("Stock Check Alpha / Beta") with one administrator each, signs both in to the
 Organization Portal and works through the portal's own server routes exactly as the browser does: products,
-opening balance / stock in / stock out, retries with the same Idempotency-Key, ten simultaneous removals against a
+stock in / stock out (no opening balance), retries with the same Idempotency-Key, ten simultaneous removals against a
 stock that only fits three, the movement history and its filters, proof that warehouses and transfers no longer exist
 anywhere, and then every way of reaching the other organization's balances and movements.
 
@@ -181,15 +181,15 @@ def main() -> int:
         check("a new product has no balance and no movement", psql("impex_inventory", f"SELECT count(*) FROM stock_balances WHERE product_id = '{bolt['id']}'") == "0"
               and psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE product_id = '{bolt['id']}'") == "0")
 
-        print("\n== 3. opening balance, stock in, stock out")
-        s, b = stock("a", "opening", {"product_id": bolt["id"], "quantity": "100", "reason": "Stock take"})
-        check("A records an opening balance of 100 (201)", s == 201 and b["operation"]["movements"][0]["balance_after"] == "100.0000", (s, b))
+        print("\n== 3. stock in (the first stock too), stock out")
+        s, b = stock("a", "in", {"product_id": bolt["id"], "quantity": "100", "reason": "Stock take"})
+        check("A enters the first 100 with a Stock In (201)", s == 201 and b["operation"]["movements"][0]["balance_after"] == "100.0000", (s, b))
         s, b = stock("a", "in", {"product_id": bolt["id"], "quantity": "25", "reason": "Supplier delivery #1"})
         check("stock in of 25 -> 125", s == 201 and balance(bolt["id"]) == "125.0000", (s, b))
         s, b = stock("a", "out", {"product_id": bolt["id"], "quantity": "40", "reason": "Order 7"})
         check("stock out of 40 -> 85", s == 201 and balance(bolt["id"]) == "85.0000", (s, b))
         s, b = stock("a", "opening", {"product_id": bolt["id"], "quantity": "5"})
-        check("a second opening balance is refused once there is history (409)", s == 409, (s, b))
+        check("there is no opening balance action any more (404/405)", s in (404, 405), (s, b))
         s, b = stock("a", "out", {"product_id": bolt["id"], "quantity": "86"})
         check("removing more than is there is refused (409, says how much is available)", s == 409 and "85 pcs" in b.get("error", "") and "warehouse" not in b.get("error", "").lower(), (s, b))
         check("...and the balance did not change", balance(bolt["id"]) == "85.0000")
@@ -296,7 +296,7 @@ def main() -> int:
         attempts = {
             "stock in to A's product": stock("b", "in", {"product_id": bolt["id"], "quantity": "5"})[0],
             "stock out of A's stock": stock("b", "out", {"product_id": bolt["id"], "quantity": "5"})[0],
-            "opening balance on A's product": stock("b", "opening", {"product_id": race["id"], "quantity": "5"})[0],
+            "stock in on A's product": stock("b", "in", {"product_id": race["id"], "quantity": "5"})[0],
         }
         check("B's attempts on A's products all answer 404", set(attempts.values()) == {404}, attempts)
         check("...and not one A row changed (counts, balances)", counts(org_ids["a"]) == before

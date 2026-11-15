@@ -126,11 +126,12 @@ class ProductList(BaseModel):
 # =====================================================================================================
 # Exact decimals again: at most 14 digits before and 4 after the point, strictly positive.
 Quantity = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=4)]
+# "opening" is only ever READ: movements recorded as an opening balance before that operation was removed stay in the ledger. Nothing writes it any more.
 MovementType = Literal["opening", "in", "out"]
 
 
 class StockChange(BaseModel):
-    """Opening balance, stock-in or stock-out of one product. No organization field exists."""
+    """Stock-in or stock-out of one product. No organization field exists."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -171,7 +172,7 @@ class MovementList(BaseModel):
 
 class StockOperationResult(BaseModel):
     operation_id: uuid.UUID
-    kind: Literal["opening", "in", "out"]
+    kind: Literal["in", "out"]
     replayed: bool  # true when this was a retry of an earlier request with the same Idempotency-Key
     movements: List[MovementResponse]
 

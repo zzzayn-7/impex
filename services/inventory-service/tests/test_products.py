@@ -274,7 +274,7 @@ def test_a_product_can_be_registered_and_stocked_without_a_selling_price(client,
     assert created.json()["selling_price"] is None and created.json()["cost_price"] == "10.5000"
     pid = created.json()["id"]
     assert client.get(f"{URL}/{pid}", headers=headers).json()["selling_price"] is None
-    stocked = client.post("/api/v1/inventory/stock/opening", json={"product_id": pid, "quantity": "5"}, headers={**headers, "Idempotency-Key": "np-open-0001"})
+    stocked = client.post("/api/v1/inventory/stock/in", json={"product_id": pid, "quantity": "5"}, headers={**headers, "Idempotency-Key": "np-open-0001"})
     assert stocked.status_code in (200, 201), stocked.text
     with session_factory() as db:
         assert db.scalars(select(Product).where(Product.sku == "NOPRICE-1")).one().selling_price is None

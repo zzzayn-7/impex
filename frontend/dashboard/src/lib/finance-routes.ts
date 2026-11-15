@@ -143,25 +143,6 @@ export function parseInvestmentBody(body: Record<string, unknown>): Parsed<Inves
   };
 }
 
-export type OpeningBody = { currency_code?: string; effective_date: string; assets: string; liabilities: string; notes?: string };
-
-export function parseOpeningBody(body: Record<string, unknown>): Parsed<OpeningBody> {
-  const fieldErrors: Fields = {};
-  const assets = checkMoney(body.assets === "" || body.assets === undefined ? "0" : body.assets, true);
-  const liabilities = checkMoney(body.liabilities === "" || body.liabilities === undefined ? "0" : body.liabilities, true);
-  const date = text(body.effectiveDate) ?? "";
-  const currencyRaw = text(body.currencyCode) ?? "";
-  const currency = currencyRaw ? checkCurrency(currencyRaw) : null;
-  const notes = collapse(text(body.notes) ?? "");
-  if (!assets) fieldErrors.assets = "Enter what the business owned, with at most 4 decimals.";
-  if (!liabilities) fieldErrors.liabilities = "Enter what the business owed, with at most 4 decimals.";
-  if (!checkDispatchDate(date)) fieldErrors.effectiveDate = "Enter a valid date.";
-  if (currencyRaw && !currency) fieldErrors.currencyCode = "Use a 3-letter currency code such as USD, EUR or PKR.";
-  if (notes.length > 500) fieldErrors.notes = "Use 500 characters or fewer.";
-  if (Object.keys(fieldErrors).length > 0) return { ok: false, message: "Please correct the highlighted fields.", fieldErrors };
-  return { ok: true, value: { effective_date: date, assets: assets!, liabilities: liabilities!, ...(currency ? { currency_code: currency } : {}), ...(notes ? { notes } : {}) } };
-}
-
 export type CostBody = { product_id: string; quantity: string; unit_cost: string; currency_code?: string; effective_date: string; notes?: string };
 
 /** The cost of stock already held. The product's SKU and name are NOT read from the browser: the route looks the product up. */

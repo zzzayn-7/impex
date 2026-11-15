@@ -27,7 +27,7 @@ def call(client, method, path, headers, **kw):
 
 
 def test_the_service_has_routes_to_check():
-    assert len(tenant_routes()) == 36  # a new route must be added deliberately: it is then covered by every gate below
+    assert len(tenant_routes()) == 33  # a new route must be added deliberately (3 fewer than before: the opening-position routes were removed): it is then covered by every gate below
 
 
 # ------------------------------------------------------------------------------------------------------------------ authentication

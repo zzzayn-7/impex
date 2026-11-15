@@ -36,15 +36,15 @@ def snapshot(session_factory):
 
 
 # --- the arithmetic --------------------------------------------------------------------------------------
-def test_opening_in_and_out_adjust_the_balance_exactly(api, setup):
+def test_in_and_out_adjust_the_balance_exactly(api, setup):
     product = setup["product"]
-    api.add(product, 100, action="opening")
+    api.add(product, 100, action="in")
     api.add(product, 25, action="in")
     api.add(product, 40, action="out")
     assert api.quantity(product) == "85.0000"
 
     kinds = [(m["movement_type"], m["quantity"], m["balance_after"]) for m in reversed(api.movements()["items"])]
-    assert kinds == [("opening", "100.0000", "100.0000"), ("in", "25.0000", "125.0000"), ("out", "40.0000", "85.0000")]
+    assert kinds == [("in", "100.0000", "100.0000"), ("in", "25.0000", "125.0000"), ("out", "40.0000", "85.0000")]
 
 
 def test_a_movement_records_who_what_why_and_when(api, setup):
@@ -125,55 +125,78 @@ def test_measurable_units_allow_fractions(api, unit):
     assert api.add(product, "1.5")["movements"][0]["quantity"] == "1.5000"
 
 
-def test_an_opening_balance_is_only_allowed_before_other_movements(api, setup):
-    product = setup["product"]
-    other = api.product(sku="NUT", name="Nut")
-    api.add(product, 10, action="in")
-    refused = api.change("opening", product_id=product["id"], quantity="5")
-    assert refused.status_code == 409 and "opening balance" in refused.json()["detail"].lower()
-    api.add(other, 3, action="opening")
-    assert api.change("opening", product_id=other["id"], quantity="3").status_code == 409  # not twice either
-    assert api.quantity(product) == "10.0000" and api.quantity(other) == "3.0000"
-
-
-def test_the_refusal_of_a_late_opening_balance_points_to_stock_in_and_stock_out(api, setup):
+def test_stock_in_is_allowed_at_any_time_not_only_before_other_movements(api, setup):
     product = setup["product"]
     api.add(product, 10, action="in")
-    detail = api.change("opening", product_id=product["id"], quantity="5").json()["detail"]
-    assert "already has stock history" in detail and "Stock In or Stock Out" in detail
+    api.add(product, 5, action="out")
+    api.add(product, 3, action="in")  # no "only before any other movement" rule any more
+    assert api.quantity(product) == "8.0000"
 
 
-# --- "Add Stock" on the Stock page: register a product, then (optionally) record what the organization already owns ---------------------------------
-def test_a_product_registered_without_an_opening_quantity_has_no_stock_and_no_ledger_entry(api):
+def test_there_is_no_opening_balance_operation_any_more(api, setup, session_factory):
+    product = setup["product"]
+    before = snapshot(session_factory)
+    for method in ("post", "put", "patch"):
+        refused = getattr(api.client, method)(f"{STOCK_URL}/opening", json={"product_id": product["id"], "quantity": "5"}, headers={**api.headers, "Idempotency-Key": "no-opening-0001"})
+        assert refused.status_code in (404, 405), method
+    assert snapshot(session_factory) == before  # nothing was recorded
+    spec = api.client.get("/openapi.json").json()
+    assert not any("opening" in path for path in spec["paths"])  # and it is not in the API description either
+    assert spec["components"]["schemas"]["StockOperationResult"]["properties"]["kind"]["enum"] == ["in", "out"]  # an operation result is only ever in or out
+
+
+# --- "Add Stock" on the Stock page: register a product, then (optionally) enter its quantity with Stock In ----------------------------------------
+def test_a_product_registered_without_a_quantity_has_no_stock_and_no_ledger_entry(api):
     product = api.product(sku="CISCO-001", name="Cisco Router")
     assert api.quantity(product) == "0"  # physical stock 0 (reserved 0, available 0)
     assert api.movements(product_id=product["id"])["total"] == 0  # no artificial movement
-    assert api.add(product, 0 + 7, action="opening")["movements"][0]["movement_type"] == "opening"  # ...and it can still be given an opening balance later
+    assert api.add(product, 0 + 7, action="in")["movements"][0]["movement_type"] == "in"  # ...and its first stock is a Stock In
 
 
-def test_a_new_product_with_an_opening_quantity_gets_exactly_one_opening_movement(api):
+def test_a_new_product_with_a_quantity_gets_exactly_one_stock_in_movement(api):
     product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
-    result = api.add(product, 35, action="opening")
-    assert result["replayed"] is False and [m["movement_type"] for m in result["movements"]] == ["opening"]
+    result = api.add(product, 35, action="in")
+    assert result["replayed"] is False and [m["movement_type"] for m in result["movements"]] == ["in"]
     assert api.quantity(product) == "35.0000"
     listing = api.movements(product_id=product["id"])
-    assert listing["total"] == 1 and listing["items"][0]["movement_type"] == "opening" and listing["items"][0]["quantity"] == "35.0000"
+    assert listing["total"] == 1 and listing["items"][0]["movement_type"] == "in" and listing["items"][0]["quantity"] == "35.0000"
+    assert listing["items"][0]["reason"] == "Stock in"
 
 
-def test_retrying_the_opening_balance_with_the_same_key_counts_it_once(api):
+def test_retrying_a_stock_in_with_the_same_key_counts_it_once(api):
     product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
-    first = api.change("opening", key="add-stock-retry-1", product_id=product["id"], quantity="35")
-    again = api.change("opening", key="add-stock-retry-1", product_id=product["id"], quantity="35")  # the retry after a lost answer
+    first = api.change("in", key="add-stock-retry-1", product_id=product["id"], quantity="35")
+    again = api.change("in", key="add-stock-retry-1", product_id=product["id"], quantity="35")  # the retry after a lost answer
     assert first.status_code == 201 and again.status_code == 200 and again.json()["replayed"] is True
     assert api.quantity(product) == "35.0000" and api.movements(product_id=product["id"])["total"] == 1
 
 
-def test_a_second_opening_balance_with_a_DIFFERENT_key_cannot_double_count_either(api):
-    product = api.product(sku="DELL-001", name="Dell Latitude Laptop")
-    assert api.change("opening", key="first-attempt", product_id=product["id"], quantity="35").status_code == 201
-    again = api.change("opening", key="second-attempt", product_id=product["id"], quantity="35")  # e.g. the answer was lost and the page asked again with a new key
-    assert again.status_code == 409 and "stock history" in again.json()["detail"]
-    assert api.quantity(product) == "35.0000" and api.movements(product_id=product["id"])["total"] == 1
+# --- history: movements recorded as an "opening balance" before it was removed are kept, counted and listed ------------------------------------------
+def make_legacy_opening(session_factory, product_id):
+    """Turn the stock-in of a product into what the ledger looked like before the removal: an `opening` movement of an `opening` operation (the ledger's append-only guard is lifted for this one test statement, as the migrations do)."""
+    with session_factory() as db:
+        db.execute(text("ALTER TABLE stock_movements DISABLE TRIGGER trg_stock_movements_append_only"))
+        db.execute(text("UPDATE stock_operations SET kind = 'opening' WHERE id IN (SELECT operation_id FROM stock_movements WHERE product_id = :p)"), {"p": product_id})
+        db.execute(text("UPDATE stock_movements SET movement_type = 'opening', reason = 'Opening balance' WHERE product_id = :p"), {"p": product_id})
+        db.execute(text("ALTER TABLE stock_movements ENABLE TRIGGER trg_stock_movements_append_only"))
+        db.commit()
+
+
+def test_an_opening_movement_recorded_earlier_is_still_listed_counted_and_found_under_in(api, session_factory):
+    product = api.product(sku="OLD-OPEN", name="Old opening")
+    api.add(product, 40, action="in")
+    make_legacy_opening(session_factory, product["id"])
+    listing = api.movements(product_id=product["id"])
+    assert listing["total"] == 1 and listing["items"][0]["movement_type"] == "opening" and listing["items"][0]["reason"] == "Opening balance"  # the record is exactly as it was
+    assert api.quantity(product) == "40.0000"
+    api.add(product, 10, action="in")  # new stock goes on top of it as a Stock In
+    api.add(product, 5, action="out")
+    assert api.quantity(product) == "45.0000"
+    assert [m["movement_type"] for m in reversed(api.movements(product_id=product["id"])["items"])] == ["opening", "in", "out"]
+    found = api.client.get(f"{STOCK_URL}/movements", params={"type": "in"}, headers=api.headers).json()
+    assert sorted(m["movement_type"] for m in found["items"]) == ["in", "opening"]  # "In" includes what was once called an opening balance
+    out = api.client.get(f"{STOCK_URL}/movements", params={"type": "out"}, headers=api.headers).json()
+    assert [m["movement_type"] for m in out["items"]] == ["out"]
 
 
 def test_archived_products_cannot_be_changed(api, setup):
@@ -362,7 +385,7 @@ def test_the_database_keeps_one_balance_per_product(api, setup, session_factory)
 
 def test_the_ledger_always_explains_the_balance(api, setup, session_factory):
     product = setup["product"]
-    api.add(product, 100, action="opening")
+    api.add(product, 100, action="in")
     api.add(product, 30, action="out")
     api.add(product, 5, action="in")
     api.add(product, 2, action="out")

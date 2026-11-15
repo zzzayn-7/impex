@@ -5,6 +5,7 @@ import {
   EMPTY_STOCK_FORM,
   IDEMPOTENCY_KEY_RE,
   MOVEMENT_LABELS,
+  MOVEMENT_TYPES,
   formatQuantity,
   newIdempotencyKey,
   normalizeStock,
@@ -45,8 +46,8 @@ describe("quantity validation", () => {
 describe("stock form validation", () => {
   const base = { ...EMPTY_STOCK_FORM, productId: P, quantity: "5" };
 
-  it("accepts a valid add / remove / opening", () => {
-    for (const action of ["in", "out", "opening"] as const) expect(validateStock(action, base, false)).toEqual({});
+  it("accepts a valid add / remove", () => {
+    for (const action of ["in", "out"] as const) expect(validateStock(action, base, false)).toEqual({});
   });
 
   it("asks for the missing choices", () => {
@@ -55,8 +56,9 @@ describe("stock form validation", () => {
 
   it("has no warehouse or transfer anywhere in the form", () => {
     expect(Object.keys(EMPTY_STOCK_FORM).sort()).toEqual(["productId", "quantity", "reason"]);
-    expect(Object.keys(ACTION_LABELS).sort()).toEqual(["in", "opening", "out"]);
-    expect(Object.keys(MOVEMENT_LABELS).sort()).toEqual(["in", "opening", "out"]);
+    expect(Object.keys(ACTION_LABELS).sort()).toEqual(["in", "out"]); // no opening balance action
+    expect(Object.keys(MOVEMENT_LABELS).sort()).toEqual(["in", "opening", "out"]); // "opening" is only a label for movements recorded before it was removed
+    expect([...MOVEMENT_TYPES]).toEqual(["in", "out"]); // and it is not something to filter by or to record
   });
 
   it("applies the unit rule to the quantity", () => {

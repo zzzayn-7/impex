@@ -10,7 +10,7 @@ import StockOverview from "@/app/stock/stock-overview";
 import { IDEMPOTENCY_KEY_RE } from "@/lib/stock-validation";
 
 // The Stock page's top-level "Add Stock" REGISTERS A NEW PRODUCT (and may record the quantity the organization already owns). Registering the product and
-// recording its opening quantity are two separate operations; these tests pin that neither is ever pretended to be the other, that nothing is created or
+// entering its quantity (a Stock In) are two separate operations; these tests pin that neither is ever pretended to be the other, that nothing is created or
 // counted twice, and that stock changes of EXISTING products stay in their own, clearly named actions.
 
 const now = "2026-11-10T10:00:00+00:00";
@@ -29,13 +29,13 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 type Call = { url: string; method: string; body: any; headers: Record<string, string> };
 let calls: Call[];
 let onProduct: (body: any) => Response | Promise<Response>;
-let onOpening: (body: any, headers: Record<string, string>) => Response | Promise<Response>;
+let onStockIn: (body: any, headers: Record<string, string>) => Response | Promise<Response>;
 
 beforeEach(() => {
   calls = [];
   Object.values(router).forEach((fn) => fn.mockReset());
   onProduct = (body) => json(201, { product: product({ id: NEW, sku: body.sku, name: body.name, unit: body.unit, cost_price: body.costPrice, selling_price: body.sellingPrice, currency_code: body.currencyCode }) });
-  onOpening = () => json(201, { operation: { operation_id: "op-1", kind: "opening", replayed: false } });
+  onStockIn = () => json(201, { operation: { operation_id: "op-1", kind: "in", replayed: false } });
   vi.stubGlobal("fetch", vi.fn(async (input: any, init: any = {}) => {
     const url = String(input);
     const method = init.method ?? "GET";
@@ -43,7 +43,7 @@ beforeEach(() => {
     const headers = (init.headers ?? {}) as Record<string, string>;
     calls.push({ url, method, body, headers });
     if (method === "POST" && url === "/api/products") return onProduct(body);
-    if (method === "POST" && url === "/api/stock/opening") return onOpening(body, headers);
+    if (method === "POST" && url === "/api/stock/in") return onStockIn(body, headers);
     if (method === "POST" && /\/api\/stock\/(in|out)$/.test(url)) return json(201, { operation: { operation_id: "op-x", replayed: false } });
     return json(404, { error: "not found" });
   }));
@@ -58,21 +58,21 @@ const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole("button", { name: "Add Stock" }));
   return screen.findByRole("region", { name: "Add Product to Stock" });
 };
-async function fill(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, v: { sku?: string; name?: string; unit?: string; cost?: string; selling?: string; opening?: string } = {}) {
+async function fill(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, v: { sku?: string; name?: string; unit?: string; cost?: string; selling?: string; quantity?: string } = {}) {
   const x = { sku: "dell-001", name: "Dell Latitude Laptop", unit: "pcs", cost: "620", selling: "799", ...v };
   await user.type(within(dialog).getByLabelText("SKU or product code"), x.sku);
   await user.type(within(dialog).getByLabelText("Product name"), x.name);
   await user.type(within(dialog).getByLabelText("Unit of measurement"), x.unit);
   await user.type(within(dialog).getByLabelText("Cost price"), x.cost);
-  if (x.opening !== undefined) await user.type(within(dialog).getByLabelText(/^Opening quantity$/), x.opening);
+  if (x.quantity !== undefined) await user.type(within(dialog).getByLabelText(/^Quantity$/), x.quantity);
 }
 const submit = (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => user.click(within(dialog).getByRole("button", { name: "Add product" }));
 
 describe("the buttons on the Stock page", () => {
-  it("are Add Stock and Opening Balance, in that order: no Remove Stock button (a product's delete icon does that) and no redundant New product button", () => {
+  it("are Add Stock and Stock In, in that order: no Remove Stock button (a product's delete icon does that) and no redundant New product button", () => {
     mount();
-    const top = screen.getAllByRole("button").map((b) => b.textContent).filter((t) => ["Add Stock", "Remove Stock", "Opening Balance", "New product"].includes(t ?? ""));
-    expect(top).toEqual(["Add Stock", "Opening Balance"]);
+    const top = screen.getAllByRole("button").map((b) => b.textContent).filter((t) => ["Add Stock", "Remove Stock", "Stock In", "Opening Balance", "New product"].includes(t ?? ""));
+    expect(top).toEqual(["Add Stock", "Stock In"]); // and no Opening Balance
   });
 
   it("a product's row has no Stock In / Stock Out buttons any more: its Actions are the Edit, Archive and Delete icons", () => {
@@ -90,7 +90,7 @@ describe("Add Stock opens a form for a NEW product", () => {
     const dialog = await openDialog(user);
     for (const label of ["Product name", "SKU or product code", "Unit of measurement", "Cost price", "Currency", "HS code", "Description"]) expect(within(dialog).getByLabelText(new RegExp(`^${label}`)), label).toBeTruthy();
     expect(within(dialog).getByLabelText(/^Barcode/)).toBeTruthy();
-    expect(within(dialog).getByLabelText(/^Opening quantity$/)).toBeTruthy();
+    expect(within(dialog).getByLabelText(/^Quantity$/)).toBeTruthy();
     expect(within(dialog).queryByLabelText("Selling price")).toBeNull(); // retired: no universal selling price
     expect(dialog.querySelector("select")).toBeNull(); // no "choose a product" dropdown (the unit box is a text box with suggestions)
     expect(within(dialog).queryByRole("combobox", { name: /^Product$/ })).toBeNull();
@@ -99,19 +99,19 @@ describe("Add Stock opens a form for a NEW product", () => {
     expect((within(dialog).getByLabelText("Currency") as HTMLInputElement).value).toBe("USD");
   });
 
-  it("is an inline form like Add Client (no dialog), with the opening quantity box beside the currency and below the barcode, and no 'if the goods carry one' wording", async () => {
+  it("is an inline form like Add Client (no dialog), with the Quantity box beside the currency and below the barcode, and no 'if the goods carry one' wording", async () => {
     const user = userEvent.setup();
     mount();
     const form = await openDialog(user);
     expect(screen.queryByRole("dialog")).toBeNull(); // it is part of the page, not a pop-up
     expect(within(form).getByRole("heading", { name: "New product" })).toBeTruthy();
-    expect(within(form).queryByRole("heading", { name: "Existing Stock / Opening Quantity" })).toBeNull(); // no separate section any more
+    expect(form.textContent).not.toMatch(/opening/i); // there is no opening quantity, balance or section any more
     expect(form.textContent).not.toContain("if the goods carry one");
     const order = Array.from(form.querySelectorAll("label")).map((l) => l.textContent ?? "");
     const at = (start: string) => order.findIndex((text) => text.startsWith(start));
     expect(at("Barcode")).toBeGreaterThan(-1);
     expect(at("Currency")).toBeGreaterThan(at("Cost price"));
-    expect(at("Opening quantity")).toBe(at("Currency") + 1); // right after the currency box, on the row below the barcode
+    expect(at("Quantity")).toBe(at("Currency") + 1); // right after the currency box, on the row below the barcode
     expect(order[at("Barcode")]).toBe("Barcode"); // just the word
   });
 
@@ -125,11 +125,11 @@ describe("Add Stock opens a form for a NEW product", () => {
     expect(screen.getByRole("region", { name: "Add Product to Stock" })).toBeTruthy(); // it stays open
   });
 
-  it.each(["abc", "-5", "1.23456", "1,5"])("refuses the opening quantity %j beside the field and sends nothing", async (typed) => {
+  it.each(["abc", "-5", "1.23456", "1,5"])("refuses the quantity %j beside the field and sends nothing", async (typed) => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { opening: typed });
+    await fill(user, dialog, { quantity: typed });
     await submit(user, dialog);
     expect((await within(dialog).findByText(/Use a positive number with at most 4 decimals/)).getAttribute("role")).toBe("alert");
     expect(calls).toEqual([]);
@@ -162,11 +162,11 @@ describe("Add Stock opens a form for a NEW product", () => {
 });
 
 describe("Scenario A: a new product with no existing stock", () => {
-  it.each([[undefined], ["0"], ["0.00"]])("opening quantity %j: the product is created and NO stock movement is recorded", async (opening) => {
+  it.each([[undefined], ["0"], ["0.00"]])("quantity %j: the product is created and NO stock movement is recorded", async (quantity) => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { sku: "cisco-001", name: "Cisco Router", ...(opening !== undefined ? { opening } : {}) });
+    await fill(user, dialog, { sku: "cisco-001", name: "Cisco Router", ...(quantity !== undefined ? { quantity } : {}) });
     await submit(user, dialog);
     await screen.findByText("Added Cisco Router (CISCO-001).");
     expect(writes().map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/products"]); // no /api/stock call at all: no artificial movement
@@ -178,14 +178,14 @@ describe("Scenario A: a new product with no existing stock", () => {
 });
 
 describe("Scenario B: a new product the organization already owns", () => {
-  it("creates the product, then records the quantity through the existing Opening Balance endpoint exactly once, with an idempotency key", async () => {
+  it("creates the product, then records the quantity as a Stock In exactly once, with an idempotency key", async () => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { sku: "dell-001", name: "Dell Latitude Laptop", opening: "35" });
+    await fill(user, dialog, { sku: "dell-001", name: "Dell Latitude Laptop", quantity: "35" });
     await submit(user, dialog);
-    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\)\. 35 pcs recorded as the opening balance\./);
-    expect(writes().map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/products", "POST /api/stock/opening"]);
+    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\)\. 35 pcs added to stock\./);
+    expect(writes().map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/products", "POST /api/stock/in"]);
     expect(writes()[1].body).toEqual({ product_id: NEW, quantity: "35" }); // the id the product was just given; no organization, no extra mechanism
     expect(writes()[1].headers["Idempotency-Key"]).toMatch(IDEMPOTENCY_KEY_RE);
     expect(router.refresh).toHaveBeenCalled();
@@ -196,9 +196,9 @@ describe("Scenario B: a new product the organization already owns", () => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { sku: "cable-1", name: "Copper cable", unit: "m", opening: "12.5" });
+    await fill(user, dialog, { sku: "cable-1", name: "Copper cable", unit: "m", quantity: "12.5" });
     await submit(user, dialog);
-    await screen.findByText(/12\.5 m recorded as the opening balance/);
+    await screen.findByText(/12\.5 m added to stock/);
     expect(writes()[1].body).toEqual({ product_id: NEW, quantity: "12.5" });
   });
 
@@ -207,12 +207,12 @@ describe("Scenario B: a new product the organization already owns", () => {
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { opening: "35" });
+    await fill(user, dialog, { quantity: "35" });
     await submit(user, dialog);
     expect((await within(dialog).findAllByText(/already exists in your catalog/)).length).toBeGreaterThan(0);
-    expect(writes().map((c) => c.url)).toEqual(["/api/products"]); // the opening balance was never attempted
+    expect(writes().map((c) => c.url)).toEqual(["/api/products"]); // the stock in was never attempted
     expect((within(dialog).getByLabelText("Product name") as HTMLInputElement).value).toBe("Dell Latitude Laptop"); // what was typed is kept
-    expect((within(dialog).getByLabelText(/^Opening quantity$/) as HTMLInputElement).value).toBe("35");
+    expect((within(dialog).getByLabelText(/^Quantity$/) as HTMLInputElement).value).toBe("35");
   });
 });
 
@@ -220,141 +220,145 @@ describe("when the product is created but recording the quantity fails (partial 
   const fail = (user: ReturnType<typeof userEvent.setup>) => async () => {
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { opening: "35" });
+    await fill(user, dialog, { quantity: "35" });
     await submit(user, dialog);
     return dialog;
   };
 
   it("says so plainly (not 'success'), keeps the product, and offers a retry of the quantity only", async () => {
-    onOpening = () => json(503, { error: "The inventory service is unavailable. Please try again shortly." });
+    onStockIn = () => json(503, { error: "The inventory service is unavailable. Please try again shortly." });
     const user = userEvent.setup();
     const dialog = await fail(user)();
     const alert = await within(dialog).findByRole("alert");
-    expect(alert.textContent).toContain("Dell Latitude Laptop (DELL-001) was registered, but its opening quantity was not recorded.");
+    expect(alert.textContent).toContain("Dell Latitude Laptop (DELL-001) was registered, but its quantity was not added to stock.");
     expect(alert.textContent).toContain("The inventory service is unavailable");
     expect(alert.textContent).toContain("will not be created again");
     expect(alert.textContent).toContain("can never count the quantity twice");
-    expect(screen.queryByText(/recorded as the opening balance/)).toBeNull(); // no success message
+    expect(screen.queryByText(/\d pcs added to stock/)).toBeNull(); // no success message
     expect(within(dialog).queryByLabelText("SKU or product code")).toBeNull(); // the product form is gone: it cannot be submitted again
-    expect((within(dialog).getByLabelText(/^Opening quantity$/) as HTMLInputElement).value).toBe("35");
+    expect((within(dialog).getByLabelText(/^Quantity$/) as HTMLInputElement).value).toBe("35");
     expect(router.refresh).toHaveBeenCalled(); // the table behind already shows the new product
     expect(calls.filter((c) => c.url === "/api/products")).toHaveLength(1);
   });
 
   it("retrying the same quantity reuses the SAME idempotency key and never creates the product again", async () => {
     let attempts = 0;
-    onOpening = () => (++attempts === 1 ? json(503, { error: "down" }) : json(200, { operation: { operation_id: "op-1", replayed: false } }));
+    onStockIn = () => (++attempts === 1 ? json(503, { error: "down" }) : json(200, { operation: { operation_id: "op-1", replayed: false } }));
     const user = userEvent.setup();
     const dialog = await fail(user)();
     await within(dialog).findByRole("alert");
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
-    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\)\. 35 pcs recorded as the opening balance\./);
-    const openings = writes().filter((c) => c.url === "/api/stock/opening");
-    expect(openings).toHaveLength(2);
-    expect(openings[1].headers["Idempotency-Key"]).toBe(openings[0].headers["Idempotency-Key"]); // the service applies it once, however often it is sent
-    expect(openings[1].body).toEqual(openings[0].body);
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
+    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\)\. 35 pcs added to stock\./);
+    const stockIns = writes().filter((c) => c.url === "/api/stock/in");
+    expect(stockIns).toHaveLength(2);
+    expect(stockIns[1].headers["Idempotency-Key"]).toBe(stockIns[0].headers["Idempotency-Key"]); // the service applies it once, however often it is sent
+    expect(stockIns[1].body).toEqual(stockIns[0].body);
     expect(writes().filter((c) => c.url === "/api/products")).toHaveLength(1); // the product was created ONCE
     await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("tells the administrator when the service replays an already-applied request (nothing counted twice)", async () => {
     let attempts = 0;
-    onOpening = () => (++attempts === 1 ? json(0 || 500, { error: "lost" }) : json(200, { operation: { operation_id: "op-1", replayed: true } }));
+    onStockIn = () => (++attempts === 1 ? json(0 || 500, { error: "lost" }) : json(200, { operation: { operation_id: "op-1", replayed: true } }));
     const user = userEvent.setup();
     const dialog = await fail(user)();
     await within(dialog).findByRole("alert");
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
     await screen.findByText(/That quantity had already been recorded; nothing was counted twice\./);
   });
 
   it("a lost connection is handled the same way: partial success, then a safe retry", async () => {
     let attempts = 0;
-    onOpening = () => { if (++attempts === 1) throw new Error("network down"); return json(201, { operation: { replayed: false } }); };
+    onStockIn = () => { if (++attempts === 1) throw new Error("network down"); return json(201, { operation: { replayed: false } }); };
     const user = userEvent.setup();
     const dialog = await fail(user)();
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Unable to reach the server");
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
-    await screen.findByText(/35 pcs recorded as the opening balance/);
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
+    await screen.findByText(/35 pcs added to stock/);
     expect(writes().filter((c) => c.url === "/api/products")).toHaveLength(1);
   });
 
   it("a DIFFERENT quantity is a different request and gets a new key", async () => {
     let attempts = 0;
-    onOpening = () => (++attempts === 1 ? json(503, { error: "down" }) : json(201, { operation: { replayed: false } }));
+    onStockIn = () => (++attempts === 1 ? json(503, { error: "down" }) : json(201, { operation: { replayed: false } }));
     const user = userEvent.setup();
     const dialog = await fail(user)();
     await within(dialog).findByRole("alert");
-    const box = within(dialog).getByLabelText(/^Opening quantity$/);
+    const box = within(dialog).getByLabelText(/^Quantity$/);
     await user.clear(box);
     await user.type(box, "36");
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
-    await screen.findByText(/36 pcs recorded as the opening balance/);
-    const openings = writes().filter((c) => c.url === "/api/stock/opening");
-    expect(openings[1].body.quantity).toBe("36");
-    expect(openings[1].headers["Idempotency-Key"]).not.toBe(openings[0].headers["Idempotency-Key"]);
-  });
-
-  it("the service refusing because the product already has stock history stops the retry (it may already be recorded)", async () => {
-    onOpening = () => json(409, { error: "Dell Latitude Laptop already has stock history. An opening balance can only be recorded before any other movement; use Stock In or Stock Out on the product instead." });
-    const user = userEvent.setup();
-    const dialog = await fail(user)();
-    const alert = await within(dialog).findByRole("alert");
-    expect(alert.textContent).toContain("already has stock history");
-    expect(alert.textContent).toContain("may already be recorded");
-    expect(within(dialog).queryByRole("button", { name: "Record opening quantity" })).toBeNull(); // no way to push it again
-    expect(within(dialog).getByRole("button", { name: "Done" })).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
+    await screen.findByText(/36 pcs added to stock/);
+    const stockIns = writes().filter((c) => c.url === "/api/stock/in");
+    expect(stockIns[1].body.quantity).toBe("36");
+    expect(stockIns[1].headers["Idempotency-Key"]).not.toBe(stockIns[0].headers["Idempotency-Key"]);
   });
 
   it("a refused quantity (for example a fraction of a counted unit) can be corrected and retried", async () => {
     let attempts = 0;
-    onOpening = (body) => (++attempts === 1 ? json(422, { error: "Use a whole number: this product is counted in 'pcs'." }) : json(201, { operation: { replayed: false, q: body.quantity } }));
+    onStockIn = (body) => (++attempts === 1 ? json(422, { error: "Use a whole number: this product is counted in 'pcs'." }) : json(201, { operation: { replayed: false, q: body.quantity } }));
     const user = userEvent.setup();
     mount();
     const dialog = await openDialog(user);
-    await fill(user, dialog, { opening: "2.5" });
+    await fill(user, dialog, { quantity: "2.5" });
     await submit(user, dialog);
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Use a whole number");
-    const box = within(dialog).getByLabelText(/^Opening quantity$/);
+    const box = within(dialog).getByLabelText(/^Quantity$/);
     await user.clear(box);
     await user.type(box, "3");
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
-    await screen.findByText(/3 pcs recorded as the opening balance/);
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
+    await screen.findByText(/3 pcs added to stock/);
     expect(writes().filter((c) => c.url === "/api/products")).toHaveLength(1);
   });
 
-  it("'Record it later' (or closing the dialog) leaves the product with no stock and points to Opening Balance; no stock call is made", async () => {
-    onOpening = () => json(503, { error: "down" });
+  it("'Record it later' (or closing the dialog) leaves the product with no stock and points to Stock In; no stock call is made", async () => {
+    onStockIn = () => json(503, { error: "down" });
     const user = userEvent.setup();
     const dialog = await fail(user)();
     await within(dialog).findByRole("alert");
     await user.click(within(dialog).getByRole("button", { name: "Record it later" }));
-    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\) with no stock yet\. Use Opening Balance to record its starting quantity\./);
-    expect(writes().filter((c) => c.url === "/api/stock/opening")).toHaveLength(1); // only the first attempt
+    await screen.findByText(/Added Dell Latitude Laptop \(DELL-001\) with no stock yet\. Use Stock In to add its first quantity\./);
+    expect(writes().filter((c) => c.url === "/api/stock/in")).toHaveLength(1); // only the first attempt
     await waitFor(() => expect(screen.queryByRole("region", { name: "Add Product to Stock" })).toBeNull());
   });
 
   it("a quantity that is empty, malformed or zero on retry is refused beside the field and sends nothing", async () => {
-    onOpening = () => json(503, { error: "down" });
+    onStockIn = () => json(503, { error: "down" });
     const user = userEvent.setup();
     const dialog = await fail(user)();
     await within(dialog).findByRole("alert");
-    const box = within(dialog).getByLabelText(/^Opening quantity$/);
+    const box = within(dialog).getByLabelText(/^Quantity$/);
     await user.clear(box);
-    await user.click(within(dialog).getByRole("button", { name: "Record opening quantity" }));
+    await user.click(within(dialog).getByRole("button", { name: "Record stock in" }));
     expect(await within(dialog).findByText(/Enter the quantity you already own/)).toBeTruthy();
-    expect(writes().filter((c) => c.url === "/api/stock/opening")).toHaveLength(1);
+    expect(writes().filter((c) => c.url === "/api/stock/in")).toHaveLength(1);
   });
 });
 
-describe("Opening Balance and the existing-product actions stay separate", () => {
-  it("Opening Balance still lets the administrator select an existing product (and offers only Opening Balance)", async () => {
+describe("Stock In is the one way to enter stock of an existing product (there is no Opening Balance)", () => {
+  it("the Stock In button lets the administrator select an existing product, and offers only Stock In", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "Opening Balance" }));
-    const form = await screen.findByRole("form", { name: "Opening Balance" });
-    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Opening Balance"]);
+    expect(screen.queryByRole("button", { name: /opening/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Stock In" }));
+    const form = await screen.findByRole("form", { name: "Stock In" });
+    expect(within(form).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Stock In"]);
     expect(within(form).getByRole("combobox", { name: "Product" })).toBeTruthy(); // select an existing product here, unlike Add Stock
-    expect(form.textContent).toContain("Only possible before any other movement");
+    expect(form.textContent).not.toMatch(/opening/i);
+    expect(form.textContent).toContain("its first quantity, or more later");
+  });
+
+  it("entering the first stock of a registered product is a Stock In, and so is the next one", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Stock In" }));
+    const form = await screen.findByRole("form", { name: "Stock In" });
+    await user.selectOptions(within(form).getByRole("combobox", { name: "Product" }), P1);
+    await user.type(within(form).getByLabelText(/^Quantity/), "12");
+    await user.click(within(form).getByRole("button", { name: "Record stock in" }));
+    await waitFor(() => expect(writes().map((c) => c.url)).toEqual(["/api/stock/in"]));
+    expect(writes()[0].body).toEqual({ product_id: P1, quantity: "12" });
+    expect(writes()[0].headers["Idempotency-Key"]).toMatch(IDEMPOTENCY_KEY_RE);
   });
 
   it("there is no Remove Stock button above the table any more", () => {

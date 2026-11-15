@@ -156,7 +156,7 @@ class StockReservation(TenantOwnedMixin, Base):
 class StockMovement(TenantOwnedMixin, Base):
     """The append-only stock ledger. Rows are only ever inserted: a database trigger rejects UPDATE and DELETE.
 
-    `quantity` is always positive; the direction comes from `movement_type` (opening and in add, out subtracts).
+    `quantity` is always positive; the direction comes from `movement_type` (in adds, out subtracts; "opening" rows, recorded before that operation was removed, add too).
     """
 
     __tablename__ = "stock_movements"

@@ -109,12 +109,7 @@ def _respond(result: StockOperationResult, response: Response) -> StockOperation
     return result
 
 
-@router.post("/stock/opening", response_model=StockOperationResult, status_code=status.HTTP_201_CREATED, tags=["Stock"])
-def opening_balance(payload: StockChange, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
-    """Record the starting quantity of a product (only before any other movement)."""
-    return _respond(stock.execute_change(db, tenant, "opening", payload, key), response)
-
-
+# There is no "opening balance" operation any more: Stock In is how stock is first entered (and every time after). Opening movements recorded earlier stay in the ledger and are still listed.
 @router.post("/stock/in", response_model=StockOperationResult, status_code=status.HTTP_201_CREATED, tags=["Stock"])
 def stock_in(payload: StockChange, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
     return _respond(stock.execute_change(db, tenant, "in", payload, key), response)

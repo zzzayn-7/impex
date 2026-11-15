@@ -21,6 +21,7 @@ export type StockProduct = {
   currency_code?: string | null;
 };
 
+// "opening" is only READ: movements recorded as an opening balance before that operation was removed stay in the history, labelled as they were. Nothing writes one any more.
 export type MovementType = "opening" | "in" | "out";
 
 export type Movement = {
@@ -46,7 +47,8 @@ export const MOVEMENT_LABELS: Record<MovementType, string> = {
   in: "Stock in",
   out: "Stock out",
 };
-export const MOVEMENT_TYPES = Object.keys(MOVEMENT_LABELS) as MovementType[];
+// What the Movements page can filter by: In (which includes those earlier opening movements) and Out.
+export const MOVEMENT_TYPES: MovementType[] = ["in", "out"];
 // Movements that take stock away.
 export const isDebit = (type: MovementType) => type === "out";
 
@@ -89,8 +91,8 @@ export function newIdempotencyKey(): string {
   return `ui-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export type StockAction = "opening" | "in" | "out";
-export const STOCK_ACTIONS: StockAction[] = ["opening", "in", "out"];
+export type StockAction = "in" | "out";
+export const STOCK_ACTIONS: StockAction[] = ["in", "out"];
 export const isStockAction = (value: string): value is StockAction => (STOCK_ACTIONS as string[]).includes(value);
 
 export type StockFormValues = {
@@ -125,7 +127,6 @@ export function toStockBody(_action: StockAction, v: StockFormValues) {
 }
 
 export const ACTION_LABELS: Record<StockAction, { title: string; submit: string; done: string }> = {
-  opening: { title: "Opening Balance", submit: "Record opening balance", done: "Opening balance recorded." },
   in: { title: "Stock In", submit: "Record stock in", done: "Stock added." },
   out: { title: "Remove Stock", submit: "Remove stock", done: "Stock removed." },
 };

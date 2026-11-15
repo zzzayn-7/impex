@@ -5,13 +5,13 @@
     python scripts/verify_add_stock.py
 
 It works through the portal's own server routes exactly as the browser does (Add Stock = POST /api/products, then, only when a quantity above zero was
-entered, POST /api/stock/opening with an Idempotency-Key), and proves from the DATABASES themselves:
+entered, POST /api/stock/in with an Idempotency-Key: Stock In is the only way stock is entered by hand), and proves from the DATABASES themselves:
 
-  * Scenario A: a product registered with NO opening quantity exists with 0 physical / 0 reserved / 0 available and has NO stock movement;
-  * Scenario B: a product registered with 35 already owned gets exactly ONE opening movement (35 on hand, 35 available); retrying the same request (same
-    key) is replayed and counts nothing twice; asking again with a different key is refused, because the product already has stock history;
+  * Scenario A: a product registered with NO quantity exists with 0 physical / 0 reserved / 0 available and has NO stock movement;
+  * Scenario B: a product registered with 35 already owned gets exactly ONE Stock In movement (35 on hand, 35 available); retrying the same request (same
+    key) is replayed and counts nothing twice; the old /api/stock/opening endpoint no longer exists;
   * a duplicate SKU is refused and creates nothing; no category exists anywhere; the old Products tab and the redundant New product button are not offered;
-  * Opening Balance still works for an eligible existing product and is refused once a product has stock history;
+  * Stock In works for any existing product, first stock or not (there is no Opening Balance and no 'only before other movements' rule);
   * Stock In / Stock Out of an existing product still work, and Stock Out can never take reserved stock (500/400/100-style protection);
   * a goods receipt still increases stock exactly once; a registered barcode is still found by scanning;
   * another organization can neither see nor change any of it.
@@ -120,14 +120,14 @@ def main() -> int:
         extra = f" AND movement_type = '{kind}'" if kind else ""
         return int(psql("impex_inventory", f"SELECT count(*) FROM stock_movements WHERE product_id = '{product_id}'{extra}") or "0")
 
-    def add_stock(key, sku, name, opening=None, unit="pcs", idem=None):
-        """What the Add Stock dialog does: register the product; only when a quantity above zero was entered, record it as the opening balance."""
+    def add_stock(key, sku, name, quantity=None, unit="pcs", idem=None):
+        """What the Add Stock form does: register the product; only when a quantity above zero was entered, record it as a Stock In."""
         status, text = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": unit, "costPrice": "620", "sellingPrice": "799", "currencyCode": "USD", "description": ""})
         product = jbody(text).get("product", {})
         created.add("products", product.get("id"))
         op_status = None
-        if status == 201 and opening and Decimal(opening) > 0:
-            op_status, _ = portal(key, "POST", "/api/stock/opening", {"product_id": product["id"], "quantity": opening}, {"Idempotency-Key": idem or f"asc-{uuid.uuid4()}"})
+        if status == 201 and quantity and Decimal(quantity) > 0:
+            op_status, _ = portal(key, "POST", "/api/stock/in", {"product_id": product["id"], "quantity": quantity}, {"Idempotency-Key": idem or f"asc-{uuid.uuid4()}"})
         return status, product, op_status, text
 
     def stock_call(key, action, product_id, quantity, idem=None):
@@ -157,11 +157,11 @@ def main() -> int:
             check(f"organization {key.upper()} and its administrator exist and can sign in", org_ids[key] and tokens[key] and cookies[key], (status, text))
             mark_setup_complete(psql, org_ids[key])
 
-        print("\n== 1. the Stock page: Add Stock / Remove Stock / Opening Balance; no New product button, no Products tab")
+        print("\n== 1. the Stock page: Add Stock / Stock In; no Opening Balance, no New product button, no Products tab")
         s, html = page("a", "/stock")
-        check("the three top buttons are there and the redundant 'New product' button is not", s == 200 and all(f">{b}</button>" in html for b in ("Add Stock", "Remove Stock", "Opening Balance")) and ">New product<" not in html, s)
-        check("Add Stock is enabled even with no products yet; Remove Stock and Opening Balance wait for a product",
-              not re.search(r"<button[^>]*disabled[^>]*>Add Stock", html) and re.search(r"<button[^>]*disabled[^>]*>Remove Stock", html) is not None and "No products yet" in html)
+        check("the two top buttons are there; Opening Balance and the redundant 'New product' button are not", s == 200 and all(f">{b}</button>" in html for b in ("Add Stock", "Stock In")) and "Opening Balance" not in html and ">New product<" not in html, s)
+        check("Add Stock is enabled even with no products yet; Stock In waits for a product",
+              not re.search(r"<button[^>]*disabled[^>]*>Add Stock", html) and re.search(r"<button[^>]*disabled[^>]*>Stock In", html) is not None and "No products yet" in html)
         check("there is no Products tab and no Scan Product tab in the menu", 'href="/products"' not in html and 'href="/scan"' not in html)
 
         print("\n== 2. Scenario A: Cisco Router, no existing stock")
@@ -175,26 +175,26 @@ def main() -> int:
 
         print("\n== 3. Scenario B: Dell Latitude Laptop, 35 already owned")
         key_b = f"asc-{uuid.uuid4()}"
-        s, dell, op, text = add_stock("a", "dell-001", "Dell Latitude Laptop", opening="35", idem=key_b)
-        check("the product is registered and its 35 units are recorded through the existing Opening Balance endpoint (201 + 201)", s == 201 and op == 201, (s, op, text[:160]))
-        check("exactly ONE movement exists and it is an opening movement of 35", movements(dell["id"]) == 1 and movements(dell["id"], "opening") == 1
+        s, dell, op, text = add_stock("a", "dell-001", "Dell Latitude Laptop", quantity="35", idem=key_b)
+        check("the product is registered and its 35 units are recorded as a Stock In (201 + 201)", s == 201 and op == 201, (s, op, text[:160]))
+        check("exactly ONE movement exists and it is a Stock In of 35 (never an opening movement)", movements(dell["id"]) == 1 and movements(dell["id"], "in") == 1 and movements(dell["id"], "opening") == 0
               and psql("impex_inventory", f"SELECT quantity::text FROM stock_movements WHERE product_id = '{dell['id']}'") == "35.0000")
         check("35 on hand, 0 reserved, 35 available", figures(dell["id"]) == (Decimal("35"), Decimal("0"), Decimal("35")), figures(dell["id"]))
         s, html = page("a", "/stock?q=dell")
         check("the Stock page shows 35 available and a Total of 35 x the 620.00 cost = 21,700.00 USD, and no selling Price column", 'data-testid="available-DELL-001">35<' in html and 'data-testid="total-DELL-001">21,700.00 USD<' in html and ">Price<" not in html, s)
-        s, text = portal("a", "POST", "/api/stock/opening", {"product_id": dell["id"], "quantity": "35"}, {"Idempotency-Key": key_b})
-        check("retrying the SAME request (the dialog's 'Record opening quantity') is replayed (200) and counts nothing twice", s == 200 and jbody(text).get("operation", {}).get("replayed") is True and figures(dell["id"])[0] == Decimal("35") and movements(dell["id"]) == 1, (s, text[:160]))
+        s, text = portal("a", "POST", "/api/stock/in", {"product_id": dell["id"], "quantity": "35"}, {"Idempotency-Key": key_b})
+        check("retrying the SAME request (the form's 'Record stock in') is replayed (200) and counts nothing twice", s == 200 and jbody(text).get("operation", {}).get("replayed") is True and figures(dell["id"])[0] == Decimal("35") and movements(dell["id"]) == 1, (s, text[:160]))
         s, body = stock_call("a", "opening", dell["id"], "35")
-        check("asking again with a DIFFERENT key is refused (409: it already has stock history), so even a lost answer cannot double-count", s == 409 and "stock history" in json.dumps(body) and "Stock In" in json.dumps(body) and figures(dell["id"])[0] == Decimal("35") and movements(dell["id"]) == 1, (s, body))
+        check("the old opening balance endpoint no longer exists (404/405) and records nothing", s in (404, 405) and figures(dell["id"])[0] == Decimal("35") and movements(dell["id"]) == 1, (s, body))
 
-        print("\n== 4. Opening Balance: eligible products only (the backend rule is unchanged)")
-        s, late, _, _ = add_stock("a", "late-001", "Late opening")
-        s1, b1 = stock_call("a", "opening", late["id"], "10")
-        check("Opening Balance for an existing product without history works (201)", s1 == 201 and figures(late["id"])[0] == Decimal("10") and movements(late["id"], "opening") == 1, (s1, b1))
+        print("\n== 4. Stock In is the first stock of a product AND every later one (no 'only before other movements' rule)")
+        s, late, _, _ = add_stock("a", "late-001", "Late stock")
+        s1, b1 = stock_call("a", "in", late["id"], "10")
+        check("the first stock of an existing product without history is a Stock In (201)", s1 == 201 and figures(late["id"])[0] == Decimal("10") and movements(late["id"], "in") == 1 and movements(late["id"], "opening") == 0, (s1, b1))
         s, used, _, _ = add_stock("a", "used-001", "Already moved")
         stock_call("a", "in", used["id"], "5")
-        s2, b2 = stock_call("a", "opening", used["id"], "99")
-        check("...but it is refused once the product has other movements (409) and nothing is overwritten", s2 == 409 and figures(used["id"])[0] == Decimal("5") and movements(used["id"]) == 1, (s2, b2))
+        s2, b2 = stock_call("a", "in", used["id"], "3")
+        check("...and a later Stock In on a product that already has movements is accepted too (201): 5 + 3 = 8", s2 == 201 and figures(used["id"])[0] == Decimal("8") and movements(used["id"]) == 2, (s2, b2))
 
         print("\n== 5. Stock In / Stock Out of an existing product, and reserved stock stays protected")
         s, _ = stock_call("a", "in", dell["id"], "5")
@@ -232,11 +232,11 @@ def main() -> int:
         print("\n== 7. tenant isolation")
         s, html = page("b", "/stock")
         check("organization B's Stock page shows none of A's products", s == 200 and "Dell Latitude Laptop" not in html and "Cisco Router" not in html and "DELL-001" not in html)
-        s, body = stock_call("b", "opening", cisco["id"], "50")
-        check("B cannot record an opening balance for A's product (404, like a missing one)", s == 404 and figures(cisco["id"])[0] == Decimal("20"), (s, body))
+        s, body = stock_call("b", "in", cisco["id"], "50")
+        check("B cannot Stock In on A's product (404, like a missing one)", s == 404 and figures(cisco["id"])[0] == Decimal("20"), (s, body))
         s, body = stock_call("b", "in", dell["id"], "1")
-        check("...nor Stock In on it", s == 404 and figures(dell["id"])[0] == Decimal("25"), (s, body))
-        s, b_dell, op, _ = add_stock("b", "dell-001", "Beta's own Dell", opening="3")
+        check("...nor on the other one", s == 404 and figures(dell["id"])[0] == Decimal("25"), (s, body))
+        s, b_dell, op, _ = add_stock("b", "dell-001", "Beta's own Dell", quantity="3")
         check("the same SKU in B is allowed and is B's own stock (3), untouched by A's 25", s == 201 and op == 201 and figures(b_dell["id"])[0] == Decimal("3") and figures(dell["id"])[0] == Decimal("25"))
         check("the products table still has no category column", psql("impex_inventory", "SELECT count(*) FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category'") == "0")
     finally:

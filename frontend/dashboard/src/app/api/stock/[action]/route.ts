@@ -11,12 +11,11 @@ function fail(error: string, status: number, fieldErrors?: unknown) {
 }
 
 const FIELDS: Record<string, string[]> = {
-  opening: ["product_id", "quantity", "reason"],
   in: ["product_id", "quantity", "reason"],
   out: ["product_id", "quantity", "reason"],
 };
 
-// OPENING BALANCE / STOCK IN / STOCK OUT.
+// STOCK IN / STOCK OUT (there is no opening balance: a product's first stock is a Stock In too).
 //
 // Protected: the tenant token comes from the HttpOnly cookie. The browser supplies an Idempotency-Key per
 // intended action (a double click or a retry sends the same key, so the stock changes once). Only the fields

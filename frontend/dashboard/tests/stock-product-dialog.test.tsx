@@ -101,9 +101,10 @@ describe("the Stock page shows the product inventory", () => {
     expect(screen.getByRole("table").textContent).not.toContain("2.50 USD");
   });
 
-  it("has exactly two actions at the top (Add Stock, Opening Balance); no Remove Stock, no standalone Products link or category", () => {
+  it("has exactly two actions at the top (Add Stock, Stock In); no Opening Balance, no Remove Stock, no standalone Products link or category", () => {
     mount();
-    for (const name of ["Add Stock", "Opening Balance"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Add Stock", "Stock In"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /opening/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove Stock" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New product" })).toBeNull(); // the old, redundant button is gone
     expect(screen.queryByRole("link", { name: /products/i })).toBeNull();
@@ -123,7 +124,7 @@ describe("the product dialog (view and edit a product without leaving Stock)", (
     for (const text of ["BOLT-1", "pcs", "1.25 USD", "7318.15", "Active"]) expect(dialog.textContent, text).toContain(text);
     expect(dialog.textContent).not.toContain("Selling price"); // retired: no universal selling price
     expect(within(dialog).queryByLabelText(/quantity/i)).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: /add stock|remove stock|opening/i })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /add stock|remove stock|stock in|opening/i })).toBeNull();
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([`GET /api/products/${P1}`]); // opening it changes nothing
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

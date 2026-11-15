@@ -21,7 +21,7 @@ See [`docs/multi-tenancy.md`](../../docs/multi-tenancy.md).
 | `DELETE /products/{id}` | delete **for good**: the product with its stock balance, barcodes, stock movements and finished reservations (one transaction, `204`). `409` while sales orders still hold stock of it; another organization's id is `404`. Other services keep their own copy of the SKU and name |
 | `GET /stock?q=&in_stock_only=&status=` | overview: per product the quantity in stock |
 | `GET /stock/movements?product_id=&type=` | the ledger, newest first (read-only) |
-| `POST /stock/opening` `/in` `/out` | opening balance / stock in / stock out of one product |
+| `POST /stock/in` `/out` | stock in / stock out of one product. Stock In is how stock is first entered and every time after (there is no opening balance operation: `POST /stock/opening` was removed) |
 | `POST /products/{id}/identifiers/generate` | give the product its Impex label code (QR + Code 128); repeating returns the same code |
 | `GET /products/{id}/identifiers` | the product's codes (label code first) |
 | `POST /products/{id}/identifiers` | register a manufacturer / supplier barcode (`kind`, `value`, optional `label`) |
@@ -66,9 +66,8 @@ Interactive docs: http://localhost:8002/docs
 | pieces are whole | units that are not known measurable ones (`kg`, `g`, `l`, `ml`, `m`, `cm`, `tonne`, ...) accept whole numbers only; the service reports it as `unit_allows_fractions` |
 | history is kept | archiving keeps everything: archived products refuse new stock changes but keep their stock and history. Deleting a product (`DELETE /products/{id}`, the portal's Delete icon, after a plain-words confirmation) is the one way history goes: it lifts the ledger's append-only guard for that single transaction with the same out-of-band switch the organization purge uses, and removes only that product's rows |
 
-Movement types: `opening`, `in`, `out`. Each records product, quantity, the product's stock afterwards (`balance_after`),
-a reason, the authenticated user (id and email) and the time. An opening balance is only possible before any other
-movement of that product; later corrections are ordinary stock in/out movements.
+Movement types: `in`, `out` (and `opening`, which is only READ: movements recorded as an opening balance before that operation was removed stay in the ledger, unchanged, count in the balance and are listed under *In*; nothing writes one any more, and the database constraints that allow the value are left alone so that history stays valid). Each records product, quantity, the product's stock afterwards (`balance_after`),
+a reason, the authenticated user (id and email) and the time. Stock In has no "only before other movements" rule; corrections are ordinary stock in/out movements.
 
 **Warehouses were removed (migration `0007`).** The business keeps a single location, so there is no warehouse table, no
 warehouse column and no transfer. The migration is destructive and irreversible: in one transaction it deletes the

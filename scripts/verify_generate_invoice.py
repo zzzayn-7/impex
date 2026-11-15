@@ -166,7 +166,7 @@ def main() -> int:
             status, text = portal(key, "POST", "/api/products", {"sku": sku, "name": name, "unit": "pcs", "costPrice": "3.20", "currencyCode": currency})
             product = jbody(text).get("product", {})
             created.add("products", product.get("id"))
-            portal(key, "POST", "/api/stock/opening", {"product_id": product.get("id"), "quantity": "200"}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
+            portal(key, "POST", "/api/stock/in", {"product_id": product.get("id"), "quantity": "200"}, {"Idempotency-Key": f"gi-{uuid.uuid4()}"})
             return product
 
         widget = register("a", "GI-WIDGET", "GI Widget", "USD")

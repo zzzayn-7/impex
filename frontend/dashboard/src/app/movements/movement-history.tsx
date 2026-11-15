@@ -23,7 +23,7 @@ const BADGE: Record<MovementType, string> = {
   out: "border-red-500/20 bg-red-500/10 text-red-300",
 };
 
-// What a movement is called on this page: In or Out (an opening balance puts stock IN).
+// What a movement is called on this page: In or Out (a movement recorded as an opening balance, before that was removed, also puts stock IN and is listed as In).
 const ACTIVITY: Record<MovementType, string> = { opening: "In", in: "In", out: "Out" };
 
 /** The stock the product had just BEFORE this movement: after minus what came in, or after plus what went out (exact decimals). */
@@ -90,7 +90,7 @@ export default function MovementHistory({ list, filters, products }: Props) {
             Activity
             <select value={filters.type} onChange={(e) => navigate({ type: e.target.value as MovementFilters["type"] })} className={selectClass}>
               <option value="">All activity</option>
-              {MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY[t]}{t === "opening" ? " (opening balance)" : ""}</option>)}
+              {MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY[t]}</option>)}
             </select>
           </label>
         </div>

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result.data, { headers: NO_STORE });
 }
 
-// Record what stock already held (opening stock, stock given in kind) cost per unit. It changes no capital figure; it is the cost the next deliveries use.
+// Record what stock already held (stock owned before using Impex, stock given in kind) cost per unit. It changes no capital figure; it is the cost the next deliveries use.
 // The product's SKU and name come from the Inventory Service (with the administrator's own session), never from the browser.
 export async function POST(req: NextRequest) {
   const token = sessionToken(req);

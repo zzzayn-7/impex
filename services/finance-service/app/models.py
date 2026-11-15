@@ -467,8 +467,9 @@ class CapitalRecord(TenantOwnedMixin, Base):
 
 
 class OpeningPosition(TenantOwnedMixin, Base):
-    """The financial position an organization starts from, per currency: what it owned and what it owed on `effective_date`. The owner's equity is the difference.
-    One active position per currency; a correction reverses it (kept, with who and why) and records a new one."""
+    """LEGACY, READ-ONLY. The financial position an organization started from, per currency, recorded before opening positions were removed from Impex: what it owned and what it
+    owed on `effective_date`; the owner's equity is the difference. Nothing creates or reverses one any more, but the rows are history and stay: an ACTIVE one still counts as owner
+    investment and as the start of Capital in the reports (reporting.py), so figures already built on it do not change. Its guards and constraints are untouched."""
 
     __tablename__ = "opening_positions"
     __table_args__ = (

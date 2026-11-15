@@ -67,7 +67,6 @@ def test_stock_cannot_be_changed_for_the_others_product(two_orgs, world, session
     attempts = [
         ("in", dict(product_id=theirs["product"]["id"], quantity="5")),
         ("out", dict(product_id=theirs["product"]["id"], quantity="1")),  # steal their stock
-        ("opening", dict(product_id=theirs["product"]["id"], quantity="5")),
     ]
     for action, body in attempts:
         response = org.change(action, **body)
@@ -98,7 +97,7 @@ def test_an_idempotency_key_cannot_replay_another_tenants_result(two_orgs, world
 def test_an_organization_id_in_any_body_is_rejected(two_orgs, world, session_factory, field):
     before = snapshot(session_factory)
     alpha, beta_id, mine = two_orgs["alpha"], two_orgs["beta_id"], world["alpha"]
-    for action in ("in", "out", "opening"):
+    for action in ("in", "out"):
         response = alpha.change(action, product_id=mine["product"]["id"], quantity="1", **{field: beta_id})
         assert response.status_code == 422
     assert snapshot(session_factory) == before

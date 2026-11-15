@@ -15,9 +15,9 @@ from app.api import Tenant, idempotency_key
 from app.auth import TenantContext
 from app.common import Actor, attach_request, claim_request, conflict
 from app.database import get_db
-from app.models import CapitalRecord, CostEntry, InventoryCost, OpeningPosition, TradeDelivery
+from app.models import CapitalRecord, CostEntry, InventoryCost, TradeDelivery
 from app.tenancy import scoped_select
-from app.trading_schemas import BasisCreate, InvestmentCreate, InvestmentReverse, OpeningCreate, ReasonBody, ReconcileBody
+from app.trading_schemas import BasisCreate, InvestmentCreate, InvestmentReverse, ReasonBody, ReconcileBody
 
 router = APIRouter(prefix="/api/v1/finance")
 
@@ -58,14 +58,6 @@ def capital_out(r: CapitalRecord) -> dict:
         "id": str(r.id), "kind": r.kind, "entry_type": r.entry_type, "is_reversal": r.is_reversal, "reverses_id": str(r.reverses_id) if r.reverses_id else None, "amount": _money(r.amount),
         "effect": _money(r.effect), "currency_code": r.currency_code, "effective_date": r.effective_date.isoformat(), "description": r.description, "reference": r.reference, "notes": r.notes,
         "reversal_reason": r.reversal_reason, "created_by_email": r.created_by_email, "created_at": r.created_at.isoformat(),
-    }
-
-
-def opening_out(o: OpeningPosition) -> dict:
-    return {
-        "id": str(o.id), "currency_code": o.currency_code, "effective_date": o.effective_date.isoformat(), "assets": _money(o.assets), "liabilities": _money(o.liabilities), "equity": _money(o.equity),
-        "notes": o.notes, "status": o.status, "reversal_reason": o.reversal_reason, "reversed_at": o.reversed_at.isoformat() if o.reversed_at else None, "reversed_by_email": o.reversed_by_email,
-        "created_by_email": o.created_by_email, "created_at": o.created_at.isoformat(),
     }
 
 
@@ -174,36 +166,6 @@ def reverse_investment(record_id: uuid.UUID, payload: InvestmentReverse, tenant:
 
 
 # =====================================================================================================
-# The opening position
-# =====================================================================================================
-@router.get("/opening-positions", tags=["Finance page"])
-def list_opening_positions(tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    rows = db.scalars(scoped_select(OpeningPosition, tenant).order_by(OpeningPosition.created_at.desc(), OpeningPosition.id))
-    return {"items": [opening_out(o) for o in rows]}
-
-
-@router.post("/opening-positions", status_code=status.HTTP_201_CREATED, tags=["Finance page"])
-def set_opening_position(payload: OpeningCreate, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
-    """Set the financial position the organization starts from (what it owned and owed on a date, in one currency). The owner's equity is the difference."""
-    actor = Actor.of(tenant)
-    row = _created_once(db, tenant, key, "opening", payload, response, lambda: capital.set_opening(db, tenant, actor, payload),
-                        lambda position_id: db.scalar(scoped_select(OpeningPosition, tenant).where(OpeningPosition.id == position_id)))
-    return opening_out(row)
-
-
-@router.post("/opening-positions/{position_id}/reverse", tags=["Finance page"])
-def reverse_opening_position(position_id: uuid.UUID, payload: ReasonBody, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
-    try:
-        row = capital.reverse_opening(db, tenant, Actor.of(tenant), position_id, payload)
-        db.commit()
-    except HTTPException:
-        db.rollback()
-        raise
-    db.refresh(row)
-    return opening_out(row)
-
-
-# =====================================================================================================
 # The cost of stock
 # =====================================================================================================
 @router.get("/inventory-costs", tags=["Finance page"])
@@ -219,7 +181,7 @@ def inventory_costs(tenant: TenantContext = Tenant, db: Session = Depends(get_db
 
 @router.post("/inventory-costs", status_code=status.HTTP_201_CREATED, tags=["Finance page"])
 def record_inventory_cost(payload: BasisCreate, response: Response, tenant: TenantContext = Tenant, key: str = Depends(idempotency_key), db: Session = Depends(get_db)):
-    """Record what stock already held (opening stock, stock given in kind) cost per unit. It changes no capital figure; it is the cost basis later deliveries use."""
+    """Record what stock already held (stock owned before using Impex, stock given in kind) cost per unit. It changes no capital figure; it is the cost basis later deliveries use."""
     actor = Actor.of(tenant)
     row = _created_once(db, tenant, key, "cost_basis", payload, response, lambda: capital.add_basis(db, tenant, actor, payload),
                         lambda entry_id: db.scalar(select(CostEntry).where(CostEntry.organization_id == tenant.organization_id, CostEntry.id == entry_id)))
