@@ -11,6 +11,7 @@ import { lookupOnServer, normalizeScanned } from "@/lib/scan";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, ReceiptDetail } from "@/lib/purchasing";
 import QuantityInput from "@/components/ui/quantity-input";
+import { useToday } from "@/components/clock";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500 disabled:opacity-40";
@@ -19,10 +20,10 @@ type Row = { accepted: string; rejected: string; notes: string };
 type Stage = "edit" | "review" | "pending" | "done";
 
 const remainingOf = (line: OrderLine) => line.remaining_quantity ?? line.quantity;
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** Receive goods against a purchase order: prepare, review, then explicitly confirm. Nothing here changes stock until "Confirm". */
 export default function ReceiveForm({ order, draft }: { order: PurchaseOrderDetail; draft: ReceiptDetail | null }) {
+  const today = useToday();
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey()); // one key per page: a double click or a retry returns the same draft
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});

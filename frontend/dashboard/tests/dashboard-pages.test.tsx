@@ -141,6 +141,15 @@ describe("the dashboard shows real figures", () => {
     expect(html).toContain('aria-current="page"'); // Dashboard in the sidebar
   });
 
+  it("every figure card and every quick action draws its icon in the accent colour (none is left grey)", async () => {
+    const html = await render();
+    const accents = [...html.matchAll(/data-accent="([a-z]+)"/g)].map((m) => m[1]);
+    expect(accents).toEqual(["yellow", "yellow", "yellow", "yellow"]); // not "neutral": that was the grey ones (Active products, Open purchase orders)
+    const wells = [...html.matchAll(/<span class="grid h-8 w-8 place-items-center rounded-xl ([^"]*)">/g)].map((m) => m[1]);
+    expect(wells.length).toBeGreaterThan(0);
+    for (const well of wells) expect(well).toContain("text-ix-accent-text");
+  });
+
   it("the four key figures come from the services' records", async () => {
     const t = text(await render());
     expect(t).toContain("Active products 12");

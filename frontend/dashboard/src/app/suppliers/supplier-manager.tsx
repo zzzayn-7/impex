@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { api, jsonBody } from "@/lib/sales-browser";
 import type { Paged, Supplier, SupplierFilters } from "@/lib/purchasing";
+import { IconAction } from "@/components/ui/icon-action";
 
 type Panel = { mode: "add" } | { mode: "edit"; supplier: Supplier } | null;
 
@@ -148,11 +149,8 @@ export default function SupplierManager({ list, filters }: { list: Paged<Supplie
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          <button type="button" onClick={() => { setMessage(null); setDetails(null); setPanel({ mode: "edit", supplier }); }} aria-label={`Edit ${supplier.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Edit</button>
-                          <button type="button" disabled={busyId === supplier.id} onClick={() => toggle(supplier)} aria-label={`${supplier.is_active ? "Deactivate" : "Reactivate"} ${supplier.name}`}
-                            className={`rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium hover:bg-slate-800 disabled:opacity-60 ${supplier.is_active ? "text-red-300" : "text-emerald-300"}`}>
-                            {supplier.is_active ? "Deactivate" : "Reactivate"}
-                          </button>
+                          <IconAction kind="edit" label="Edit" ariaLabel={`Edit ${supplier.name}`} onClick={() => { setMessage(null); setDetails(null); setPanel({ mode: "edit", supplier }); }} />
+                          <IconAction kind={supplier.is_active ? "archive" : "restore"} label={supplier.is_active ? "Deactivate" : "Reactivate"} ariaLabel={`${supplier.is_active ? "Deactivate" : "Reactivate"} ${supplier.name}`} onClick={() => toggle(supplier)} disabled={busyId === supplier.id} />
                         </div>
                       </td>
                     </tr>

@@ -280,13 +280,14 @@ describe("confirmation dialogs", () => {
 });
 
 describe("the dashboard's accents", () => {
-  it("each figure card keeps the glass and is either pale yellow or neutral slate", () => {
+  it("each figure card keeps the glass and EVERY one draws its icon in the accent (none is grey)", () => {
     const css = read("src/app/globals.css");
     expect(css).toMatch(/\.ix-kpi\s*\{\s*--kpi:\s*var\(--ix-accent-text-rgb\)/);
     expect(css).toMatch(/\.ix-kpi\[data-accent="neutral"\][^}]*var\(--ix-muted-rgb\)/);
     const view = read("src/components/dashboard/view.tsx");
-    expect(view).toMatch(/icon="products" accent="neutral"/);
-    expect(view).toMatch(/icon="orders" accent="neutral"/);
+    expect(view).toMatch(/icon="products" accent="yellow"/);
+    expect(view).toMatch(/icon="orders" accent="yellow"/);
+    expect(view).not.toContain('accent="neutral"');
     expect(view).toMatch(/icon="invoices" accent="yellow"/);
     expect(view).toMatch(/icon="clients" accent="yellow"/);
     expect(view).toContain("ix-kpi p-5"); // still a glass card (GlassCard), never a solid colour

@@ -156,7 +156,7 @@ describe("Movements page", () => {
       expect(html, expected).toContain(expected);
     }
     const headings = [...html.matchAll(/<th[^>]*>(?:<span[^>]*>)?([^<]*)/g)].map((m) => m[1]).filter(Boolean);
-    expect(headings).toEqual(["Product", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", "Remove"]); // in this order, the bin icon last
+    expect(headings).toEqual(["Product", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", "Actions"]); // in this order, the bin icon last under "Actions"
     for (const gone of ["Reason", "alpha supplier delivery", "alpha damaged", "UTC", "can never be edited or deleted"]) expect(html, gone).not.toContain(gone);
   });
 

@@ -8,11 +8,12 @@ import { api, formatMoney, INVOICE_NOTICE, jsonBody, lineAmounts, MONEY_RE, mone
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { BillableLine, Client, InvoiceDetail } from "@/lib/sales";
 import QuantityInput from "@/components/ui/quantity-input";
+import { useToday } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500";
 
-const today = () => new Date().toISOString().slice(0, 10);
 const CURRENCIES = ["USD", "EUR", "GBP", "PKR", "AED", "SAR", "INR", "CNY", "JPY", "CAD", "AUD", "CHF"];
 
 type Row = { open: boolean; quantity: string; unitPrice: string; discount: string; taxRate: string; taxLabel: string };
@@ -33,6 +34,7 @@ function agreedCurrency(billable: BillableLine[]): string | null {
 export default function InvoiceForm({
   clients, clientId, billable, invoice, problem, defaultCurrency,
 }: { clients: Client[]; clientId: string; billable: BillableLine[]; invoice: InvoiceDetail | null; problem?: string; defaultCurrency?: string }) {
+  const today = useToday();
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey()); // one key per attempt: a double click or a retry returns the same draft
   const [chosen, setChosen] = useState(clientId);
@@ -259,7 +261,7 @@ export default function InvoiceForm({
                           <input aria-label={`Tax name for ${l.product_name} (${l.dispatch_number})`} value={r.taxLabel} maxLength={50} placeholder="e.g. VAT" onChange={(e) => setRow(id, { taxLabel: e.target.value })}
                             className="mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500" />
                         </label>
-                        <button type="button" onClick={() => setRow(id, { ...EMPTY_ROW })} aria-label={`Remove ${l.product_name} (${l.dispatch_number}) from the invoice`} className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Remove</button>
+                        <IconAction kind="delete" label="Remove" ariaLabel={`Remove ${l.product_name} (${l.dispatch_number}) from the invoice`} variant="boxed" onClick={() => setRow(id, { ...EMPTY_ROW })} />
                       </div>
                       {l.agreed_unit_price && l.agreed_currency_code && (
                         <p data-testid={`agreed-${l.product_sku}-${l.dispatch_number}`} className={`text-xs ${differs(r.unitPrice, l.agreed_unit_price) || (l.agreed_currency_code !== header.currencyCode.trim().toUpperCase()) ? "text-amber-300" : "text-slate-400"}`}>

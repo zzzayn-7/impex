@@ -12,6 +12,7 @@ import { DISPATCH_STATUS_LABELS, DISPATCH_STATUS_STYLE, STATUS_LABELS, STATUS_ST
 import type { DeliveryItem, DeliveryListDetail as Detail } from "@/lib/sales";
 import QuantityInput from "@/components/ui/quantity-input";
 import { useStamp } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
@@ -185,8 +186,8 @@ export default function DeliveryListDetail({ list }: { list: Detail }) {
                           </span>
                         ) : (
                           <span className="flex gap-1.5">
-                            <button type="button" onClick={() => { setEditing({ id: item.id, value: qty(item.quantity).replace(/,/g, "") }); setEditError(null); }} aria-label={`Edit quantity of ${item.product_name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Edit</button>
-                            <button type="button" onClick={() => setRemoving(item.id)} aria-label={`Remove ${item.product_name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-slate-800">Remove</button>
+                            <IconAction kind="edit" label="Edit" ariaLabel={`Edit quantity of ${item.product_name}`} onClick={() => { setEditing({ id: item.id, value: qty(item.quantity).replace(/,/g, "") }); setEditError(null); }} />
+                            <IconAction kind="delete" label="Remove" ariaLabel={`Remove ${item.product_name}`} onClick={() => setRemoving(item.id)} />
                           </span>
                         )}
                       </td>

@@ -7,9 +7,10 @@ import { Modal } from "@/components/ui/modal";
 import { CURRENCIES, currencyLabel } from "@/lib/currencies";
 import type { Account, HistoryRow, ReconciliationItem } from "@/lib/finance";
 import { api, jsonBody, MONEY_RE, subtractMoney } from "@/lib/finance-browser";
-import { RECONCILIATION_HELP, todayISO, withCurrency } from "@/lib/finance-view";
+import { RECONCILIATION_HELP, withCurrency } from "@/lib/finance-view";
 import { formatMoney } from "@/lib/sales-browser";
 import { newIdempotencyKey } from "@/lib/stock-validation";
+import { useDefaultCurrency, useToday } from "@/components/clock";
 
 type Errors = Record<string, string>;
 const isPositive = (value: string) => MONEY_RE.test(value.trim()) && /[1-9]/.test(value);
@@ -54,6 +55,7 @@ function useSubmit(onDone: () => void) {
 
 // ------------------------------------------------------------------------------------------------------------------------ Record Investment
 export function RecordInvestmentModal({ defaultCurrency, onClose, onDone }: { defaultCurrency: string; onClose: () => void; onDone: () => void }) {
+  const todayISO = useToday();
   const [kind, setKind] = useState<"contribution" | "withdrawal">("contribution");
   const [entryType, setEntryType] = useState<"cash" | "asset" | "inventory">("cash");
   const [amount, setAmount] = useState("");
@@ -123,6 +125,7 @@ export function RecordInvestmentModal({ defaultCurrency, onClose, onDone }: { de
 
 // ------------------------------------------------------------------------------------------------------------------------ Add Expense
 export function ExpenseModal({ categories, defaultCurrency, onClose, onDone }: { categories: Account[]; defaultCurrency: string; onClose: () => void; onDone: () => void }) {
+  const todayISO = useToday();
   const [date, setDate] = useState(todayISO());
   const [description, setDescription] = useState("");
   const [vendor, setVendor] = useState("");
@@ -175,6 +178,7 @@ export function ExpenseModal({ categories, defaultCurrency, onClose, onDone }: {
 type Position = { id: string; currency_code: string; effective_date: string; assets: string; liabilities: string; equity: string; status: "active" | "reversed"; reversal_reason: string | null; notes: string | null };
 
 export function OpeningPositionModal({ defaultCurrency, onClose, onDone }: { defaultCurrency: string; onClose: () => void; onDone: () => void }) {
+  const todayISO = useToday();
   const [currency, setCurrency] = useState(defaultCurrency);
   const [date, setDate] = useState(todayISO());
   const [assets, setAssets] = useState("");
@@ -260,6 +264,7 @@ type ProductHit = { id: string; sku: string; name: string; unit?: string };
 type CostRow = { product_id: string; sku: string; name: string; currency_code: string; quantity: string; total_value: string; average_cost: string | null };
 
 export function StockCostModal({ defaultCurrency, onClose, onDone, product: preset }: { defaultCurrency: string; onClose: () => void; onDone: () => void; product?: { id: string; sku: string; name: string } }) {
+  const todayISO = useToday();
   const [query, setQuery] = useState(preset ? `${preset.sku} ${preset.name}` : "");
   const [hits, setHits] = useState<ProductHit[]>([]);
   const [product, setProduct] = useState<ProductHit | null>(preset ?? null);
@@ -325,6 +330,7 @@ export function StockCostModal({ defaultCurrency, onClose, onDone, product: pres
 
 // ------------------------------------------------------------------------------------------------------------------------ Reconcile deliveries
 export function ReconcileModal({ onClose, onDone, focus }: { onClose: () => void; onDone: () => void; focus?: string | null }) {
+  const organizationCurrency = useDefaultCurrency();
   const [items, setItems] = useState<ReconciliationItem[] | null>(null);
   const [open, setOpen] = useState<string | null>(focus ?? null);
   const [price, setPrice] = useState("");
@@ -337,7 +343,7 @@ export function ReconcileModal({ onClose, onDone, focus }: { onClose: () => void
   useEffect(() => { void load(); }, []);
 
   if (stockFor) {
-    return <StockCostModal defaultCurrency={stockFor.currency_code ?? "USD"} product={{ id: stockFor.product_id, sku: stockFor.sku, name: stockFor.name }} onClose={() => setStockFor(null)} onDone={() => { setStockFor(null); void load(); onDone(); }} />;
+    return <StockCostModal defaultCurrency={stockFor.currency_code ?? organizationCurrency} product={{ id: stockFor.product_id, sku: stockFor.sku, name: stockFor.name }} onClose={() => setStockFor(null)} onDone={() => { setStockFor(null); void load(); onDone(); }} />;
   }
 
   async function settle(item: ReconciliationItem) {

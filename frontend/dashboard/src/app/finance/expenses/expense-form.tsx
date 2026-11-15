@@ -7,12 +7,13 @@ import { api, EXPENSE_NOTICE, jsonBody, MONEY_RE } from "@/lib/finance-browser";
 import type { Account, ExpenseDetail } from "@/lib/finance";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import { fieldClass, InfoNotice, primaryButton, secondaryButton } from "../ui";
+import { useToday } from "@/components/clock";
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** Record an expense (or edit a DRAFT one). The category is one of the organization's active expense accounts; the currency defaults to the
  *  organization's but is the expense's own and is never converted. Save as a draft, or post it to the books. */
 export default function ExpenseForm({ categories, defaultCurrency, expense }: { categories: Account[]; defaultCurrency: string; expense?: ExpenseDetail }) {
+  const today = useToday();
   const router = useRouter();
   const editing = expense !== undefined;
   const keyRef = useRef(newIdempotencyKey());

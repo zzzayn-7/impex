@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useDefaultCurrency } from "@/components/clock";
 import { buttonClass, fieldClass } from "@/components/ui/controls";
 import QuantityInput from "@/components/ui/quantity-input";
 import {
@@ -64,7 +65,8 @@ const panelBad = "!border-red-500/60 focus:!border-red-500 focus:!ring-red-500";
 export default function ProductForm({ product, onDone, onCancel, onSaved, defaults, withBarcode = false, withOpeningQuantity = false, embedded = false, panel = false, addLabel = "Add product" }: Props) {
   const router = useRouter();
   const editing = Boolean(product);
-  const initial = product ? productToForm(product) : { ...EMPTY_PRODUCT, ...(defaults ?? {}) };
+  const orgCurrency = useDefaultCurrency(); // a new product starts in the currency the organization chose (an order's currency, passed in `defaults`, wins)
+  const initial = product ? productToForm(product) : { ...EMPTY_PRODUCT, currencyCode: orgCurrency, ...(defaults ?? {}) };
   const [values, setValues] = useState<ProductFormValues>(initial);
   const [barcode, setBarcode] = useState("");
   const [barcodeError, setBarcodeError] = useState<string | undefined>();
@@ -278,7 +280,7 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
           </div>
         )}
         {field("costPrice", "Cost price", { type: "text", inputMode: "decimal", placeholder: "12.50", autoComplete: "off", hint: "What it normally costs you. Up to 4 decimals. The price you charge is agreed with each client when you create their order." })}
-        {field("currencyCode", "Currency", { type: "text", placeholder: "USD", maxLength: 3, autoComplete: "off", hint: "3-letter code, e.g. USD, EUR.", style: { textTransform: "uppercase" } })}
+        {field("currencyCode", "Currency", { type: "text", placeholder: orgCurrency, maxLength: 3, autoComplete: "off", hint: "3-letter code, e.g. USD, EUR.", style: { textTransform: "uppercase" } })}
         {withOpeningQuantity && !editing && (
           <div>
             <label htmlFor="product-opening-quantity" className={labelClass}>

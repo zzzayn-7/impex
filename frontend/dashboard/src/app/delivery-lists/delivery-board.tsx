@@ -14,7 +14,8 @@ import type { Client, DeliveryListSummary, OrderSummary, Paged } from "@/lib/sal
 import { formatMoney } from "@/lib/product-validation";
 import { BOOKING_LABELS, FULFILMENT_LABELS, ORDER_STATUS_LABELS, STATUS_LABELS, api, jsonBody } from "@/lib/sales-browser";
 import { EditOrderModal, ViewListModal, orderTone } from "./order-modals";
-import { useStamp } from "@/components/clock";
+import { todayIn } from "@/lib/format";
+import { useStamp, useTimeZone } from "@/components/clock";
 
 type Modal = { kind: "view" | "edit"; id: string } | null;
 
@@ -32,6 +33,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
   created: string | null;
 }) {
   const stamp = useStamp();
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [modal, setModal] = useState<Modal>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(created ? { ok: true, text: `${created} was saved. Its stock is reserved and its delivery list is ready for dispatch.` } : null);
@@ -93,7 +95,7 @@ export default function DeliveryBoard({ view, orders, others, clients, created }
     if (r.status === 401) return router.replace("/login");
     if (r.status === 202) return setMessage({ ok: false, text: `${order.number} is being posted to your inventory, but the Inventory Service has not confirmed it yet. Press Dispatch again to finish it; nothing is taken out twice.` });
     if (!r.ok) return setMessage({ ok: false, text: r.error });
-    const date: string = r.data?.dispatchedOn ?? new Date().toISOString().slice(0, 10);
+    const date: string = r.data?.dispatchedOn ?? todayIn(timeZone);
     setDispatchedOn((done) => ({ ...done, [order.id]: date }));
     setMessage({ ok: true, text: `${order.number} was dispatched on ${date}. Its items were taken out of your inventory.` });
   }

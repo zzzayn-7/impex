@@ -102,7 +102,7 @@ describe("Stock Movements page", () => {
 
   it("has the columns in this order, with the bin last and no Reason column", () => {
     mount([movement({})]);
-    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", "Remove"]);
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "Quantity before", "Quantity after", "Order", "Activity", "Date and time", "User", "Actions"]);
     expect(screen.queryByText("Reason")).toBeNull();
     expect(screen.queryByText("Goods receipt GR-1")).toBeNull();
   });

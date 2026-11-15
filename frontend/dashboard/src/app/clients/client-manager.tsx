@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { api, jsonBody } from "@/lib/sales-browser";
 import type { Client, ClientFilters, Paged } from "@/lib/sales";
+import { IconAction } from "@/components/ui/icon-action";
 
 type Panel = { mode: "add" } | { mode: "edit"; client: Client } | null;
 
@@ -125,13 +126,8 @@ export default function ClientManager({ list, filters }: { list: Paged<Client>; 
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          <Link href={`/delivery-lists?client=${client.id}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Delivery lists</Link>
-                          <Link href={`/clients/${client.id}`} aria-label={`Invoices and balance of ${client.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Invoices</Link>
-                          <button type="button" onClick={() => { setMessage(null); setPanel({ mode: "edit", client }); }} aria-label={`Edit ${client.name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Edit</button>
-                          <button type="button" disabled={busyId === client.id} onClick={() => toggle(client)} aria-label={`${client.is_active ? "Deactivate" : "Reactivate"} ${client.name}`}
-                            className={`rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium hover:bg-slate-800 disabled:opacity-60 ${client.is_active ? "text-red-300" : "text-emerald-300"}`}>
-                            {client.is_active ? "Deactivate" : "Reactivate"}
-                          </button>
+                          <IconAction kind="edit" label="Edit" ariaLabel={`Edit ${client.name}`} onClick={() => { setMessage(null); setPanel({ mode: "edit", client }); }} />
+                          <IconAction kind={client.is_active ? "archive" : "restore"} label={client.is_active ? "Deactivate" : "Reactivate"} ariaLabel={`${client.is_active ? "Deactivate" : "Reactivate"} ${client.name}`} onClick={() => toggle(client)} disabled={busyId === client.id} />
                         </div>
                       </td>
                     </tr>

@@ -122,7 +122,7 @@ export default function MovementHistory({ list, filters, products }: Props) {
                     <th className="px-4 py-3 text-center font-semibold">Activity</th>
                     <th className="px-4 py-3 text-center font-semibold">Date and time</th>
                     <th className="px-4 py-3 text-center font-semibold">User</th>
-                    <th className="px-4 py-3 text-center font-semibold"><span className="sr-only">Remove</span></th>
+                    <th className="px-4 py-3 text-center font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">

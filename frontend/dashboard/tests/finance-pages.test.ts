@@ -307,8 +307,8 @@ describe("Journal Entries", () => {
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(EntryPage({ params: { id: A_DRAFT } }));
     expect(html).toContain("Draft journal entry");
-    expect(html).toContain(">Edit<");
-    expect(html).toContain("Discard Draft");
+    expect(html).toContain('aria-label="Edit"'); // an icon (a pencil) with a tooltip, not a word
+    expect(html).toContain('aria-label="Discard Draft"');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Post Entry/);
     expect(html).toContain("does not balance yet");
     expect(html).not.toContain("Reverse Entry");
@@ -392,11 +392,11 @@ describe("Expenses", () => {
     expect(posted).toContain("EXP-000001");
     expect(posted).toContain(`href="/finance/journal/${A_POSTED}"`);
     expect(posted).toContain("Reverse Expense");
-    expect(posted).not.toContain(">Edit<");
+    expect(posted).not.toContain('aria-label="Edit"');
     expect(posted).not.toContain("Delete Draft");
     expect(posted).toContain("does not move money or touch any bank account");
     const draft = await render(ExpensePage({ params: { id: A_EXPENSE_DRAFT } }));
-    for (const expected of [">Edit<", "Post Expense", "Delete Draft"]) expect(draft, expected).toContain(expected);
+    for (const expected of ['aria-label="Edit"', "Post Expense", 'aria-label="Delete Draft"']) expect(draft, expected).toContain(expected);
     expect(draft).not.toContain("Reverse Expense");
   });
 

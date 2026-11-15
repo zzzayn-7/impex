@@ -9,6 +9,7 @@ import type { Identifier, Label } from "@/lib/inventory";
 import { Product, ProductFormValues, formatMoney } from "@/lib/product-validation";
 import CodesManager from "./codes-manager";
 import ProductForm from "./product-form";
+import { IconAction } from "@/components/ui/icon-action";
 
 // PRODUCT DIALOGS. With the standalone Products page gone from the menu, a product is looked at and corrected where it is used: from the Stock page
 // (this dialog) and while buying (NewProductModal, from a purchase order). Both are centred dialogs on the platform's own modal element, so they take the
@@ -112,12 +113,12 @@ export default function ProductModal({ productId, onClose, onChanged, startEditi
           ) : (
             <>
               {product.is_active ? (
-                <button type="button" onClick={() => { setMessage(null); setConfirming(true); }} className={`${buttonClass.destructive} mr-auto`}>Archive</button>
+                <IconAction kind="archive" label="Archive" variant="boxed" danger onClick={() => { setMessage(null); setConfirming(true); }} className="mr-auto" />
               ) : (
-                <button type="button" onClick={() => changeStatus("restore")} disabled={busy} className={`${buttonClass.secondary} mr-auto`}>{busy ? "Restoring…" : "Restore"}</button>
+                <IconAction kind="restore" label={busy ? "Restoring…" : "Restore"} ariaLabel="Restore" variant="boxed" onClick={() => changeStatus("restore")} disabled={busy} className="mr-auto" />
               )}
               <button type="button" onClick={onClose} className={buttonClass.secondary}>Done</button>
-              <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className={buttonClass.primary}>Edit product</button>
+              <IconAction kind="edit" label="Edit product" variant="boxed" onClick={() => { setMessage(null); setEditing(true); }} />
             </>
           )
         ) : undefined

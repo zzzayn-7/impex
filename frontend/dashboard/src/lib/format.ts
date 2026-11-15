@@ -38,6 +38,12 @@ export function normalizePreferences(raw: Partial<Record<keyof Preferences, unkn
   };
 }
 
+/** Today's date (YYYY-MM-DD) in the organization's time zone, which is what a "date" box starts at. NOT the UTC date: in the evening in Karachi or the morning in Los Angeles UTC is already on another day. */
+export function todayIn(timezone: string, now: Date = new Date()): string {
+  const parts = partsOf(now, timezone);
+  return parts ? `${parts.year}-${parts.month}-${parts.day}` : now.toISOString().slice(0, 10);
+}
+
 function validZone(zone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: zone });

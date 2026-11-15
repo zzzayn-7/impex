@@ -11,6 +11,8 @@ import { lookupOnServer, normalizeScanned } from "@/lib/scan";
 import { newIdempotencyKey, validateQuantity, type StockProduct } from "@/lib/stock-validation";
 import type { DeliveryItem, DeliveryListDetail, DispatchDetail } from "@/lib/sales";
 import QuantityInput from "@/components/ui/quantity-input";
+import { useToday } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-right font-mono text-sm text-white outline-none focus:border-indigo-500";
@@ -18,13 +20,13 @@ const cellInput = "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 p
 type Stage = "edit" | "review" | "pending" | "done";
 
 const remainingOf = (item: DeliveryItem) => item.remaining_quantity ?? item.quantity;
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** Prepare a dispatch against a delivery list: choose products and quantities, review the stock on hand, then explicitly
  *  confirm. Nothing here changes stock until "Confirm and deduct from stock". Quantities are never filled in or incremented automatically. */
 export default function DispatchForm({
   list, stock, draft,
 }: { list: DeliveryListDetail; stock: Record<string, StockProduct>; draft: DispatchDetail | null }) {
+  const today = useToday();
   const router = useRouter();
   const keyRef = useRef(newIdempotencyKey()); // one key per page: a double click or a retry returns the same draft
   const blocks = useRef<Record<string, HTMLElement | null>>({});
@@ -332,8 +334,7 @@ export default function DispatchForm({
                       value={typed} onChange={(v) => setQuantity(item.id, v)} className="mt-1.5" />
                   </div>
                   {held !== null && <p className="pb-2.5 text-xs text-slate-400">{qty(held)} {item.unit} in stock</p>}
-                  <button type="button" onClick={() => stopItem(item.id)} aria-label={`Remove ${item.product_name} from this dispatch`}
-                    className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Remove</button>
+                  <IconAction kind="delete" label="Remove" ariaLabel={`Remove ${item.product_name} from this dispatch`} variant="boxed" onClick={() => stopItem(item.id)} />
                   {tooMuch && <p role="status" className="basis-full text-xs text-amber-300">That is more than the {qty(held!)} {item.unit} in stock right now. You can save the draft, but it cannot be confirmed until the stock is there.</p>}
                 </div>
               )}

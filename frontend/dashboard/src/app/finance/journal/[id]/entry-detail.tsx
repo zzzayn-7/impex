@@ -9,6 +9,7 @@ import { api, ENTRY_STATUS_LABELS, ENTRY_STATUS_STYLE, FINANCE_NOTICE, jsonBody,
 import type { EntryDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
 import { useStamp } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 
 /** One journal entry: its lines, who created and posted it, and what can be done in its state. A posted entry is shown exactly as posted and can only
@@ -88,9 +89,9 @@ export default function EntryDetailView({ entry: initial }: { entry: EntryDetail
           {entry.source_summary && <p className="mt-1 text-xs text-slate-500">{entry.source_summary}</p>}
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
-          {draft && <Link href={`/finance/journal/${entry.id}/edit`} className={secondaryButton}>Edit</Link>}
+          {draft && <IconAction kind="edit" label="Edit" variant="boxed" href={`/finance/journal/${entry.id}/edit`} />}
           {draft && <button type="button" disabled={busy || !entry.is_balanced} onClick={post} className={primaryButton}>Post Entry</button>}
-          {draft && <button type="button" disabled={busy} onClick={discard} className={dangerButton}>Discard Draft</button>}
+          {draft && <IconAction kind="delete" label="Discard Draft" variant="boxed" onClick={discard} disabled={busy} />}
           {entry.can_reverse && !reversing && <button type="button" onClick={() => setReversing(true)} className={secondaryButton}>Reverse Entry</button>}
         </div>
       </header>

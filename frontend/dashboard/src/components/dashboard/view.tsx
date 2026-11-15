@@ -19,13 +19,13 @@ import Icon, { type IconKey } from "./icons";
 
 type Props = { admin: TenantAdmin; organizationResult: OrganizationResult; data: DashboardData };
 
-// ONE decorative accent (pale butter yellow). A figure or action is either "yellow" (the few that matter most) or "neutral" (slate-grey). Never a status.
-type Tone = "yellow" | "neutral";
-const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-accent-text", neutral: "bg-ix-mist/10 text-ix-mist" };
+// ONE decorative accent (the person's chosen accent colour). EVERY icon on the dashboard (a figure card's, a quick action's) is drawn in it, so no card looks left out. Never a status.
+type Tone = "yellow";
+const WELL_TONE: Record<Tone, string> = { yellow: "bg-ix-butter/15 text-ix-accent-text" };
 
 const unavailable = "Could not be loaded just now. Please refresh in a moment.";
 
-function Kpi({ icon, label, value, unit, context, tone, accent = "neutral" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: Tone }) {
+function Kpi({ icon, label, value, unit, context, tone, accent = "yellow" }: { icon: IconKey; label: string; value: string; unit?: string; context?: React.ReactNode; tone?: "warn"; accent?: Tone }) {
   return (
     <GlassCard small lift className="ix-kpi p-5" aria-label={label} data-accent={accent}>
       <div className="flex items-start justify-between gap-3">
@@ -75,20 +75,20 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   const nodes: Record<string, React.ReactNode> = {};
   if (inventory) {
     nodes["org.kpi.active-products"] = (inventory.status === "ok" ? (
-      <Kpi key="products" icon="products" accent="neutral" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
+      <Kpi key="products" icon="products" accent="yellow" label="Active products" value={formatDecimal(String(inventory.data.products), prefs)}
         context={inventory.data.products === 0 ? "No products yet" : "In your product catalog"} />
-    ) : <KpiUnavailable key="products" icon="products" accent="neutral" label="Active products" />);
+    ) : <KpiUnavailable key="products" icon="products" accent="yellow" label="Active products" />);
   }
   if (purchasing) {
     nodes["org.kpi.open-purchase-orders"] = (purchasing.status === "ok" ? (
-      <Kpi key="orders" icon="orders" accent="neutral" label="Open purchase orders" value={String(purchasing.data.open.count)}
+      <Kpi key="orders" icon="orders" accent="yellow" label="Open purchase orders" value={String(purchasing.data.open.count)}
         context={purchasing.data.open.count === 0 ? "Nothing waiting to be received" : (
           <>
             {purchasing.data.open.byCurrency.slice(0, 2).map((t) => <span key={t.currency} className="block">{money(t.amount, t.currency)} on order</span>)}
             {purchasing.data.open.byCurrency.length > 2 && <span className="block">+ {purchasing.data.open.byCurrency.length - 2} more {purchasing.data.open.byCurrency.length - 2 === 1 ? "currency" : "currencies"}</span>}
           </>
         )} />
-    ) : <KpiUnavailable key="orders" icon="orders" accent="neutral" label="Open purchase orders" />);
+    ) : <KpiUnavailable key="orders" icon="orders" accent="yellow" label="Open purchase orders" />);
   }
   if (sales) {
     nodes["org.kpi.invoiced-this-month"] = (sales.status === "ok" ? (
@@ -237,9 +237,9 @@ export default function DashboardView({ admin, organizationResult, data }: Props
   const actions: { label: string; href: string; icon: IconKey; tone: Tone }[] = [];
   if (enabled.includes("inventory")) actions.push({ label: "Adjust stock", href: "/stock", icon: "stock", tone: "yellow" });
   if (enabled.includes("sales")) actions.push({ label: "New invoice", href: "/invoices/new", icon: "invoices", tone: "yellow" });
-  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "neutral" });
-  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "neutral" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "neutral" });
-  actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "neutral" });
+  if (enabled.includes("purchasing")) actions.push({ label: "Purchase orders", href: "/purchase-orders", icon: "orders", tone: "yellow" });
+  if (enabled.includes("finance")) actions.push({ label: "Record an expense", href: "/finance/expenses/new", icon: "expenses", tone: "yellow" }, { label: "New journal entry", href: "/finance/journal/new", icon: "journal", tone: "yellow" });
+  actions.push({ label: "Contact support", href: "/support/new", icon: "support", tone: "yellow" });
 
   nodes["org.overview"] = (
       <GlassCard className="overflow-hidden p-6 sm:p-7" aria-labelledby="welcome-heading">

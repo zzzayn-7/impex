@@ -12,6 +12,7 @@ import { api, jsonBody } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { OrderFilters, OrderStatus, Paged, PurchaseOrderSummary, Supplier } from "@/lib/purchasing";
+import { useToday } from "@/components/clock";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
@@ -160,10 +161,11 @@ export default function OrderIndex({ list, filters, suppliers, defaultCurrency }
 }
 
 function NewOrderForm({ suppliers, defaultSupplierId, defaultCurrency, onCancel }: { suppliers: Supplier[]; defaultSupplierId: string; defaultCurrency?: string; onCancel: () => void }) {
+  const today = useToday();
   const router = useRouter();
   const [values, setValues] = useState({
     supplierId: suppliers.some((s) => s.id === defaultSupplierId) ? defaultSupplierId : "", currencyCode: defaultCurrency ?? "USD", supplierReference: "",
-    orderDate: new Date().toISOString().slice(0, 10), expectedDeliveryDate: "", notes: "",
+    orderDate: today(), expectedDeliveryDate: "", notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);

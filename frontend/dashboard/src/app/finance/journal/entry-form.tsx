@@ -7,12 +7,14 @@ import { api, balanceOf, DraftLine, EMPTY_LINE, FINANCE_NOTICE, jsonBody, linesP
 import type { Account, EntryDetail } from "@/lib/finance";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import { fieldClass, InfoNotice, primaryButton, secondaryButton } from "../ui";
+import { useToday } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** Create a journal entry (or edit a DRAFT). The running totals are exact; the entry can be posted only when debits equal credits. The currency
  *  defaults to the organization's default but is the entry's own: amounts of different currencies are never mixed in one entry. */
 export default function EntryForm({ accounts, defaultCurrency, entry }: { accounts: Account[]; defaultCurrency: string; entry?: EntryDetail }) {
+  const today = useToday();
   const router = useRouter();
   const editing = entry !== undefined;
   const keyRef = useRef(newIdempotencyKey()); // one key per attempt: a double click or a retry returns the same entry
@@ -103,7 +105,7 @@ export default function EntryForm({ accounts, defaultCurrency, entry }: { accoun
                   <td className="px-2 py-2"><input aria-label={`Note for line ${i + 1}`} value={line.description} onChange={(e) => update(i, { description: e.target.value })} maxLength={255} className={fieldClass + " mt-0"} /></td>
                   <td className="px-2 py-2"><input aria-label={`Debit for line ${i + 1}`} inputMode="decimal" value={line.debit} onChange={(e) => update(i, { debit: e.target.value, ...(e.target.value ? { credit: "" } : {}) })} className={fieldClass + " mt-0 text-right font-mono"} /></td>
                   <td className="px-2 py-2"><input aria-label={`Credit for line ${i + 1}`} inputMode="decimal" value={line.credit} onChange={(e) => update(i, { credit: e.target.value, ...(e.target.value ? { debit: "" } : {}) })} className={fieldClass + " mt-0 text-right font-mono"} /></td>
-                  <td className="px-2 py-2 text-right"><button type="button" onClick={() => setLines((all) => (all.length > 2 ? all.filter((_, j) => j !== i) : all))} disabled={lines.length <= 2} aria-label={`Remove line ${i + 1}`} className="text-xs text-slate-400 hover:text-red-300 disabled:opacity-30">Remove</button></td>
+                  <td className="px-2 py-2 text-right"><IconAction kind="delete" label="Remove" ariaLabel={`Remove line ${i + 1}`} onClick={() => setLines((all) => (all.length > 2 ? all.filter((_, j) => j !== i) : all))} disabled={lines.length <= 2} /></td>
                 </tr>
               ))}
             </tbody>

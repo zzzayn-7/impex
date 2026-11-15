@@ -41,7 +41,7 @@ export default async function PortalFrame({
   const restricted = locked && current !== "settings" && current !== "support";
   const denied = workspace.kind === "ready" && organization !== null && module !== undefined && !canUse(organization.modules, module);
   return (
-    <ClockProvider timeZone={normalizePreferences(organization).timezone}>
+    <ClockProvider timeZone={normalizePreferences(organization).timezone} currency={normalizePreferences(organization).default_currency}>
     <PortalShell admin={admin} organization={organization} current={current}>
       {workspace.kind === "unavailable" && !pageHandlesOutage ? (
         <GlassPanel role="alert" className="mx-auto max-w-xl space-y-3 p-6 text-center">

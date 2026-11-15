@@ -9,15 +9,16 @@ import {
 } from "@/lib/sales-browser";
 import { newIdempotencyKey } from "@/lib/stock-validation";
 import type { InvoiceDetail, Payment, PaymentMethod } from "@/lib/sales";
+import { useToday } from "@/components/clock";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const buttonClass = "min-h-10 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60";
-const today = () => new Date().toISOString().slice(0, 10);
 const plain = (value: string) => qty(value).replace(/,/g, "");
 
 /** One invoice: the document (print it, or download the PDF), its payments, and the actions that are allowed in its state. Issuing, voiding and
  *  payments never change stock. A payment is never edited or deleted: a mistake is corrected by a reversal that stays on record. */
 export default function InvoiceDetailView({ invoice: initial }: { invoice: InvoiceDetail }) {
+  const today = useToday();
   const router = useRouter();
   const [invoice, setInvoice] = useState(initial);
   const [busy, setBusy] = useState(false);

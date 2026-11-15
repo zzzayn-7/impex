@@ -7,6 +7,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_SINGULAR, ACCOUNT_TYPES, api, jsonBody } from "@/lib/finance-browser";
 import type { Account, AccountType } from "@/lib/finance";
 import { dangerButton, fieldClass, InfoNotice, Pill, primaryButton, secondaryButton, selectClass } from "../ui";
+import { IconAction } from "@/components/ui/icon-action";
 
 type Draft = { code: string; name: string; accountType: AccountType; description: string };
 const EMPTY: Draft = { code: "", name: "", accountType: "expense", description: "" };
@@ -195,11 +196,11 @@ export default function AccountsManager({ initial }: { initial: Account[] }) {
                               </>
                             ) : (
                               <>
-                                <button type="button" onClick={() => { setEditing(a.id); setEdit({ name: a.name, description: a.description ?? "" }); setError(null); }} className={secondaryButton}>Edit</button>
+                                <IconAction kind="edit" label="Edit" onClick={() => { setEditing(a.id); setEdit({ name: a.name, description: a.description ?? "" }); setError(null); }} />
                                 {!a.is_system && (a.is_active
-                                  ? <button type="button" disabled={busy} onClick={() => setActive(a, false)} className={secondaryButton}>Deactivate</button>
-                                  : <button type="button" disabled={busy} onClick={() => setActive(a, true)} className={secondaryButton}>Reactivate</button>)}
-                                {!a.is_system && !a.has_postings && <button type="button" disabled={busy} onClick={() => remove(a)} className={dangerButton}>Delete</button>}
+                                  ? <IconAction kind="archive" label="Deactivate" onClick={() => setActive(a, false)} disabled={busy} />
+                                  : <IconAction kind="restore" label="Reactivate" onClick={() => setActive(a, true)} disabled={busy} />)}
+                                {!a.is_system && !a.has_postings && <IconAction kind="delete" label="Delete" onClick={() => remove(a)} disabled={busy} />}
                               </>
                             )}
                           </div>

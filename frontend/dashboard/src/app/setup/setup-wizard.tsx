@@ -7,6 +7,7 @@ import { CURRENCIES, checkCurrency, currencyLabel } from "@/lib/currencies";
 import { timezoneChoices, timezoneLabel } from "@/lib/timezones";
 import { api, jsonBody } from "@/lib/sales-browser";
 import { LOGO_ACCEPT, checkCompanyName, checkFullName, checkLogoFile, monogram } from "@/lib/setup-validation";
+import { IconAction } from "@/components/ui/icon-action";
 
 type Props = {
   mode: "full" | "profile"; // full: company + you + review.  profile: only "you" (the company was already set up)
@@ -269,7 +270,7 @@ export default function SetupWizard(props: Props) {
                     <p className="text-sm text-ix-muted">{uploading ? "Updating…" : "Looks good. You can replace or remove it before you finish."}</p>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading} className={secondary}>Replace logo</button>
-                      <button type="button" onClick={removeLogo} disabled={uploading} className={secondary}>Remove</button>
+                      <IconAction kind="delete" label="Remove" variant="boxed" onClick={removeLogo} disabled={uploading} />
                     </div>
                   </div>
                 </div>
@@ -369,28 +370,28 @@ export default function SetupWizard(props: Props) {
                     <dd className="text-[15px] font-medium">{companyName}</dd>
                   </div>
                 </div>
-                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+                <IconAction kind="edit" label="Edit" onClick={() => setStep(1)} />
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Default currency</dt>
                   <dd className="text-[15px] font-medium">{currencyLabel(currency)}</dd>
                 </div>
-                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+                <IconAction kind="edit" label="Edit" onClick={() => setStep(1)} />
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Location (time zone)</dt>
                   <dd className="text-[15px] font-medium">{timezoneLabel(timezone)}</dd>
                 </div>
-                <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+                <IconAction kind="edit" label="Edit" onClick={() => setStep(1)} />
               </div>
               <div className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-ix-muted">Administrator</dt>
                   <dd className="text-[15px] font-medium">{fullName}</dd>
                 </div>
-                <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-ix-accent-text hover:underline">Edit</button>
+                <IconAction kind="edit" label="Edit" onClick={() => setStep(2)} />
               </div>
               <div className="p-4">
                 <dt className="text-xs uppercase tracking-wide text-ix-muted">Account email</dt>

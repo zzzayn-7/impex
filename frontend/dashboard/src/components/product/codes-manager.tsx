@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Identifier, Label } from "@/lib/inventory";
 import type { Product } from "@/lib/product-validation";
 import { normalizeScanned } from "@/lib/scan";
+import { IconAction } from "@/components/ui/icon-action";
 
 // `onChanged`: where the data is loaded by the caller (the Stock page's product dialog), it reloads it; otherwise the page itself is refreshed.
 type Props = { product: Product; identifiers: Identifier[]; label: Label | null; onChanged?: () => void };
@@ -182,7 +183,7 @@ export default function CodesManager({ product, identifiers, label, onChanged }:
                       <button type="button" onClick={() => setConfirmingId(null)} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800">Cancel</button>
                     </span>
                   ) : (
-                    <button type="button" onClick={() => setConfirmingId(identifier.id)} aria-label={`Retire ${identifier.value}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-slate-800">Retire</button>
+                    <IconAction kind="archive" label="Retire" ariaLabel={`Retire ${identifier.value}`} onClick={() => setConfirmingId(identifier.id)} />
                   ))}
               </li>
             ))}

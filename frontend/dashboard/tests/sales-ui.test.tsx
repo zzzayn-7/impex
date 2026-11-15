@@ -667,11 +667,13 @@ describe("Clients", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("deactivates a client (no delete exists) and links to its delivery lists", async () => {
+  it("deactivates a client (no delete exists); its actions are icons only, with no Delivery lists or Invoices shortcut", async () => {
     const user = userEvent.setup();
     render(<ClientManager list={{ ok: true, items: [acme], total: 1, limit: 25, offset: 0 }} filters={filters} />);
     expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
-    expect(screen.getByRole("link", { name: "Delivery lists" }).getAttribute("href")).toBe(`/delivery-lists?client=${C1}`);
+    expect(screen.queryByRole("link", { name: /Delivery lists/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Invoices/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit Acme Ltd" }).textContent).toBe(""); // an icon, not a word
     server.createClient = undefined;
     await user.click(screen.getByRole("button", { name: "Deactivate Acme Ltd" }));
     await screen.findByText(/Acme Ltd was deactivated\. Its delivery lists are kept/);

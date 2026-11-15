@@ -276,7 +276,9 @@ describe("Clients page", () => {
     const alpha = await render(ClientsPage({ searchParams: {} }));
     jar[TENANT_SESSION_COOKIE] = "token-beta";
     const beta = await render(ClientsPage({ searchParams: {} }));
-    for (const expected of ["Clients", "Add Client", "Alpha Acme", "Edit", "Deactivate", "Delivery lists"]) expect(alpha, expected).toContain(expected);
+    for (const expected of ["Clients", "Add Client", "Alpha Acme", 'aria-label="Edit Alpha Acme"', 'aria-label="Deactivate Alpha Acme"']) expect(alpha, expected).toContain(expected);
+    expect(alpha).not.toContain("Delivery lists"); // the two shortcuts (Delivery lists, Invoices) are gone from a client's actions
+    expect(alpha).not.toContain(">Invoices<");
     expect(alpha).not.toContain("Beta Globex");
     expect(beta).toContain("Beta Globex");
     expect(beta).not.toContain("Alpha Acme");

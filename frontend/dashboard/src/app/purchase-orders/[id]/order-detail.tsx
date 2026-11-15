@@ -15,6 +15,7 @@ import { validateQuantity } from "@/lib/stock-validation";
 import type { OrderLine, PurchaseOrderDetail, Supplier } from "@/lib/purchasing";
 import QuantityInput from "@/components/ui/quantity-input";
 import { useStamp } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 const fieldClass = "mt-1.5 block w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 
@@ -226,8 +227,8 @@ export default function OrderDetail({ order, suppliers }: { order: PurchaseOrder
                           </span>
                         ) : (
                           <span className="flex gap-1.5">
-                            <button type="button" onClick={() => startEdit(line)} aria-label={`Edit ${line.product_name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800">Edit</button>
-                            <button type="button" onClick={() => setRemoving(line.id)} aria-label={`Remove ${line.product_name}`} className="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-slate-800">Remove</button>
+                            <IconAction kind="edit" label="Edit" ariaLabel={`Edit ${line.product_name}`} onClick={() => startEdit(line)} />
+                            <IconAction kind="delete" label="Remove" ariaLabel={`Remove ${line.product_name}`} onClick={() => setRemoving(line.id)} />
                           </span>
                         )}
                       </td>

@@ -9,6 +9,7 @@ import { api, EXPENSE_NOTICE, EXPENSE_STATUS_LABELS, EXPENSE_STATUS_STYLE, jsonB
 import type { ExpenseDetail } from "@/lib/finance";
 import { dangerButton, fieldClass, History, InfoNotice, Pill, primaryButton, secondaryButton } from "../../ui";
 import { useStamp } from "@/components/clock";
+import { IconAction } from "@/components/ui/icon-action";
 
 
 /** One expense: what it was, which category, who recorded and posted it, and the journal entries it produced. A draft can be edited, posted or
@@ -79,9 +80,9 @@ export default function ExpenseDetailView({ expense: initial }: { expense: Expen
       </header>
 
       <div className="flex flex-wrap gap-2 print:hidden">
-        {draft && <Link href={`/finance/expenses/${expense.id}/edit`} className={secondaryButton}>Edit</Link>}
+        {draft && <IconAction kind="edit" label="Edit" variant="boxed" href={`/finance/expenses/${expense.id}/edit`} />}
         {draft && <button type="button" disabled={busy} onClick={() => act("post")} className={primaryButton}>Post Expense</button>}
-        {draft && <button type="button" disabled={busy} onClick={discard} className={dangerButton}>Delete Draft</button>}
+        {draft && <IconAction kind="delete" label="Delete Draft" variant="boxed" onClick={discard} disabled={busy} />}
         {expense.status === "posted" && !reversing && <button type="button" onClick={() => setReversing(true)} className={secondaryButton}>Reverse Expense</button>}
       </div>
 
