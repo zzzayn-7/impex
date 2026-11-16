@@ -15,6 +15,15 @@ import { qty } from "@/lib/sales-browser";
 //
 // On a phone the table turns into one card per product (the same inputs, stacked and large enough for a thumb).
 
+// The price box: the same field as every other text box of the portal (rounded, bordered, 2.5rem tall, one focus ring), the number right-aligned in the money font, the currency
+// sitting INSIDE it at the left. A wrong price turns the whole box red (border and ring), not only the message under it. A thumb-sized height on a phone.
+const priceField = "block w-full min-w-0 rounded-xl border bg-ix-deep/50 py-2.5 pl-14 pr-3 text-right font-mono text-sm tabular-nums text-ix-text placeholder:text-ix-muted/60 outline-none transition disabled:opacity-60 max-sm:min-h-12 max-sm:text-base";
+const priceOk = "border-ix-mist/15 focus:border-ix-accent/70 focus:ring-2 focus:ring-ix-accent/20";
+// (the portal's global field rule sets the border colour, so the red must be forced to show on the box itself)
+const priceBad = "!border-red-300/70 focus:!border-red-300 focus:!shadow-[0_0_0_3px_rgba(252,165,165,0.22)]";
+// (the portal centres every column after the first, so the cells here follow that.) Every other cell of a row is as tall as the price box and centred on it, so a row reads on one line whatever is under the box (an error message, for example)
+const cellLine = "flex min-h-10 items-center whitespace-nowrap";
+
 export default function OrderCheckout({ clientName, clientId, currency, rows, onPrice, onBack, onSave, busy }: {
   clientName: string;
   clientId: string;
@@ -59,7 +68,7 @@ export default function OrderCheckout({ clientName, clientId, currency, rows, on
                 <th scope="col" className="px-3 py-3 font-medium">SKU</th>
                 <th scope="col" className="px-3 py-3 text-right font-medium">Quantity</th>
                 <th scope="col" className="px-3 py-3 font-medium">Unit</th>
-                <th scope="col" className="w-56 px-3 py-3 font-medium">Per Piece Price</th>
+                <th scope="col" className="w-60 px-3 py-3 font-medium">Per Piece Price</th>
                 <th scope="col" className="px-4 py-3 text-right font-medium">Line Total</th>
               </tr>
             </thead>
@@ -71,20 +80,24 @@ export default function OrderCheckout({ clientName, clientId, currency, rows, on
                 return (
                   <tr key={row.productId} data-product={row.productId} className="align-top max-sm:block max-sm:rounded-2xl max-sm:border max-sm:border-ix-mist/15 max-sm:bg-ix-deep/25 max-sm:p-4">
                     <td className="px-4 py-3 max-sm:block max-sm:p-0">
-                      <div className="font-medium text-ix-text">{row.name}</div>
-                      <div className="font-mono text-xs text-ix-accent-text sm:hidden">{row.sku}</div>
+                      <div className={`${cellLine} max-sm:min-h-0`}>
+                        <div className="min-w-0">
+                          <div className="whitespace-normal break-words font-medium text-ix-text">{row.name}</div>
+                          <div className="font-mono text-xs text-ix-accent-text sm:hidden">{row.sku}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-3 font-mono text-xs text-ix-accent-text max-sm:hidden">{row.sku}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-ix-accent-text max-sm:hidden"><div className={`${cellLine} justify-center`}>{row.sku}</div></td>
                     <td className="px-3 py-3 text-right font-mono text-xs tabular-nums text-ix-text max-sm:mt-2 max-sm:flex max-sm:justify-between max-sm:p-0 max-sm:text-sm" data-label="Quantity">
-                      <span className="sm:hidden text-ix-muted">Quantity</span><span data-testid={`qty-${row.sku}`}>{qty(row.quantity)}</span>
+                      <span className="font-sans text-ix-muted sm:hidden">Quantity</span><span className={`${cellLine} justify-center max-sm:min-h-0 max-sm:justify-end`} data-testid={`qty-${row.sku}`}>{qty(row.quantity)}</span>
                     </td>
                     <td className="px-3 py-3 text-xs text-ix-muted max-sm:flex max-sm:justify-between max-sm:p-0 max-sm:pt-1 max-sm:text-sm">
-                      <span className="sm:hidden">Unit</span><span>{row.unit}</span>
+                      <span className="font-sans sm:hidden">Unit</span><span className={`${cellLine} justify-center max-sm:min-h-0 max-sm:justify-end`}>{row.unit}</span>
                     </td>
-                    <td className="px-3 py-3 max-sm:mt-3 max-sm:block max-sm:p-0">
+                    <td className="px-3 py-3 max-sm:mt-3 max-sm:block max-sm:p-0 max-sm:!text-left">
                       <label htmlFor={id} className="mb-1 block text-xs font-medium text-ix-muted sm:sr-only">Per piece price ({currency})</label>
-                      <div className="flex items-center gap-2">
-                        <span aria-hidden="true" className="w-9 shrink-0 text-xs font-medium text-ix-muted">{currency}</span>
+                      <div className="relative">
+                        <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-ix-muted">{currency}</span>
                         <input
                           id={id}
                           ref={index === 0 ? first : undefined}
@@ -99,14 +112,14 @@ export default function OrderCheckout({ clientName, clientId, currency, rows, on
                           aria-describedby={problem ? `${id}-error` : undefined}
                           onChange={(e) => onPrice(row.productId, e.target.value)}
                           onBlur={() => setSeen((s) => ({ ...s, [row.productId]: true }))}
-                          className={`block w-full min-w-0 text-right font-mono max-sm:min-h-12 max-sm:text-base ${problem ? "border-red-300/60" : ""}`}
+                          className={`${priceField} ${problem ? priceBad : priceOk}`}
                         />
                       </div>
-                      {problem && <p id={`${id}-error`} role="alert" className="mt-1 text-xs text-red-300 sm:text-right">{problem}</p>}
+                      {problem && <p id={`${id}-error`} role="alert" className="mt-1.5 text-xs leading-snug text-red-300 sm:text-right">{problem}</p>}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-ix-text max-sm:mt-3 max-sm:flex max-sm:justify-between max-sm:p-0 max-sm:pt-3 max-sm:border-t max-sm:border-ix-mist/10">
-                      <span className="sm:hidden text-xs text-ix-muted">Line Total</span>
-                      <span data-testid={`line-${row.sku}`}>{line ? formatMoney(line, currency) : "—"}</span>
+                      <span className="font-sans text-xs text-ix-muted sm:hidden">Line Total</span>
+                      <span className={`${cellLine} justify-center max-sm:min-h-0 max-sm:justify-end`} data-testid={`line-${row.sku}`}>{line ? formatMoney(line, currency) : "—"}</span>
                     </td>
                   </tr>
                 );
