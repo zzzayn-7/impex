@@ -112,7 +112,7 @@ describe("the sidebar lists exactly what the organization can use", () => {
       ["inventory", ["Stock", "Movements"]],
       ["purchasing", ["Suppliers", "Purchase Orders", "Purchase Invoice"]],
       ["sales", ["Clients", "Create Order", "Delivery Lists", "Sales Invoice"]],
-      ["finance", ["Finance"]], // ONE destination: the accounting pages are linked from it, not listed
+      ["finance", ["Finance", "PNL Calculator"]], // the Finance page (the accounting pages are linked from it, not listed) and the PNL calculator
       ["workspace", ["Help & Support", "Settings"]],
     ]);
   });

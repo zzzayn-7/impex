@@ -223,3 +223,25 @@ stays available as "Add Expense" on the page (and at `/finance/expenses`). Nothi
 
 Costing is weighted-average in the order facts are recognised (a late-arriving receipt re-costs only deliveries made after it). A manual reconciliation is final. Returns,
 supplier invoices and bank balances are out of scope. The Super Admin's module description still uses the older wording.
+
+## PNL Calculator (a page of the Finance module)
+
+**Finance > PNL Calculator** (`/pnl-calculator`, in the Finance group of the menu) works out the profit or loss of one sales order.
+
+* The **list** shows every order that is or was a real trade (prepared, delivered or closed; never cancelled or failed), newest first, however old: an order lands here the moment it is made (`GET /orders?view=trade` in Sales). Each row says **Profit X**, **Loss X**, **No profit, no loss**, **Not calculated** (no expenses saved yet) or **No prices** (an order made before prices were recorded).
+* Opening an order shows its **selling price** (the order's own total, read from Sales every time, never stored) and asks for what the trade cost: **Cost of goods** (filled in from the products' cost prices, quantity x cost price; changeable, and asked for when a product has no cost price in the order's currency: nothing is converted), **Delivery charges**, and any number (up to 20) of **other expenses**, each with a name. The result updates as the person types: selling price - cost of goods - delivery charges - other expenses = **Profit** or **Loss** and how much, in exact decimals (no floating point). **Save** keeps the figures so the list can show the result.
+* It is a calculator, not the books: nothing is posted to the journal and no capital, investment or profit & loss figure changes because of it (the Finance page's own P&L still comes from confirmed deliveries, receipts and recorded expenses).
+* **Storage**: Finance migration `0003` adds `order_expenses` (one row per organization and order, rewritten when saved again; amounts non-negative, at most 20 other expenses). API (Finance Service): `GET /order-expenses?order_ids=`, `GET /order-expenses/{order_id}`, `PUT /order-expenses/{order_id}`. The portal route `PUT /api/finance/order-expenses/{order id}` reads the order from Sales with the administrator's own token (another organization's order is "not found") and takes the **currency from the order**, so the browser sends only amounts.
+* Tests: Finance `tests/test_order_expenses.py`; Sales `tests/test_order_invoice.py` (trade view); portal `pnl`, `pnl-pages`, `pnl-api`, `pnl-ui`.
+
+## Finance = Profit & Loss (delivered orders and the portfolio)
+
+The **Finance** page (`/finance`) no longer works out the organization's whole finances. It shows only the profit and loss of **delivered orders**:
+
+* **Period tabs**: 1 Day, 1 Week, 1 Month (the page opens here), 6 Months, 1 Year (`?period=1d|1w|1m|6m|1y`; anything else is a month). A day is 24 hours and a week 7 days back; a month, 6 months and a year go back by calendar months.
+* **Portfolio** of the period, one card per currency (nothing is converted): **Sales** (every delivered order with prices), **Invested** (everything spent on the orders that were worked out), **Profit / Loss** (signed amount) and **Return** (profit / invested, `+10%` in green, `-5%` in red). The card says how many orders were worked out.
+* **Delivered orders** of the period, newest delivery first, 25 a page. Each row ends with its result: **`+10%` in green** for a profit, **`-5%` in red** for a loss (with its minus sign), `0%` for no profit no loss, and the amount beneath. The percentage is the profit (or loss) as a share of **everything spent on the order**: cost of goods + delivery charges + every other expense (as entered in the PNL Calculator); an order with nothing spent has no percentage (`—`).
+* An order whose expenses were never entered shows **Add expenses** (it opens the PNL Calculator) and is left out of the profit and return figures; the page says how many. An order made before prices were recorded says "No prices".
+* Only fully **delivered** orders are listed (a cancelled or closed order was not fully delivered). Sales `GET /delivered-orders?since=&limit=` returns them compactly (id, number, client, currency, total, delivered-at, newest first, `truncated` when there are more than the limit, default 2000); Finance `GET /order-expenses?all=true` returns every saved set of expenses; the portal joins them and does the arithmetic with exact decimals (`lib/profit-loss.ts`). Nothing about capital, investment, the journal or the accounts is asked for.
+* The earlier Capital / Investment / Profit & Loss overview is not removed: its page, API and tests still exist at `/finance/capital` (not in the menu), as do the accounting pages.
+* The green of a profit is the theme token `ix-gain` (`text-ix-gain`; a lighter green on dark backgrounds, a deeper one on the light background); a loss uses the red ramp. Tests: `profit-loss`, `profit-loss-pages`, `profit-loss-ui`; Sales `test_order_invoice.py` (delivered orders); Finance `test_order_expenses.py`.

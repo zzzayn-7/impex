@@ -11,6 +11,7 @@ from app.api import router as finance_router
 from app.auth import create_auth_client, create_org_client
 from app.database import SessionLocal
 from app.sync import Worker, create_feed_client
+from app.order_expenses import router as order_expenses_router
 from app.trading_api import router as trading_router
 from app.worker_api import router as worker_router
 
@@ -52,6 +53,7 @@ app = FastAPI(
 # The organization is taken only from the Auth Service's record of the caller; no endpoint accepts one as input.
 app.include_router(finance_router)
 app.include_router(trading_router)  # Capital, Investment and Profit & Loss (the Finance page)
+app.include_router(order_expenses_router)  # the PNL calculator's expenses per order
 app.include_router(worker_router)  # one synchronisation pass for a scheduler (shared secret; not in the OpenAPI document)
 app.include_router(purge_router)  # internal: delete everything one organization owns here (the Super Admin deleting an organization)
 

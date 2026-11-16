@@ -42,6 +42,7 @@ from app.inventory import InventoryGateway, InventoryUnavailable, ProductInfo, u
 from app.models import Client, DeliveryList, DeliveryListItem, Dispatch, DispatchLine, SalesOrder, SalesOrderCounter, SalesOrderRequest
 from app.schemas import (
     ClientRef,
+    DeliveredOrder,
     OrderDetail,
     OrderLineResponse,
     OrderListRef,
@@ -762,6 +763,21 @@ def order_totals(db: Session, tenant: TenantContext, orders: List[SalesOrder]) -
     return {i: (total.quantize(QUANT, rounding=ROUND_HALF_UP), currencies[i]) for i, total in sums.items() if i not in unusable}
 
 
+def delivered_since(db: Session, tenant: TenantContext, since: datetime, limit: int):
+    """The orders that were DELIVERED (every line dispatched) at or after `since`, newest delivery first, with what each sold for. (The Finance > Profit & Loss page.) Cancelled and
+    closed orders were not fully delivered and are not here."""
+    where = (SalesOrder.organization_id == tenant.organization_id, SalesOrder.status == "delivered", SalesOrder.completed_at >= since)
+    total = db.scalar(select(func.count()).select_from(SalesOrder).where(*where)) or 0
+    rows = list(db.scalars(select(SalesOrder).where(*where).order_by(SalesOrder.completed_at.desc(), SalesOrder.number.desc()).limit(limit)))
+    clients = _client_refs(db, tenant, rows) if rows else {}
+    totals = order_totals(db, tenant, rows)
+    items = []
+    for o in rows:
+        amount, currency = totals.get(o.delivery_list_id, (None, None))
+        items.append(DeliveredOrder(id=o.id, number=o.number, client_name=clients[o.client_id].name, currency_code=o.currency_code or currency, total_amount=amount, completed_at=o.completed_at))
+    return items, total
+
+
 def summaries(db: Session, tenant: TenantContext, orders: List[SalesOrder], gateway: Optional[InventoryGateway] = None) -> List[OrderSummary]:
     if not orders:
         return []
@@ -857,6 +873,9 @@ def list_orders(db: Session, tenant: TenantContext, gateway: InventoryGateway, *
     filters = []
     if view == "active":
         filters.append(SalesOrder.status.in_(("active",) if booked else ("pending_reservation", "active")))
+        order_by = (SalesOrder.created_at.desc(), SalesOrder.number.desc())
+    elif view == "trade":
+        filters.append(SalesOrder.status.in_(("active", "delivered", "closed")))
         order_by = (SalesOrder.created_at.desc(), SalesOrder.number.desc())
     else:
         filters += [SalesOrder.status.in_(FINISHED), SalesOrder.completed_at > history_cutoff()]

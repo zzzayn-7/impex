@@ -537,6 +537,9 @@ export type HistoryItem = {
   total: string;
   status: string;
   order_number: string | null;
+  /** Only an order invoice paid in installments: which one it is ("2 of 5"). */
+  installment_no?: number | null;
+  installment_count?: number | null;
 };
 export type HistoryFilters = { clientId: string; day: string; page: number };
 export function listInvoiceHistory(token: string, filters: HistoryFilters) {
@@ -545,6 +548,16 @@ export function listInvoiceHistory(token: string, filters: HistoryFilters) {
   if (filters.day) params.set("day", filters.day);
   return getPaged<HistoryItem>("/api/v1/sales/invoice-history", params, token);
 }
+
+/** The installments that have not come due yet (their date is in the future), the nearest first; client and date narrow it like the history. */
+export function listPendingPayments(token: string, filters: HistoryFilters) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.clientId) params.set("client_id", filters.clientId);
+  if (filters.day) params.set("day", filters.day);
+  return getPaged<HistoryItem>("/api/v1/sales/pending-payments", params, token);
+}
+
+export type InstallmentRef = { id: string; number: string; installment_no: number; invoice_date: string; total: string };
 
 export type OrderInvoiceDetail = {
   id: string;
@@ -559,8 +572,13 @@ export type OrderInvoiceDetail = {
   order_id: string;
   order_number: string;
   delivery_list_number: string | null;
+  /** The whole order. */
   subtotal: string;
+  /** What THIS invoice asks for: the same as the order unless it is an installment. */
   total: string;
+  installment_no?: number;
+  installment_count?: number;
+  schedule?: InstallmentRef[];
   created_by_email: string;
   created_at: string;
   lines: { product_id: string; product_sku: string; product_name: string; unit: string; quantity: string; unit_price: string; line_total: string }[];
@@ -569,4 +587,19 @@ export async function getOrderInvoice(token: string, id: string): Promise<{ ok: 
   const result = await salesRequest("GET", `/api/v1/sales/order-invoices/${id}`, token);
   if (!result || result.status !== 200) return failure(result);
   return { ok: true, invoice: result.data };
+}
+
+/** Every order that is or was a real trade (prepared, delivered or closed; never a cancelled or failed one), newest first, however old: the PNL calculator's list. */
+export type TradeFilters = { q: string; page: number };
+export function listTradeOrders(token: string, filters: TradeFilters) {
+  const params = new URLSearchParams({ view: "trade", limit: String(PAGE_SIZE), offset: String((filters.page - 1) * PAGE_SIZE) });
+  if (filters.q) params.set("q", filters.q);
+  return getPaged<OrderSummary>("/api/v1/sales/orders", params, token);
+}
+
+/** The orders delivered at or after `since` with what each sold for (the Profit & Loss page). An outage is "unavailable"; `truncated` says there are more than were returned. */
+export async function listDeliveredOrders(token: string, since: Date): Promise<{ ok: true; items: import("@/lib/profit-loss").DeliveredOrder[]; total: number; truncated: boolean } | Failure> {
+  const result = await salesRequest("GET", `/api/v1/sales/delivered-orders?${new URLSearchParams({ since: since.toISOString(), limit: "2000" })}`, token);
+  if (!result || result.status !== 200) return failure(result);
+  return { ok: true, items: result.data.items, total: result.data.total, truncated: Boolean(result.data.truncated) };
 }

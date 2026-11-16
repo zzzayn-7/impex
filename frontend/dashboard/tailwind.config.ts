@@ -26,6 +26,7 @@ const config: Config = {
           deep: variable("--ix-deep-rgb"), slate: variable("--ix-slate-rgb"), teal: variable("--ix-teal-rgb"), mist: variable("--ix-mist-rgb"),
           text: variable("--ix-text-rgb"), muted: variable("--ix-muted-rgb"),
           butter: variable("--ix-accent-rgb"), "butter-hover": variable("--ix-accent-hover-rgb"), // the accent as a FILL, and its hover state
+          gain: variable("--ix-gain-rgb"), // a profit (green: the one place the theme shows green, because a gain has to read as one); a loss uses the red ramp
           "on-accent": variable("--ix-on-accent-rgb"), // the text that goes on an accent fill
           "accent-text": variable("--ix-accent-text-rgb"), // the accent as TEXT or a thin line: on the light background a darker shade of the same hue
           accent: variable("--ix-accent-text-rgb"), "accent-soft": variable("--ix-accent-soft-rgb"), // focus rings and tints

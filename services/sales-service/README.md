@@ -121,9 +121,10 @@ writes no stock movement. It bills goods that were **already dispatched**: every
 | Method & path | Purpose |
 | :--- | :--- |
 | `GET /billable-lines?client_id=&delivery_list_id=` | the confirmed dispatch lines of one client with *dispatched*, *invoiced* (issued invoices), *in drafts* (information only) and *remaining* |
-| `POST /order-invoices` | the invoice of one **prepared** order (`{order_id}`): lines at the agreed prices, no draft step. `201`, or `200` if it already exists; `409 not_prepared` once dispatched |
+| `POST /order-invoices` | the invoice of one **prepared** order (`{order_id}`, and optionally `installments: {count 2-5, every, unit}`): lines at the agreed prices, no draft step; installments make one invoice each (the first is returned). `201`, or `200` if it already exists; `409 not_prepared` once dispatched |
 | `GET /order-invoices/{id}` / `/{id}/pdf` / `/by-order?order_ids=` | one such invoice, its PDF, and which orders already have one |
 | `GET /invoice-history?client_id=&day=` | every invoice (these and the older ones), newest first |
+| `GET /pending-payments?client_id=&day=` | the installments whose date has not come yet, the nearest first (on their date they appear in the history) |
 | `POST /invoices` | start a **draft** for a client and a currency, optionally with its lines. **Requires an `Idempotency-Key`.** `201`, or `200` for a retry |
 | `GET /invoices?client_id=&status=&payment_status=unpaid\|partial\|paid\|overdue&q=&date_from=&date_to=` | list / filter / search (number, client, notes) |
 | `GET /invoices/{id}` | the invoice, its lines (with the dispatches they bill), its payments and what may be done to it |

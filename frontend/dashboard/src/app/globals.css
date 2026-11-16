@@ -592,6 +592,9 @@ body {
 html { scrollbar-gutter: stable; overflow-x: clip; }
 body { overflow-x: clip; }
 :root { --ix-ease: cubic-bezier(0.22, 1, 0.36, 1); }
+/* A profit is green on every background: a lighter green on the dark ones, a deeper one on the light one so it stays readable. (A loss is the red ramp.) */
+:root { --ix-gain-rgb: 74 222 128; }
+:root[data-ix-scheme="light"] { --ix-gain-rgb: 21 128 61; }
 
 @keyframes ix-page-in { from { opacity: 0; translate: 0 12px; } }
 @keyframes ix-pop-in { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }

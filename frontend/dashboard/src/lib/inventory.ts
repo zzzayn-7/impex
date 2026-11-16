@@ -247,3 +247,17 @@ export async function loadStockSummary(token: string, productIds: string[]): Pro
   for (const item of result.data?.items ?? []) out[item.product_id] = item;
   return out;
 }
+
+// The cost price of each of these products (information for the PNL calculator: the cost of the goods on an order). A product that cannot be found is simply absent.
+export async function loadProductCosts(token: string, productIds: string[]): Promise<Record<string, { cost_price: string; currency_code: string }>> {
+  const wanted = new Set(productIds);
+  const found: Record<string, { cost_price: string; currency_code: string }> = {};
+  if (wanted.size === 0) return found;
+  for (let page = 0; page < 5 && Object.keys(found).length < wanted.size; page++) {
+    const result = await getPaged<Product>("/api/v1/inventory/products", new URLSearchParams({ status: "all", limit: "200", offset: String(page * 200) }), token);
+    if (!result.ok) break;
+    for (const product of result.items) if (wanted.has(product.id)) found[product.id] = { cost_price: product.cost_price, currency_code: product.currency_code };
+    if (result.items.length < 200) break;
+  }
+  return found;
+}

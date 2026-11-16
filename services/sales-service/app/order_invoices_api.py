@@ -22,7 +22,7 @@ Tenant = Depends(require_active_tenant)
 @router.post("/order-invoices", response_model=OrderInvoiceDetail, status_code=status.HTTP_201_CREATED, tags=["Order invoices"])
 def create_order_invoice(payload: OrderInvoiceCreate, response: Response, tenant: TenantContext = Tenant, db: Session = Depends(get_db)):
     """The invoice of one prepared order. 201 when it was just made, 200 when the order already had one (that one is returned: there is never a second)."""
-    invoice, created = order_invoices.create(db, tenant, payload.order_id)
+    invoice, created = order_invoices.create(db, tenant, payload.order_id, payload.installments)
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return order_invoices.detail(db, tenant, invoice)
 
@@ -51,6 +51,20 @@ def invoice_history(
 ):
     """All invoices (the order invoices and the older ones), newest first. `client_id` and `day` work alone or together."""
     items, total = order_invoices.history(db, tenant, client_id=client_id, day=day, limit=limit, offset=offset)
+    return HistoryPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/pending-payments", response_model=HistoryPage, tags=["Order invoices"])
+def pending_payments(
+    client_id: Optional[uuid.UUID] = None,
+    day: Optional[date] = Query(default=None, description="The date of the installment"),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    tenant: TenantContext = Tenant,
+    db: Session = Depends(get_db),
+):
+    """The installments whose date has not come yet, the nearest first. `client_id` and `day` work alone or together."""
+    items, total = order_invoices.pending(db, tenant, client_id=client_id, day=day, limit=limit, offset=offset)
     return HistoryPage(items=items, total=total, limit=limit, offset=offset)
 
 

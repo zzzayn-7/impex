@@ -20,6 +20,7 @@ import DispatchesLayout from "@/app/dispatches/layout";
 import GoodsReceiptsLayout from "@/app/goods-receipts/layout";
 import InvoicesLayout from "@/app/invoices/(sales)/layout";
 import SupplierInvoicesLayout from "@/app/invoices/suppliers/layout";
+import PnlCalculatorLayout from "@/app/pnl-calculator/layout";
 import MovementsLayout from "@/app/movements/layout";
 import DashboardLayout from "@/app/(dashboard)/layout";
 import DashboardPage from "@/app/(dashboard)/page";
@@ -81,6 +82,7 @@ const layouts: [string, string, (p: any) => any, string[]][] = [
   ["sales", "Delivery Lists", DeliveryListsLayout, ["inventory", "sales"]],
   ["sales", "Dispatches", DispatchesLayout, ["inventory", "sales"]],
   ["sales", "Sales Invoice", InvoicesLayout, ["inventory", "sales"]],
+  ["finance", "PNL Calculator", PnlCalculatorLayout, ["finance"]],
 ];
 const draw = async (layout: (p: any) => any) => renderToStaticMarkup(await layout({ children: <Probe /> }));
 

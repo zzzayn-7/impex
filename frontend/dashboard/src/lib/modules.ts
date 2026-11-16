@@ -14,7 +14,7 @@ export const MODULE_DESCRIPTIONS: Record<ModuleKey, string> = {
   inventory: "Stock and product details, with scanning and a full movement history.",
   purchasing: "Buying from suppliers and receiving the goods into stock (the receipts are kept under Purchase Invoice).",
   sales: "Selling to clients: orders that reserve stock, delivery lists, dispatches from stock, invoices and payments.",
-  finance: "Your capital, owner investment and profit & loss, built from owner contributions, goods receipts, deliveries and expenses; the accounting records behind them stay available.",
+  finance: "The profit or loss of every delivered order as a percentage of what it cost, your portfolio over a day, week, month, 6 months or a year, and a calculator for the expenses of each order.",
 };
 
 // The modules a module cannot work without (the Organization Service enforces the same rule when the Super Admin changes them).
@@ -43,6 +43,7 @@ export const MODULE_PAGES: Record<ModuleKey, ModulePage[]> = {
   // APIs, but are no longer listed in the sidebar: the Finance page links to them.
   finance: [
     { label: "Finance", href: "/finance" },
+    { label: "PNL Calculator", href: "/pnl-calculator" },
   ],
 };
 
@@ -51,7 +52,7 @@ export const NAV_MODULE: Record<string, ModuleKey> = {
   products: "inventory", stock: "inventory", movements: "inventory",
   suppliers: "purchasing", purchasing: "purchasing", receipts: "purchasing", supplierInvoices: "purchasing",
   deliveries: "sales", newOrder: "sales", invoices: "sales", clients: "sales",
-  finance: "finance",
+  finance: "finance", pnlCalculator: "finance",
 };
 
 // The portal's business API routes -> module (the same routes the setup gate covers).

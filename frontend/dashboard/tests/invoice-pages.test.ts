@@ -18,6 +18,8 @@ import InvoicesLayout from "@/app/invoices/(sales)/layout";
 import SalesInvoicePage from "@/app/invoices/(sales)/sales/page";
 import SalesInvoiceHistoryPage from "@/app/invoices/(sales)/sales/history/page";
 import OrderInvoicePage from "@/app/invoices/(sales)/sales/[id]/page";
+import PendingPaymentsPage from "@/app/invoices/(sales)/sales/pending/page";
+import CreateInvoicePage from "@/app/invoices/(sales)/sales/create/[orderId]/page";
 import InvoicePage from "@/app/invoices/(sales)/[id]/page";
 import NewInvoicePage from "@/app/invoices/(sales)/new/page";
 import EditInvoicePage from "@/app/invoices/(sales)/[id]/edit/page";
@@ -74,6 +76,13 @@ const historyRow = (kind: "order" | "invoice", id: string, number: string | null
   kind, id, number, client_id: c.id, client_name: c.name, invoice_date: "2026-11-07", currency_code: "USD", total: "350.0000", status: "issued", order_number: kind === "order" ? "SO-000001" : null, ...extra,
 });
 
+const A_PENDING = "a1111111-1111-4111-8111-0000000000c1";
+const orderDetail = (id: string, number: string, c: typeof alpha, extra: Record<string, unknown> = {}) => ({
+  ...order(id, number, c), stock_status: "ok", dispatches: [], can_edit: true, edit_blocked_reason: null, can_cancel: true, can_cancel_remaining: false, cancel_blocked_reason: null, can_dispatch: true, message: null,
+  lines: [{ id: crypto.randomUUID(), product_id: crypto.randomUUID(), product_sku: "BOLT-1", product_name: "Steel bolt", unit: "pcs", unit_allows_fractions: false, ordered_quantity: "10.0000", dispatched_quantity: "0.0000",
+    pending_quantity: "0.0000", remaining_quantity: "10.0000", unit_price: "30.0000", line_total: "300.0000", stock: null }], ...extra,
+});
+
 const fresh = () => {
   const issued = summary(A_ISSUED, "INV-000001", alpha);
   const draft = summary(A_DRAFT, null, alpha, { status: "draft", subtotal: "10.0000", total: "10.0000", outstanding: "10.0000" });
@@ -90,6 +99,9 @@ const fresh = () => {
       refs: [{ order_id: A_ORDER1, invoice_id: A_ORDER_INVOICE, number: "INV-000007" }],
       history: [historyRow("order", A_ORDER_INVOICE, "INV-000007", alpha), historyRow("invoice", A_ISSUED, "INV-000001", alpha, { invoice_date: "2026-11-01", total: "25.0000" })],
       orderInvoices: { [A_ORDER_INVOICE]: orderInvoice(A_ORDER_INVOICE, alpha) } as Record<string, any>,
+      pending: [historyRow("order", A_PENDING, "INV-000009", alpha, { status: "pending", invoice_date: "2099-01-01", installment_no: 2, installment_count: 3, total: "116.6600" })],
+      orderDetails: { [A_ORDER2]: orderDetail(A_ORDER2, "SO-000002", alpha), [A_ORDER1]: orderDetail(A_ORDER1, "SO-000001", alpha), "a1111111-1111-4111-8111-0000000000a9": orderDetail("a1111111-1111-4111-8111-0000000000a9", "SO-000009", alpha, { status: "delivered" }),
+        "a1111111-1111-4111-8111-0000000000a8": orderDetail("a1111111-1111-4111-8111-0000000000a8", "SO-000008", alpha, { prices_recorded: false }) } as Record<string, any>,
       invoices: [issued, draft, paid],
       details: {
         [A_ISSUED]: detail(issued, "Alpha steel bolt"), [A_DRAFT]: detail(draft, "Alpha steel bolt", { editable: true }),
@@ -106,7 +118,7 @@ const fresh = () => {
       },
     },
     "token-beta": {
-      clients: [clientRow(beta)], orders: [order("b2222222-2222-4222-8222-0000000000a3", "SO-000001", beta, { delivery_list: null })], refs: [],
+      clients: [clientRow(beta)], orders: [order("b2222222-2222-4222-8222-0000000000a3", "SO-000001", beta, { delivery_list: null })], refs: [], pending: [], orderDetails: {} as Record<string, any>,
       history: [historyRow("order", B_ORDER_INVOICE, "INV-000001", beta)], orderInvoices: { [B_ORDER_INVOICE]: orderInvoice(B_ORDER_INVOICE, beta, { number: "INV-000001" }) } as Record<string, any>,
       invoices: [theirs], details: { [B_INVOICE]: detail(theirs, "Beta silk scarf") } as Record<string, any>, billable: [],
       account: { client: beta, balances: [], invoices: [theirs], payments: [] },
@@ -139,6 +151,9 @@ function stubWorld(options: { status?: number } = {}) {
       if (path === "/orders") return page(org.orders.filter((o: any) => (!params.get("client_id") || o.client.id === params.get("client_id")) && (!params.get("q") || o.number.includes(params.get("q")!.toUpperCase()))));
       if (path === "/order-invoices/by-order") return json(200, { items: org.refs.filter((r: any) => (params.get("order_ids") ?? "").split(",").includes(r.order_id)) });
       if (path === "/invoice-history") return page(org.history.filter((h: any) => (!params.get("client_id") || h.client_id === params.get("client_id")) && (!params.get("day") || h.invoice_date === params.get("day"))));
+      if (path === "/pending-payments") return page(org.pending.filter((h: any) => (!params.get("client_id") || h.client_id === params.get("client_id")) && (!params.get("day") || h.invoice_date === params.get("day"))));
+      const orderMatch = path.match(/^\/orders\/([^/]+)$/);
+      if (orderMatch) return org.orderDetails[orderMatch[1]] ? json(200, org.orderDetails[orderMatch[1]]) : json(404, { detail: "Order not found." });
       const orderInvoiceMatch = path.match(/^\/order-invoices\/([^/]+)$/);
       if (orderInvoiceMatch) return org.orderInvoices[orderInvoiceMatch[1]] ? json(200, org.orderInvoices[orderInvoiceMatch[1]]) : json(404, { detail: "Invoice not found." });
       if (path === "/invoices") return page(org.invoices.filter((i: any) => (!params.get("status") || i.status === params.get("status")) && (!params.get("client_id") || i.client.id === params.get("client_id"))));
@@ -297,6 +312,77 @@ describe("Sales Invoice > History", () => {
     orgs["token-alpha"].history = [];
     stubWorld();
     expect(await render(SalesInvoiceHistoryPage({ searchParams: {} }))).toContain("No invoices yet");
+  });
+});
+
+describe("Sales Invoice > Pending payments", () => {
+  it("lists the installments still to come, with their number, which one, the client, the date and the amount, and Print / Download on each", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await render(PendingPaymentsPage({ searchParams: {} }));
+    for (const expected of ["New invoice", "Pending payments", "History", "INV-000009", "Installment 2 of 3", "Alpha Metals", "2099-01-01", "116.66 USD", "All clients", "Print INV-000009", "Download INV-000009"]) expect(html, expected).toContain(expected);
+    expect(html).toContain(`href="/invoices/sales/${A_PENDING}"`);
+    expect(html).not.toContain("INV-000007"); // an invoice already due is in History
+  });
+
+  it("passes the client and the date (alone or together) and nothing else", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    await PendingPaymentsPage({ searchParams: { client: A_CLIENT, date: "2099-01-01", page: "2", organization_id: B_CLIENT, status: "paid" } });
+    const call = salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/pending-payments")!;
+    expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({ limit: "25", offset: "25", client_id: A_CLIENT, day: "2099-01-01" });
+    calls = [];
+    await PendingPaymentsPage({ searchParams: { client: "' OR 1=1", date: "soon", page: "banana" } });
+    expect([...new URL(salesCalls().find((c) => new URL(c.url).pathname === "/api/v1/sales/pending-payments")!.url).searchParams.keys()].sort()).toEqual(["limit", "offset"]);
+  });
+
+  it("two organizations, an empty list, an outage and a missing session", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-beta";
+    const b = await render(PendingPaymentsPage({ searchParams: {} }));
+    expect(b).toContain("No pending payments");
+    expect(b).not.toContain("INV-000009");
+    expect(await render(PendingPaymentsPage({ searchParams: { date: "2030-01-01" } }))).toContain("No pending payments found");
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    stubWorld({ status: 503 });
+    expect(await render(PendingPaymentsPage({ searchParams: {} }))).toContain("temporarily unavailable");
+    delete jar[TENANT_SESSION_COOKIE];
+    await expect(PendingPaymentsPage({ searchParams: {} })).rejects.toThrow("REDIRECT:/login");
+  });
+});
+
+describe("Sales Invoice > one order, before the invoice is made", () => {
+  const create = (orderId: string) => render(CreateInvoicePage({ params: { orderId } }));
+
+  it("shows the order read-only with the installments button, Print and Download, and saves nothing by opening", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    const html = await create(A_ORDER2);
+    for (const expected of ["SO-000002", "Alpha Metals", "DL-000009", "Steel bolt", "BOLT-1", "300.00 USD", "350.00 USD", "Installments", "Print", "Download"]) expect(html, expected).toContain(expected);
+    expect(salesCalls().filter((c) => c.method !== "GET")).toHaveLength(0);
+  });
+
+  it("an order that already has an invoice goes straight to that invoice", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    await expect(create(A_ORDER1)).rejects.toThrow(`REDIRECT:/invoices/sales/${A_ORDER_INVOICE}`);
+  });
+
+  it("an order that is not waiting to be dispatched, one without prices, another organization's order and a bad id are each refused in words", async () => {
+    stubWorld();
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    expect(await create("a1111111-1111-4111-8111-0000000000a9")).toContain("cannot be invoiced");
+    expect(await create("a1111111-1111-4111-8111-0000000000a8")).toContain("has no prices");
+    expect(await create(B_CLIENT)).toContain("Order not found.");
+    expect(await create("not-a-uuid")).toContain("Order not found.");
+  });
+
+  it("redirects an expired session and explains an outage", async () => {
+    jar[TENANT_SESSION_COOKIE] = "token-alpha";
+    stubWorld({ status: 401 });
+    await expect(create(A_ORDER2)).rejects.toThrow("REDIRECT:/login");
+    stubWorld({ status: 503 });
+    expect(await create(A_ORDER2)).toContain("temporarily unavailable");
   });
 });
 

@@ -49,8 +49,8 @@ describe("the module registry of the portal", () => {
     expect(MODULE_PAGES.inventory.map((p) => p.label)).toEqual(["Stock", "Movements"]); // the standalone Products page is not in the menu any more
     expect(MODULE_PAGES.purchasing.map((p) => p.label)).toEqual(["Suppliers", "Purchase Orders", "Purchase Invoice"]); // Purchase Invoice: new invoice (receive goods) and the history of receipts
     expect(MODULE_PAGES.sales.map((p) => p.label)).toEqual(["Clients", "Create Order", "Delivery Lists", "Sales Invoice"]);
-    expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Finance"]); // Capital, Investment and Profit & Loss: one destination
-    expect(MODULE_PAGES.finance.map((p) => p.href)).toEqual(["/finance"]);
+    expect(MODULE_PAGES.finance.map((p) => p.label)).toEqual(["Finance", "PNL Calculator"]); // Capital, Investment and Profit & Loss in one page, and the PNL calculator for each order
+    expect(MODULE_PAGES.finance.map((p) => p.href)).toEqual(["/finance", "/pnl-calculator"]);
     expect(NAV_MODULE.finance).toBe("finance");
   });
 

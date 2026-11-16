@@ -15,7 +15,7 @@ TENANT_TABLES = ("accounts", "journal_entries", "journal_lines", "expenses", "fi
 
 def test_the_schema_comes_from_the_migration_and_matches_the_models(engine):
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
     with targeting_test_database():
         command.check(alembic_config())  # raises if models and migrations have drifted apart
 
@@ -53,7 +53,7 @@ def test_the_migration_is_additive_and_the_only_destructive_code_is_its_own_down
 
 def test_it_has_a_single_linear_history():
     names = sorted(p.name for p in MIGRATIONS.glob("0*.py"))
-    assert names == ["0001_finance_foundation.py", "0002_capital_investment_profit_loss.py"]
+    assert names == ["0001_finance_foundation.py", "0002_capital_investment_profit_loss.py", "0003_order_expenses.py"]
 
 
 def test_the_migration_applies_cleanly_downgrades_and_applies_again_on_a_scratch_database():

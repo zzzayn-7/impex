@@ -49,6 +49,27 @@ describe("POST /api/sales/order-invoices", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
+  it("passes an installment plan on (and only a whole one): the Sales Service makes the invoices", async () => {
+    const extra = await create({ orderId: ORDER, installments: { count: 3, every: 1, unit: "months", total: "1" } });
+    expect(extra.status).toBe(201);
+    expect(calls[0].body).toEqual({ order_id: ORDER, installments: { count: 3, every: 1, unit: "months" } }); // nothing but the plan is passed on
+    calls.length = 0;
+    const ok = await create({ orderId: ORDER, installments: { count: 3, every: 2, unit: "weeks" } });
+    expect(ok.status).toBe(201);
+    expect(calls[0].body).toEqual({ order_id: ORDER, installments: { count: 3, every: 2, unit: "weeks" } });
+    expect((await create({ orderId: ORDER, installments: null })).status).toBe(201);
+    expect(calls[1].body).toEqual({ order_id: ORDER });
+  });
+
+  it.each([
+    [{ count: 1, every: 1, unit: "days" }], [{ count: 6, every: 1, unit: "days" }], [{ count: 3, every: 0, unit: "days" }], [{ count: 3, every: 13, unit: "months" }], [{ count: 3, every: 1, unit: "years" }], ["three"], [{}],
+  ])("refuses the plan %j without asking the Sales Service", async (plan) => {
+    const res = await create({ orderId: ORDER, installments: plan });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/installments/i);
+    expect(calls).toHaveLength(0);
+  });
+
   it("answers with the invoice's id and number, not the whole invoice", async () => {
     expect(await (await create()).json()).toEqual({ invoice: { id: INVOICE, number: "INV-000004" }, created: true });
   });

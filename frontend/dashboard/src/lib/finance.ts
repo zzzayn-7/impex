@@ -344,3 +344,32 @@ export async function getPnlTrend(token: string, period: PeriodKey): Promise<{ o
   if (!result || result.status !== 200) return failure(result);
   return { ok: true, trend: result.data };
 }
+
+// ---- the PNL calculator: what was spent on one order ----------------------------------------------------------------------------------
+export type OrderExpenses = {
+  order_id: string;
+  currency_code: string;
+  goods_cost: string;
+  delivery_charges: string;
+  other_expenses: { label: string; amount: string }[];
+  updated_by_email: string;
+  updated_at: string;
+};
+
+/** The saved expenses of these orders (an order nothing was saved for is simply absent). An outage is "none": the list still shows the orders. */
+export async function listOrderExpenses(token: string, orderIds: string[]): Promise<OrderExpenses[]> {
+  if (orderIds.length === 0) return [];
+  const result = await financeRequest("GET", `/api/v1/finance/order-expenses?${new URLSearchParams({ order_ids: orderIds.join(",") })}`, token);
+  return result?.status === 200 && Array.isArray(result.data?.items) ? result.data.items : [];
+}
+
+export async function getOrderExpenses(token: string, orderId: string): Promise<OrderExpenses | null> {
+  const result = await financeRequest("GET", `/api/v1/finance/order-expenses/${orderId}`, token);
+  return result?.status === 200 ? result.data : null;
+}
+
+/** Every order whose expenses were saved, newest save first (the Profit & Loss page joins them with the delivered orders). An outage is "none". */
+export async function listAllOrderExpenses(token: string): Promise<OrderExpenses[]> {
+  const result = await financeRequest("GET", `/api/v1/finance/order-expenses?all=true`, token);
+  return result?.status === 200 && Array.isArray(result.data?.items) ? result.data.items : [];
+}

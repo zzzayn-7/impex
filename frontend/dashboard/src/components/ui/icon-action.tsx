@@ -13,13 +13,15 @@ import { Tooltip } from "@/components/ui/tooltip";
 //   variant "boxed"  a small bordered square, for a page's or dialog's toolbar
 // Pass `onClick` for a button or `href` for a link (an Edit that opens a page).
 
-export type ActionKind = "edit" | "archive" | "restore" | "delete";
+export type ActionKind = "edit" | "archive" | "restore" | "delete" | "print" | "download";
 
 const PATHS: Record<ActionKind, string> = {
   edit: "M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4",
   archive: "M4 5h16v4H4zM5.5 9v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9M10 13h4",
   restore: "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   delete: "M5 7h14M10 11v6M14 11v6M7 7l1 12h8l1-12M9 7V4h6v3",
+  print: "M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M7 14h10v6H7z",
+  download: "M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14",
 };
 
 export function ActionGlyph({ kind, className = "h-[18px] w-[18px]" }: { kind: ActionKind; className?: string }): ReactNode {

@@ -5,6 +5,7 @@ stock, invoices or posts anything to Finance: that happens only when a dispatch 
 """
 import re
 import uuid
+from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
@@ -14,7 +15,7 @@ from app import delivery, orders
 from app.auth import TenantContext, require_active_tenant
 from app.database import get_db
 from app.inventory import InventoryGateway, get_gateway
-from app.schemas import DeliveryListDetail, OrderCancel, OrderCreate, OrderDetail, OrderPage, OrderUpdate
+from app.schemas import DeliveredOrders, DeliveryListDetail, OrderCancel, OrderCreate, OrderDetail, OrderPage, OrderUpdate
 
 router = APIRouter(prefix="/api/v1/sales")
 Tenant = Depends(require_active_tenant)
@@ -70,7 +71,7 @@ def create_order(
 
 @router.get("/orders", response_model=OrderPage, tags=["Sales orders"])
 def list_orders(
-    view: Literal["active", "delivered"] = Query(default="active", description="active: still to be delivered. delivered: completed within the last 24 hours."),
+    view: Literal["active", "delivered", "trade"] = Query(default="active", description="active: still to be delivered. delivered: completed within the last 24 hours. trade: every order that is or was a real trade (prepared, delivered or closed; not cancelled or failed), newest first, however old (the PNL calculator)."),
     q: Optional[str] = Query(default=None, max_length=100, description="Search order number, delivery list number or client name"),
     client_id: Optional[uuid.UUID] = None,
     booked: bool = Query(default=False, description="Only the PREPARED orders: booked and ready to be dispatched (not the ones still waiting for the stock booking)."),
@@ -82,6 +83,20 @@ def list_orders(
 ):
     items, total = orders.list_orders(db, tenant, gateway, view=view, q=q, client_id=client_id, booked=booked, limit=limit, offset=offset)
     return OrderPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/delivered-orders", response_model=DeliveredOrders, tags=["Sales orders"])
+def delivered_orders(
+    since: datetime = Query(description="Orders delivered at or after this moment (ISO 8601, with a time zone)"),
+    limit: int = Query(default=2000, ge=1, le=5000),
+    tenant: TenantContext = Tenant,
+    db: Session = Depends(get_db),
+):
+    """The delivered orders of a period with what each sold for: the list behind Finance > Profit & Loss. Compact (no lines), newest delivery first; `truncated` says there are more."""
+    if since.tzinfo is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "since needs a time zone, for example 2026-11-01T00:00:00Z.")
+    items, total = orders.delivered_since(db, tenant, since, limit)
+    return DeliveredOrders(items=items, total=total, truncated=total > len(items))
 
 
 @router.get("/orders/{order_id}", response_model=OrderDetail, tags=["Sales orders"])

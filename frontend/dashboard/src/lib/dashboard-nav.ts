@@ -15,7 +15,7 @@ const ICON_BY_HREF: Record<string, IconName> = {
   "/products": "products", "/stock": "stock", "/movements": "movements",
   "/suppliers": "suppliers", "/purchase-orders": "orders", "/invoices/suppliers": "receipts",
   "/clients": "clients", "/sales-orders/new": "orderPlus", "/delivery-lists": "lists", "/invoices/sales": "invoices",
-  "/finance": "overview", "/finance/accounts": "accounts", "/finance/expenses": "expenses", "/finance/journal": "journal",
+  "/finance": "overview", "/pnl-calculator": "expenses", "/finance/accounts": "accounts", "/finance/expenses": "expenses", "/finance/journal": "journal",
 };
 
 // The sidebar's groups, in order: one per enabled module (Purchase Invoice is in Purchasing, Sales Invoice in Sales; there is no separate Invoices group).
@@ -64,6 +64,7 @@ export const PAGE_META = {
   deliveries: { title: "Delivery Lists", href: "/delivery-lists", section: "sales" },
   invoices: { title: "Sales Invoice", href: "/invoices/sales", section: "sales" }, // the Sales Invoice page and the invoice pages (/invoices/<id>)
   finance: { title: "Finance", href: "/finance", section: "finance" },
+  pnlCalculator: { title: "PNL Calculator", href: "/pnl-calculator", section: "finance" }, // an order's profit or loss: its selling price less what it cost (a page of the Finance module)
   support: { title: "Help & Support", href: "/support", section: "workspace" },
   settings: { title: "Settings", href: "/settings", section: "workspace" },
 } as const satisfies Record<string, { title: string; href: string; section: Section }>;
@@ -73,7 +74,7 @@ export type PageKey = keyof typeof PAGE_META;
 /** The icon of every page: the same drawing its sidebar entry uses. The header shows it, in yellow, in front of the page's name. */
 export const PAGE_ICON: Record<PageKey, IconName> = {
   dashboard: "dashboard", products: "products", stock: "stock", movements: "movements", suppliers: "suppliers", purchasing: "orders", receipts: "receipts", supplierInvoices: "receipts",
-  clients: "clients", newOrder: "orderPlus", deliveries: "lists", invoices: "invoices", finance: "overview", support: "support", settings: "settings",
+  clients: "clients", newOrder: "orderPlus", deliveries: "lists", invoices: "invoices", finance: "overview", pnlCalculator: "expenses", support: "support", settings: "settings",
 };
 
 /** The navigation item that is "current" for a path: the item whose route is the longest prefix of it ("/finance/journal/abc" -> Journal Entries,

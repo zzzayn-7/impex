@@ -466,6 +466,30 @@ class CapitalRecord(TenantOwnedMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
 
 
+class OrderExpense(TenantOwnedMixin, Base):
+    """The PNL calculator's notes on ONE sales order: what was spent on the goods, on delivery and on anything else. A calculator, not the books (nothing is posted), so the row is
+    rewritten when the person saves again. The selling price is never stored: it is the order's own total, read from the Sales Service."""
+
+    __tablename__ = "order_expenses"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "order_id", name="uq_order_expenses_organization_id_order_id"),
+        CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_valid"),
+        CheckConstraint("goods_cost >= 0 AND delivery_charges >= 0", name="amounts_not_negative"),
+        CheckConstraint("jsonb_typeof(other_expenses) = 'array' AND jsonb_array_length(other_expenses) <= 20", name="other_expenses_list"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    goods_cost: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"), server_default=text("0"))
+    delivery_charges: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"), server_default=text("0"))
+    other_expenses: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    updated_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    updated_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
+
+
 class OpeningPosition(TenantOwnedMixin, Base):
     """LEGACY, READ-ONLY. The financial position an organization started from, per currency, recorded before opening positions were removed from Impex: what it owned and what it
     owed on `effective_date`; the owner's equity is the difference. Nothing creates or reverses one any more, but the rows are history and stay: an ACTIVE one still counts as owner

@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 
 import { useStamp } from "@/components/clock";
 import InvoiceTabs, { SALES_BASE } from "@/components/invoices/invoice-tabs";
-import { api, jsonBody } from "@/lib/sales-browser";
 import { formatMoney } from "@/lib/product-validation";
 import type { Client, OrderInvoiceRef, OrderSummary, Paged, PreparedFilters } from "@/lib/sales";
 
 // SALES INVOICE > NEW INVOICE. The prepared orders (booked, waiting to be dispatched), newest first. Pick a client to see only theirs, or search an order number.
-// "Create invoice" makes the invoice of that one order and opens it; an order that already has one shows "View invoice" instead (there is never a second).
+// "Create invoice" opens that one order (read-only; nothing is saved yet) where the invoice is made; an order that already has one shows "View invoice" instead (there is never a second).
 
 const selectClass = "mt-1.5 block w-56 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500";
 
@@ -20,8 +19,6 @@ export default function NewInvoice({ list, filters, clients, refs }: { list: Pag
   const stamp = useStamp();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(filters.q);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const invoiceOf = new Map(refs.map((r) => [r.order_id, r]));
 
   function navigate(next: Partial<PreparedFilters>) {
@@ -32,19 +29,6 @@ export default function NewInvoice({ list, filters, clients, refs }: { list: Pag
     if (merged.page > 1) params.set("page", String(merged.page));
     const query = params.toString();
     startTransition(() => router.push(query ? `${SALES_BASE}?${query}` : SALES_BASE));
-  }
-
-  async function create(order: OrderSummary) {
-    if (busyId) return;
-    setBusyId(order.id);
-    setError(null);
-    const r = await api(`/api/sales/order-invoices`, { method: "POST", ...jsonBody({ orderId: order.id }) });
-    if (r.status === 401) return router.replace("/login");
-    if (!r.ok || !r.data?.invoice?.id) {
-      setBusyId(null);
-      return setError(r.ok ? "The invoice could not be opened. Please try again." : r.error);
-    }
-    router.push(`${SALES_BASE}/${encodeURIComponent(r.data.invoice.id)}`);
   }
 
   const total = list.ok ? list.total : 0;
@@ -73,8 +57,6 @@ export default function NewInvoice({ list, filters, clients, refs }: { list: Pag
           <button type="submit" className="min-h-10 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800">Search</button>
         </form>
       </div>
-
-      {error && <p role="alert" className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">{error}</p>}
 
       <div aria-busy={isPending} className={isPending ? "opacity-50" : ""}>
         {!list.ok ? (
@@ -110,10 +92,8 @@ export default function NewInvoice({ list, filters, clients, refs }: { list: Pag
                         ) : order.prices_recorded === false ? (
                           <span className="text-xs text-slate-500">No prices</span>
                         ) : (
-                          <button type="button" onClick={() => create(order)} disabled={busyId !== null} aria-label={`Create invoice for ${order.number}`}
-                            className="min-h-10 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
-                            {busyId === order.id ? "Creating…" : "Create invoice"}
-                          </button>
+                          <Link href={`${SALES_BASE}/create/${order.id}`} aria-label={`Create invoice for ${order.number}`}
+                            className="inline-flex min-h-10 items-center rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Create invoice</Link>
                         )}
                       </td>
                     </tr>

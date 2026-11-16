@@ -818,13 +818,50 @@ class OrderPage(BaseModel):
     offset: int
 
 
+class DeliveredOrder(BaseModel):
+    """One delivered order in the shape the Finance > Profit & Loss page needs: what it sold for (its own agreed total, in its one currency) and when it was delivered."""
+
+    id: uuid.UUID
+    number: str
+    client_name: str
+    currency_code: Optional[str] = None
+    total_amount: Optional[Decimal] = None  # null for an order made before prices were recorded
+    completed_at: datetime
+
+
+class DeliveredOrders(BaseModel):
+    items: List[DeliveredOrder]
+    total: int  # how many orders were delivered in the period
+    truncated: bool  # true when there are more than `items` (the newest are returned)
+
+
 # =====================================================================================================
 # Order invoices (the simple printable invoice of a prepared order) and the invoice history
 # =====================================================================================================
+INSTALLMENT_LIMITS = {"days": 365, "weeks": 52, "months": 12}
+
+
+class InstallmentPlan(BaseModel):
+    """Pay in `count` installments (2 to 5), one every `every` days / weeks / months. The first invoice is dated today, the others at that distance from each other."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    count: int = Field(ge=2, le=5)
+    every: int = Field(ge=1, le=365)
+    unit: Literal["days", "weeks", "months"]
+
+    @model_validator(mode="after")
+    def _within_the_unit(self):
+        if self.every > INSTALLMENT_LIMITS[self.unit]:
+            raise ValueError(f"Time between payments can be at most {INSTALLMENT_LIMITS[self.unit]} {self.unit}.")
+        return self
+
+
 class OrderInvoiceCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: uuid.UUID
+    installments: Optional[InstallmentPlan] = None
 
 
 class OrderInvoiceLineResponse(BaseModel):
@@ -850,11 +887,25 @@ class OrderInvoiceDetail(BaseModel):
     order_id: uuid.UUID
     order_number: str
     delivery_list_number: Optional[str] = None
-    subtotal: Decimal
-    total: Decimal
+    subtotal: Decimal  # the whole order
+    total: Decimal  # what THIS invoice asks for (the same as the order's total unless it is an installment)
+    installment_no: int = 1
+    installment_count: int = 1
+    schedule: List["InstallmentRef"] = []  # every invoice of the order, in order, when it is paid in installments
     created_by_email: str
     created_at: datetime
     lines: List[OrderInvoiceLineResponse]
+
+
+class InstallmentRef(BaseModel):
+    id: uuid.UUID
+    number: str
+    installment_no: int
+    invoice_date: date
+    total: Decimal
+
+
+OrderInvoiceDetail.model_rebuild()
 
 
 class OrderInvoiceRef(BaseModel):
@@ -880,6 +931,8 @@ class HistoryItem(BaseModel):
     total: Decimal
     status: str
     order_number: Optional[str] = None
+    installment_no: Optional[int] = None  # only an order invoice paid in installments
+    installment_count: Optional[int] = None
 
 
 class HistoryPage(BaseModel):

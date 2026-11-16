@@ -166,6 +166,11 @@ export function qty(value: string): string {
   return trimmed ? `${grouped}.${trimmed}` : grouped;
 }
 
+/** How a quantity is shown on an invoice: a unit that is a number (a pack of 400) reads <pieces/total>, e.g. 20/400; a word unit (pcs, kg) stays "20 pcs". */
+export function invoiceQuantity(quantity: string, unit: string): string {
+  return /^\d+(\.\d+)?$/.test(unit.trim()) ? `${qty(quantity)}/${qty(unit.trim())}` : `${qty(quantity)} ${unit}`;
+}
+
 /** Add two plain decimal strings exactly (no floats), e.g. for "5" + "8.5" -> "13.5". */
 export function addDecimal(a: string, b: string): string {
   const [ai, af = ""] = a.split(".");

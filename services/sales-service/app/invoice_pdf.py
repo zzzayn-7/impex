@@ -153,13 +153,15 @@ def _terms_flowables(text: str) -> List[Paragraph]:
 def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, contact_person: Optional[str] = None, confidential: Optional[bool] = None, document: bool = False,
               order_number: Optional[str] = None) -> bytes:
     """`document=True` is the simple invoice of an order (see order_invoices.py): the same layout, but with no due date, no payment status and no paid / balance lines, because it has
-    no payments; the order number is shown instead."""
+    no payments; the order number is shown instead. An installment (installment_count > 1) shows "Installment 2 of 5" and the order's total, and its bar asks for the installment."""
+    installments = getattr(invoice, "installment_count", 1) if document else 1
     branding = branding or Branding()
     name = invoice.seller_name or branding.name or "Organization"
     show_stamp = confidential_stamp_enabled() if confidential is None else confidential
     number = invoice.number or "DRAFT"
     money = _Money(invoice.currency_code, [v for line in invoice.lines for v in (line.unit_price, line.line_subtotal, line.discount_amount, line.line_tax)]
-                   + [invoice.subtotal, invoice.discount_total, invoice.tax_total, invoice.total, invoice.paid_total, invoice.outstanding] + [p.amount for p in invoice.payments])
+                   + [invoice.subtotal, invoice.discount_total, invoice.tax_total, invoice.total, invoice.paid_total, invoice.outstanding] + [p.amount for p in invoice.payments]
+                   + ([invoice.order_total] if installments > 1 else []))
 
     small = _style("small", fontSize=7.5, textColor=GREY)
     heading = _style("heading", fontName=BOLD, fontSize=8, textColor=BLUE)
@@ -195,6 +197,8 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
     if document:
         if order_number:
             meta.append(Paragraph(f"<font color='#5B6B7F'>Order:</font> {escape(order_number)}", value))
+        if installments > 1:
+            meta.append(Paragraph(f"<font color='#5B6B7F'>Installment:</font> <b>{invoice.installment_no} of {installments}</b>", value))
     else:
         meta += [Paragraph(f"<font color='#5B6B7F'>Due Date:</font> {invoice.due_date.strftime('%d %b %Y')}", value),
                  Paragraph(f"<font color='#5B6B7F'>Payment Status:</font> <b><font color='{status_color}'>{status_text}</font></b>", value)]
@@ -240,7 +244,9 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
     # ---- the breakdown (only when there is one) and the GRAND TOTAL bar -----------------------------------------------------------------------
     closing: list = []
     breakdown = []
-    if invoice.discount_total > 0 or invoice.tax_total > 0:
+    if installments > 1:
+        breakdown.append(["Order total", money(invoice.order_total)])
+    elif invoice.discount_total > 0 or invoice.tax_total > 0:
         breakdown.append(["Subtotal", money(invoice.subtotal)])
         if invoice.discount_total > 0:
             breakdown.append(["Discount", f"-{money(invoice.discount_total)}"])
@@ -251,7 +257,7 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
         bt.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), BASE), ("FONTSIZE", (0, 0), (-1, -1), 9.5), ("TEXTCOLOR", (0, 0), (0, -1), GREY), ("TEXTCOLOR", (1, 0), (1, -1), INK),
                                 ("ALIGN", (1, 0), (1, -1), "RIGHT"), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 6)]))
         closing += [bt, Spacer(1, 2 * mm)]
-    bar = Table([[Paragraph("GRAND TOTAL", _style("gt", fontName=BOLD, fontSize=13, leading=16, textColor=colors.white)),
+    bar = Table([[Paragraph(f"INSTALLMENT {invoice.installment_no} OF {installments}" if installments > 1 else "GRAND TOTAL", _style("gt", fontName=BOLD, fontSize=13, leading=16, textColor=colors.white)),
                   Paragraph(money(invoice.total), _style("gtv", fontName=BOLD, fontSize=17, leading=20, textColor=colors.white, alignment=2))]], colWidths=[CONTENT * 0.45, CONTENT * 0.55])
     bar.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
                              ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10)]))

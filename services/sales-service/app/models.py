@@ -569,18 +569,20 @@ class SalesOrderRequest(TenantOwnedMixin, Base):
 class OrderInvoice(TenantOwnedMixin, Base):
     """The invoice of ONE sales order, made from the order's own lines at the prices agreed on it, and kept as it was made (a printable document: no draft step, no payments, no
     voiding, and nothing for Finance). The client, the seller and every line are copied into it, so later changes to the client, the catalog or the order never change a printed
-    invoice. One order has at most one invoice. Rows are never edited or deleted (a database guard); its number comes from the same counter as the older invoices, so no two
-    invoices of an organization share a number."""
+    invoice. An order has one invoice, or up to five when it is paid in installments (installment_no of installment_count; `subtotal` is the whole order, `total` what this invoice
+    asks for, and the later ones are dated in the future). Rows are never edited or deleted (a database guard); its number comes from the same counter as the older invoices, so no
+    two invoices of an organization share a number."""
 
     __tablename__ = "order_invoices"
     __table_args__ = (
         UniqueConstraint("organization_id", "id", name="uq_order_invoices_organization_id_id"),
         UniqueConstraint("organization_id", "number", name="uq_order_invoices_organization_id_number"),
-        UniqueConstraint("organization_id", "order_id", name="uq_order_invoices_organization_id_order_id"),
+        UniqueConstraint("organization_id", "order_id", "installment_no", name="uq_order_invoices_organization_id_order_id_installment_no"),
         ForeignKeyConstraint(["organization_id", "order_id"], ["sales_orders.organization_id", "sales_orders.id"], name="fk_order_invoices_order_same_organization", ondelete="RESTRICT"),
         ForeignKeyConstraint(["organization_id", "client_id"], ["clients.organization_id", "clients.id"], name="fk_order_invoices_client_same_organization", ondelete="RESTRICT"),
         CheckConstraint("currency_code ~ '^[A-Z]{3}$'", name="currency_code_format"),
-        CheckConstraint("subtotal >= 0 AND total = subtotal", name="total_matches"),
+        CheckConstraint("installment_count BETWEEN 1 AND 5 AND installment_no BETWEEN 1 AND installment_count", name="installment_range"),
+        CheckConstraint("subtotal >= 0 AND total >= 0 AND total <= subtotal AND (installment_count > 1 OR total = subtotal)", name="total_within_order"),
         Index("ix_order_invoices_organization_id_client_id", "organization_id", "client_id"),
         Index("ix_order_invoices_organization_id_invoice_date", "organization_id", "invoice_date"),
     )
@@ -599,6 +601,8 @@ class OrderInvoice(TenantOwnedMixin, Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     total: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    installment_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    installment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

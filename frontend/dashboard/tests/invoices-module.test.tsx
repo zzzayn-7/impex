@@ -67,15 +67,20 @@ describe("the old addresses keep working", () => {
 describe("the two tabs at the top left of Sales Invoice and Purchase Invoice", () => {
   const tabs = () => within(screen.getByRole("navigation")).getAllByRole("link");
 
-  it("Sales Invoice: New invoice and History, in that order, the current one marked", () => {
+  it("Sales Invoice: New invoice, Pending payments and History, in that order, the current one marked", () => {
     render(<InvoiceTabs base="/invoices/sales" current="new" />);
-    expect(tabs().map((t) => [t.textContent, t.getAttribute("href"), t.getAttribute("aria-current")])).toEqual([["New invoice", "/invoices/sales", "page"], ["History", "/invoices/sales/history", null]]);
+    expect(tabs().map((t) => [t.textContent, t.getAttribute("href"), t.getAttribute("aria-current")])).toEqual([
+      ["New invoice", "/invoices/sales", "page"], ["Pending payments", "/invoices/sales/pending", null], ["History", "/invoices/sales/history", null],
+    ]);
+    cleanup();
+    render(<InvoiceTabs base="/invoices/sales" current="pending" />);
+    expect(tabs().map((t) => t.getAttribute("aria-current"))).toEqual([null, "page", null]);
     cleanup();
     render(<InvoiceTabs base="/invoices/sales" current="history" />);
-    expect(tabs().map((t) => t.getAttribute("aria-current"))).toEqual([null, "page"]);
+    expect(tabs().map((t) => t.getAttribute("aria-current"))).toEqual([null, null, "page"]);
   });
 
-  it("Purchase Invoice has the same two tabs on its own addresses", () => {
+  it("Purchase Invoice has only New invoice and History, on its own addresses (installments are a sales thing)", () => {
     render(<InvoiceTabs base="/invoices/suppliers" current="history" />);
     expect(screen.getByRole("navigation", { name: "Purchase invoice" })).toBeTruthy();
     expect(tabs().map((t) => [t.textContent, t.getAttribute("href"), t.getAttribute("aria-current")])).toEqual([["New invoice", "/invoices/suppliers", null], ["History", "/invoices/suppliers/history", "page"]]);
