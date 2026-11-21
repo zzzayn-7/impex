@@ -6,6 +6,7 @@ import { formatDate, formatDecimal, normalizePreferences, type Preferences } fro
 import { MODULE_DESCRIPTIONS, MODULE_LABELS, MODULE_PAGES, usableModules } from "@/lib/modules";
 import type { TenantOrganization, OrganizationResult } from "@/lib/organization";
 import type { TenantAdmin } from "@/lib/tenant-auth";
+import PnlTrendWidget from "@/components/dashboard/pnl-widget";
 import { AreaChart, ColumnChart, BarList, Legend, SERIES_COLORS, StackedBar, type Series } from "./charts";
 import { CardHeader, CardNote, Footnote, GlassCard, Pill } from "./glass";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -230,6 +231,15 @@ export default function DashboardView({ admin, organizationResult, data }: Props
             {finance.data.sync.failed > 0 && <p role="alert" className="mt-3 text-xs text-amber-100/90">{finance.data.sync.failed} automatic {finance.data.sync.failed === 1 ? "posting needs" : "postings need"} attention. <Link href="/finance" className="underline">Review</Link></p>}
           </>
         )}
+      </GlassCard>
+    );
+  }
+
+  if (data.pnl) {
+    nodes["org.chart.pnl"] = (
+      <GlassCard key="pnl" className="p-5 sm:p-6" aria-label="Profit and loss">
+        <CardHeader title="Profit & loss" subtitle="Delivered orders, after every expense you entered" action={<Link href="/finance" className="text-xs font-medium text-ix-muted hover:text-ix-text">Open Finance</Link>} />
+        {data.pnl.status !== "ok" ? <CardNote tone="error">{unavailable}</CardNote> : <PnlTrendWidget data={data.pnl.data} prefs={prefs} />}
       </GlassCard>
     );
   }

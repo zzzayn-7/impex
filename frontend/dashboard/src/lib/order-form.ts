@@ -15,6 +15,9 @@ export type PickerProduct = {
   total_quantity: string;
   reserved_quantity?: string;
   available_quantity?: string;
+  /** What the product costs to buy (its own cost price and the currency it is in): shown at Checkout so the person can roughly work out their profit. */
+  cost_price?: string | null;
+  currency_code?: string | null;
 };
 
 export type OrderRow = {
@@ -31,6 +34,9 @@ export type OrderRow = {
   max?: string; // when editing an existing line: the most it may be set to (what is ordered now + what is still free). Without it, `available` is the limit.
   /** The price of ONE unit agreed with THIS client for this order, exactly as typed (a string: never a JavaScript number). "" = not entered yet: it is NEVER read as zero. */
   unitPrice: string;
+  /** The product's buying (cost) price for ONE unit and its currency, for Checkout's information only: it is never sent with the order. Null / absent when unknown. */
+  buyPrice?: string | null;
+  buyCurrency?: string | null;
   /** Once part of the line was dispatched its agreed price is frozen (goods already delivered are never re-priced). */
   priceLocked?: boolean;
 };
@@ -42,6 +48,7 @@ export function rowFromProduct(p: PickerProduct): OrderRow {
   return {
     productId: p.product_id, sku: p.sku, name: p.name, unit: p.unit, fractions: p.unit_allows_fractions, quantity: "",
     onHand: p.total_quantity, reserved, available: p.available_quantity ?? p.total_quantity, min: ZERO, unitPrice: "",
+    buyPrice: p.cost_price ?? null, buyCurrency: p.currency_code ?? null,
   };
 }
 

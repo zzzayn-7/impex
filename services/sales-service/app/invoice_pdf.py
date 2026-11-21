@@ -11,6 +11,7 @@ CONFIDENTIAL stamp is a deployment setting (INVOICE_CONFIDENTIAL_STAMP, on by de
 document can be searched and tested; standard PDF fonts are used (no external service is called).
 """
 import os
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from io import BytesIO
@@ -150,6 +151,12 @@ def _terms_flowables(text: str) -> List[Paragraph]:
     return out
 
 
+def _unit_label(unit: str) -> str:
+    """The unit as printed next to a quantity: a unit with no letter in it (a number typed into the product's Unit box, such as 400) is not a unit of measure and is left out, so an
+    invoice only ever shows the quantity the client receives."""
+    return unit.strip().upper() if re.search(r"[^\W\d_]", unit or "") else ""
+
+
 def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, contact_person: Optional[str] = None, confidential: Optional[bool] = None, document: bool = False,
               order_number: Optional[str] = None) -> bytes:
     """`document=True` is the simple invoice of an order (see order_invoices.py): the same layout, but with no due date, no payment status and no paid / balance lines, because it has
@@ -231,7 +238,7 @@ def build_pdf(invoice: InvoiceDetail, branding: Optional[Branding] = None, *, co
         if extras:
             detail.append(Paragraph(" &nbsp;&middot;&nbsp; ".join(extras), small))
         rows.append([Paragraph(f"{index:02d}", _style("n", fontSize=9, textColor=GREY, alignment=1)), detail,
-                     Paragraph(f"{_plain(line.quantity)} {escape(line.unit.upper())}", _style("q", fontSize=9.5, alignment=1)),
+                     Paragraph(escape(f"{_plain(line.quantity)} {_unit_label(line.unit)}".strip()), _style("q", fontSize=9.5, alignment=1)),
                      Paragraph(money(line.unit_price), _style("r", fontSize=9.5, alignment=2)), Paragraph(f"<b>{money(line.line_subtotal)}</b>", _style("a", fontSize=9.5, alignment=2))])
     table = Table(rows, colWidths=[12 * mm, 82 * mm, 26 * mm, 29 * mm, 29 * mm], repeatRows=1)
     table.setStyle(TableStyle([

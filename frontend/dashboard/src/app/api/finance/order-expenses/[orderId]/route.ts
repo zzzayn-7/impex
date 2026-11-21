@@ -45,3 +45,14 @@ export async function PUT(req: NextRequest, { params }: { params: { orderId: str
   if (!saved || saved.status !== 200) return financeFailureResponse(saved);
   return NextResponse.json({ expenses: saved.data }, { headers: NO_STORE });
 }
+
+// DELETE what was saved for one order: it goes back to "not calculated". Only this calculator's notes are removed: never the order, and nothing in the books. Whose notes they are comes from
+// the session (another organization's id is simply "not found").
+export async function DELETE(req: NextRequest, { params }: { params: { orderId: string } }) {
+  const token = sessionToken(req);
+  if (!token) return fail("You are not signed in.", 401);
+  if (!checkUuid(params.orderId)) return fail("Order not found.", 404);
+  const result = await financeRequest("DELETE", `/api/v1/finance/order-expenses/${params.orderId}`, token);
+  if (!result || result.status !== 204) return financeFailureResponse(result, "There are no saved expenses for this order.");
+  return NextResponse.json({ deleted: true }, { headers: NO_STORE });
+}

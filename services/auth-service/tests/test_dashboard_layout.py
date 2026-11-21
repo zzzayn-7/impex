@@ -49,7 +49,7 @@ def stored(session_factory, user_id):
 
 
 def test_the_identifier_lists_are_the_portals_registries_in_default_order():
-    assert ORG_WIDGET_IDS[0] == "org.overview" and len(ORG_WIDGET_IDS) == 15 and len(set(ORG_WIDGET_IDS)) == 15
+    assert ORG_WIDGET_IDS[0] == "org.overview" and len(ORG_WIDGET_IDS) == 16 and len(set(ORG_WIDGET_IDS)) == 16 and ORG_WIDGET_IDS.index("org.chart.pnl") == ORG_WIDGET_IDS.index("org.finance.snapshot") + 1
     assert ADMIN_WIDGET_IDS == (
         "admin.kpi.active-tenants", "admin.kpi.system-uptime", "admin.kpi.api-gateway-requests", "admin.kpi.pending-approvals",
         "admin.panel.microservice-registry", "admin.panel.docker-compose", "admin.panel.api-documentation",

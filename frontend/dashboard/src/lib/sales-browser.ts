@@ -166,9 +166,11 @@ export function qty(value: string): string {
   return trimmed ? `${grouped}.${trimmed}` : grouped;
 }
 
-/** How a quantity is shown on an invoice: a unit that is a number (a pack of 400) reads <pieces/total>, e.g. 20/400; a word unit (pcs, kg) stays "20 pcs". */
+/** How a quantity is shown on an invoice: ONLY what the client receives, "20 pcs". A unit with no letter in it (a product whose Unit box holds a number such as 400, a pack size or a stock
+ *  count typed there) is not a unit of measure, so it is not printed: an invoice never shows a figure that is not the quantity sold. */
 export function invoiceQuantity(quantity: string, unit: string): string {
-  return /^\d+(\.\d+)?$/.test(unit.trim()) ? `${qty(quantity)}/${qty(unit.trim())}` : `${qty(quantity)} ${unit}`;
+  const label = /[A-Za-z\u00C0-\u024F\u0400-\u04FF\u0600-\u06FF]/.test(unit) ? unit.trim() : "";
+  return label ? `${qty(quantity)} ${label}` : qty(quantity);
 }
 
 /** Add two plain decimal strings exactly (no floats), e.g. for "5" + "8.5" -> "13.5". */

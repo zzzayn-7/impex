@@ -127,7 +127,7 @@ describe("Finance > PNL Calculator: the orders", () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(PnlCalculatorPage({ searchParams: {} }));
-    for (const expected of ["SO-000002", "SO-000001", "SO-000000", "Alpha Metals", "500,000.00 USD", "Open SO-000001"]) expect(html, expected).toContain(expected);
+    for (const expected of ["SO-000002", "SO-000001", "SO-000000", "Alpha Metals", "500,000.00 USD", "Edit expenses of SO-000001"]) expect(html, expected).toContain(expected);
     expect(html).toContain(`href="/pnl-calculator/${A_ORDER1}"`);
   });
 
@@ -141,11 +141,15 @@ describe("Finance > PNL Calculator: the orders", () => {
     expect(html.indexOf("SO-000002")).toBeLessThan(html.indexOf("SO-000001")); // the order service's order (newest first) is kept
   });
 
-  it("says Not calculated until the expenses of an order are saved", async () => {
+  it("shows a Calculate button until the expenses of an order are saved", async () => {
     stubWorld();
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     orgs["token-alpha"].expenses = [];
-    expect(await render(PnlCalculatorPage({ searchParams: {} }))).toContain("Not calculated");
+    const html = await render(PnlCalculatorPage({ searchParams: {} }));
+    expect(html).toContain(">Calculate<");
+    expect(html).toContain(`href="/pnl-calculator/${A_ORDER1}"`);
+    expect(html).not.toContain("Not calculated");
+    expect(html).not.toContain("Add Expenses");
   });
 
   it("asks the Sales Service for the trade orders with only the whitelisted filters, and the Finance Service only for these orders", async () => {
@@ -190,12 +194,12 @@ describe("Finance > PNL Calculator: the orders", () => {
     expect(await render(PnlCalculatorPage({ searchParams: { q: "zzz" } }))).toContain("No orders found");
   });
 
-  it("still lists the orders when the Finance Service is down (they just show Not calculated)", async () => {
+  it("still lists the orders when the Finance Service is down (they just offer Calculate)", async () => {
     stubWorld({ finance: 503 });
     jar[TENANT_SESSION_COOKIE] = "token-alpha";
     const html = await render(PnlCalculatorPage({ searchParams: {} }));
     expect(html).toContain("SO-000001");
-    expect(html).toContain("Not calculated");
+    expect(html).toContain(">Calculate<");
   });
 });
 

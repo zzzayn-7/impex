@@ -156,12 +156,14 @@ describe("one order invoice", () => {
     expect(container.querySelector("input, textarea, select")).toBeNull();
   });
 
-  it("a word unit reads '10 pcs'; a numeric unit reads <pieces/total>, e.g. 20/400", () => {
+  it("shows only the quantity the client receives: '10 pcs', and a number typed into the Unit box (400) is never printed, nor any total", () => {
     const { rerender } = render(<OrderInvoiceView invoice={invoice} />);
     expect(screen.getByText("10 pcs")).toBeTruthy();
     expect(screen.queryByText(/\//)).toBeNull();
     rerender(<OrderInvoiceView invoice={{ ...invoice, lines: [{ ...invoice.lines[0], quantity: "20.0000", unit: "400" }] }} />);
-    expect(screen.getByText("20/400")).toBeTruthy();
+    expect(screen.getByText("20")).toBeTruthy();
+    expect(screen.queryByText(/400/)).toBeNull();
+    expect(screen.queryByText("20/400")).toBeNull();
   });
 
   it("Download is a link to the PDF", () => {

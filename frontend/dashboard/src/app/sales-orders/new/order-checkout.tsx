@@ -13,6 +13,9 @@ import { qty } from "@/lib/sales-browser";
 // is a JavaScript number). Save Order stays off until EVERY product has a valid price; an empty price is "not entered", never zero. Changing the selection is
 // done by going Back to Products, which keeps everything chosen so far. Nothing is saved or reserved until Save Order.
 //
+// A "Buying Price" column shows what each product costs to buy (its cost price, per piece, in its own currency) beside the price being entered, so the person can roughly work out their
+// profit as they type. It is information only: it is never part of the order, and a product with no known cost price shows a dash.
+//
 // On a phone the table turns into one card per product (the same inputs, stacked and large enough for a thumb).
 
 // The price box: the same field as every other text box of the portal (rounded, bordered, 2.5rem tall, one focus ring), the number right-aligned in the money font, the currency
@@ -68,6 +71,7 @@ export default function OrderCheckout({ clientName, clientId, currency, rows, on
                 <th scope="col" className="px-3 py-3 font-medium">SKU</th>
                 <th scope="col" className="px-3 py-3 text-right font-medium">Quantity</th>
                 <th scope="col" className="px-3 py-3 font-medium">Unit</th>
+                <th scope="col" className="px-3 py-3 font-medium">Buying Price</th>
                 <th scope="col" className="w-60 px-3 py-3 font-medium">Per Piece Price</th>
                 <th scope="col" className="px-4 py-3 text-right font-medium">Line Total</th>
               </tr>
@@ -93,6 +97,10 @@ export default function OrderCheckout({ clientName, clientId, currency, rows, on
                     </td>
                     <td className="px-3 py-3 text-xs text-ix-muted max-sm:flex max-sm:justify-between max-sm:p-0 max-sm:pt-1 max-sm:text-sm">
                       <span className="font-sans sm:hidden">Unit</span><span className={`${cellLine} justify-center max-sm:min-h-0 max-sm:justify-end`}>{row.unit}</span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs tabular-nums text-ix-muted max-sm:mt-1 max-sm:flex max-sm:justify-between max-sm:p-0 max-sm:pt-1 max-sm:text-sm" data-label="Buying Price">
+                      <span className="font-sans sm:hidden">Buying price</span>
+                      <span className={`${cellLine} justify-center max-sm:min-h-0 max-sm:justify-end`} data-testid={`buy-${row.sku}`}>{row.buyPrice && row.buyCurrency ? formatMoney(row.buyPrice, row.buyCurrency) : "—"}</span>
                     </td>
                     <td className="px-3 py-3 max-sm:mt-3 max-sm:block max-sm:p-0 max-sm:!text-left">
                       <label htmlFor={id} className="mb-1 block text-xs font-medium text-ix-muted sm:sr-only">Per piece price ({currency})</label>

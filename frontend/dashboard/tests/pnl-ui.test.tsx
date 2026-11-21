@@ -35,17 +35,24 @@ describe("PNL Calculator > the orders", () => {
   it("each order opens its own calculator, and its result says Profit or Loss with the amount", () => {
     render(<OrderList list={page([order("o1", "SO-000001"), order("o2", "SO-000002", { total_amount: "1000.0000" }), order("o3", "SO-000003", { total_amount: "300.0000" })])} filters={filters}
       expenses={[saved("o1"), saved("o2", { goods_cost: "900", delivery_charges: "150", other_expenses: [] }), saved("o3", { goods_cost: "280", delivery_charges: "20", other_expenses: [] })]} />);
-    expect(screen.getByRole("link", { name: "Open SO-000001" }).getAttribute("href")).toBe("/pnl-calculator/o1");
+    expect(screen.getByRole("link", { name: "Edit expenses of SO-000001" }).getAttribute("href")).toBe("/pnl-calculator/o1"); // a worked-out order can be edited (Actions column)
+    expect(screen.queryByRole("link", { name: "Calculate SO-000001" })).toBeNull(); // and has no Calculate button
+    expect(screen.getByText("SO-000001").closest("a")).toBeNull(); // the order number is plain text, not the way in
     expect(screen.getByText("Profit 175,000.00 USD")).toBeTruthy();
     expect(screen.getByText("Loss 50.00 USD")).toBeTruthy();
     expect(screen.getByText("No profit, no loss")).toBeTruthy();
   });
 
-  it("an order with nothing saved says Not calculated; one without prices says No prices; expenses in another currency are not used", () => {
+  it("an order with nothing saved has a Calculate button that opens its expense form; one without prices says No prices; expenses in another currency are not used", () => {
     render(<OrderList list={page([order("o1", "SO-000001"), order("o2", "SO-000002", { prices_recorded: false, total_amount: null, currency_code: null }), order("o3", "SO-000003")])} filters={filters}
       expenses={[saved("o3", { currency_code: "EUR" })]} />);
-    expect(screen.getAllByText("Not calculated")).toHaveLength(2);
+    expect(screen.queryByText("Not calculated")).toBeNull();
+    const buttons = screen.getAllByRole("link", { name: /^Calculate SO/ });
+    expect(buttons.map((b) => [b.textContent, b.getAttribute("href")])).toEqual([["Calculate", "/pnl-calculator/o1"], ["Calculate", "/pnl-calculator/o3"]]);
+    expect(buttons[0].className).not.toMatch(/bg-indigo|bg-ix-butter/); // transparent, like the portal's other secondary buttons
+    expect(buttons[0].className).toContain("bg-ix-mist/5");
     expect(screen.getByText("No prices")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Calculate SO-000002" })).toBeNull(); // an order without prices cannot be worked out
   });
 
   it("searching goes through the address, with only the search text", async () => {
@@ -71,6 +78,47 @@ describe("PNL Calculator > the orders", () => {
     third.unmount();
     render(<OrderList list={{ ok: false, reason: "unavailable" } as any} filters={filters} expenses={[]} />);
     expect(screen.getByRole("alert").textContent).toContain("temporarily unavailable");
+  });
+});
+
+describe("PNL Calculator > the Actions column", () => {
+  const filters = { q: "", page: 1 };
+  const draw = (expenses: any[]) => render(<OrderList list={page([order("o1", "SO-000001"), order("o2", "SO-000002")])} filters={filters} expenses={expenses} />);
+
+  it("has an Actions column with Edit (the expense form) and Delete on every order that has prices", () => {
+    draw([saved("o1")]);
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Edit expenses of SO-000001" }).getAttribute("href")).toBe("/pnl-calculator/o1");
+    expect(screen.getByRole("link", { name: "Edit expenses of SO-000002" }).getAttribute("href")).toBe("/pnl-calculator/o2"); // an order not calculated yet can be edited (opened) too
+  });
+
+  it("Delete is only available once something is saved, asks first, and removes only the saved expenses", async () => {
+    draw([saved("o1")]);
+    expect((screen.getByRole("button", { name: "Delete expenses of SO-000002" }) as HTMLButtonElement).disabled).toBe(true); // nothing to delete
+    const calls: { url: string; method: string }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: any, init: any = {}) => { calls.push({ url: String(url), method: init.method }); return jsonResponse(200, { deleted: true }); }));
+    const confirmAsk = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Delete expenses of SO-000001" }));
+    expect(calls).toHaveLength(0); // said no: nothing is deleted
+    confirmAsk.mockReturnValue(true);
+    await u.click(screen.getByRole("button", { name: "Delete expenses of SO-000001" }));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    expect(calls).toEqual([{ url: "/api/finance/order-expenses/o1", method: "DELETE" }]);
+    confirmAsk.mockRestore();
+  });
+
+  it("says why when the delete is refused, and goes to the login page when the session ended", async () => {
+    draw([saved("o1")]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(404, { error: "There are no saved expenses for this order." })));
+    await user().click(screen.getByRole("button", { name: "Delete expenses of SO-000001" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("no saved expenses");
+    expect(router.refresh).not.toHaveBeenCalled();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(401, { error: "x" })));
+    await user().click(screen.getByRole("button", { name: "Delete expenses of SO-000001" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login"));
+    vi.restoreAllMocks();
   });
 });
 
@@ -122,6 +170,31 @@ describe("PNL Calculator > one order", () => {
     await u.type(goods, "500000");
     expect(verdict()).toBe("No profit, no loss");
     expect(amount()).toBeUndefined();
+  });
+
+  it("an order can be saved with NO expense at all: every box blank is zero, the result is the whole selling price", async () => {
+    const calls: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: any, init: any = {}) => { calls.push(JSON.parse(init.body)); return jsonResponse(200, { expenses: saved(ORDER, { goods_cost: "0.0000", delivery_charges: "0.0000", other_expenses: [] }) }); }));
+    render(<PnlForm order={detail} saved={null} suggested={{ value: "0.0000", complete: false, missing: 1 }} />);
+    expect((screen.getByLabelText("Cost of goods") as HTMLInputElement).value).toBe("");
+    expect(verdict()).toBe("Profit");
+    expect(amount()).toBe("500,000.00 USD");
+    const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await user().click(save);
+    expect((await screen.findByRole("status")).textContent).toBe("Saved");
+    expect(calls).toEqual([{ goodsCost: "", deliveryCharges: "", otherExpenses: [] }]);
+  });
+
+  it("an empty extra-expense row (no name, no amount) is dropped and does not stop the save", async () => {
+    const calls: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: any, init: any = {}) => { calls.push(JSON.parse(init.body)); return jsonResponse(200, { expenses: saved(ORDER) }); }));
+    render(<PnlForm order={detail} saved={null} suggested={suggestedOk} />);
+    await user().click(screen.getByRole("button", { name: "Add expense" }));
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+    await user().click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("status");
+    expect(calls[0].otherExpenses).toEqual([]);
   });
 
   it("a mistyped amount says so, shows no result and cannot be saved", async () => {

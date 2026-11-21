@@ -54,4 +54,20 @@ describe("Order Checkout > the price box", () => {
     expect(box(1).className).toContain("max-sm:min-h-12");
     expect(box(1).closest("td")!.className).toContain("max-sm:!text-left");
   });
+
+  it("shows each product's buying price (cost price per piece, in its own currency) beside the price being entered, so the profit can be worked out roughly", () => {
+    draw([{ ...row(1, "300"), buyPrice: "60.0000", buyCurrency: "USD" }, { ...row(2, ""), buyPrice: "1250.5000", buyCurrency: "PKR" }, row(3, "")]);
+    expect(screen.getByRole("columnheader", { name: "Buying Price" })).toBeTruthy();
+    expect(screen.getByTestId("buy-SKU-1").textContent).toBe("60.00 USD");
+    expect(screen.getByTestId("buy-SKU-2").textContent).toBe("1,250.50 PKR"); // its own currency: nothing is converted
+    expect(screen.getByTestId("buy-SKU-3").textContent).toBe("—"); // unknown cost
+    const header = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(header.indexOf("Buying Price")).toBe(header.indexOf("Per Piece Price") - 1); // right beside the price box
+  });
+
+  it("the buying price is information only: it never changes the order's save button or total", () => {
+    draw([{ ...row(1, "300"), buyPrice: "60.0000", buyCurrency: "USD" }]);
+    expect(screen.getByTestId("order-total").textContent).toBe("3,000.00 USD");
+    expect((screen.getByRole("button", { name: "Save Order" }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

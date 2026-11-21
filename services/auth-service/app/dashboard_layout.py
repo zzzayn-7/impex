@@ -38,6 +38,7 @@ ORG_WIDGET_IDS: Tuple[str, ...] = (
     "org.list.open-purchase-orders",
     "org.list.recent-stock-movements",
     "org.finance.snapshot",
+    "org.chart.pnl",
     "org.panel.modules",
     "org.panel.quick-actions",
     "org.panel.organization",

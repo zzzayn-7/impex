@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useDefaultCurrency } from "@/components/clock";
 import { buttonClass, fieldClass } from "@/components/ui/controls";
+import { ScanToAddButton } from "@/components/scan/scan-to-add";
 import QuantityInput from "@/components/ui/quantity-input";
 import {
   EMPTY_PRODUCT,
@@ -234,7 +235,13 @@ export default function ProductForm({ product, onDone, onCancel, onSaved, defaul
       <div className={`grid grid-cols-1 md:grid-cols-3 ${panel ? "gap-4" : "gap-5"}`}>
         {field("sku", "SKU or product code", { type: "text", placeholder: "WID-001", autoComplete: "off", maxLength: 64, hint: "Unique in your catalog. Stored in capitals." })}
         <div className="md:col-span-2">
-          {field("name", "Product name", { type: "text", placeholder: "Stainless steel bolt M10", autoComplete: "off", maxLength: 255 })}
+          {withBarcode && !editing ? (
+            // Add Stock: the name box is shorter so the Scan to add button sits after it, on the same line (it stacks under the box on a narrow phone)
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <div className="min-w-0 flex-1">{field("name", "Product name", { type: "text", placeholder: "Stainless steel bolt M10", autoComplete: "off", maxLength: 255 })}</div>
+              <ScanToAddButton disabled={loading} onCode={(code) => { setBarcode(code); setBarcodeError(undefined); }} className={`${buttonClass.secondary} shrink-0 sm:mt-[1.375rem] sm:!min-h-[2.625rem]`} />
+            </div>
+          ) : field("name", "Product name", { type: "text", placeholder: "Stainless steel bolt M10", autoComplete: "off", maxLength: 255 })}
         </div>
         <div className="md:col-span-3">
           <label htmlFor="product-description" className={labelClass}>

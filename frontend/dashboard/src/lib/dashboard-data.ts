@@ -1,7 +1,8 @@
-import { financeRequest, type Overview } from "@/lib/finance";
+import { financeRequest, listAllOrderExpenses, type Overview } from "@/lib/finance";
 import { inventoryRequest } from "@/lib/inventory";
 import { purchasingRequest, type PurchaseOrderSummary } from "@/lib/purchasing";
-import { salesRequest, type InvoiceSummary } from "@/lib/sales";
+import { buildPnlWidget, buildReport, pnlSince, type PnlWidgetData } from "@/lib/profit-loss";
+import { listDeliveredOrders, salesRequest, type InvoiceSummary } from "@/lib/sales";
 import type { Movement } from "@/lib/stock-validation";
 import { lastDays, lastMonths, startOfMonths, totalsByCurrency, type Money } from "@/lib/dashboard-metrics";
 import { formatDate, type Preferences } from "@/lib/format";
@@ -47,6 +48,8 @@ export type DashboardData = {
   purchasing?: Section<PurchasingData>;
   sales?: Section<SalesData>;
   finance?: Section<Overview>;
+  /** The Profit & loss line chart: present when Finance is enabled (it reads the delivered orders from Sales and the expenses saved in the PNL Calculator). */
+  pnl?: Section<PnlWidgetData>;
 };
 
 type Result = { status: number; data: any } | null;
@@ -142,6 +145,14 @@ async function loadFinance(token: string): Promise<Section<Overview>> {
   return result && result.status === 200 && result.data ? { status: "ok", data: result.data as Overview } : { status: "unavailable" };
 }
 
+async function loadPnl(token: string, now: Date, salesEnabled: boolean): Promise<Section<PnlWidgetData>> {
+  if (!salesEnabled) return { status: "ok", data: { needsSales: true, periods: { "1d": [], "1w": [], "1m": [], "6m": [], "1y": [] } } }; // the orders live in Sales
+  const delivered = await listDeliveredOrders(token, pnlSince(now));
+  if (!delivered.ok) return { status: "unavailable" };
+  const expenses = delivered.items.length > 0 ? await listAllOrderExpenses(token) : [];
+  return { status: "ok", data: buildPnlWidget(buildReport(delivered.items, expenses).rows, now) };
+}
+
 /** The dashboard's data for the modules this organization can use. `modules` is the Organization Service's list (an unknown list means none). */
 export async function loadDashboardData(token: string, modules: unknown, prefs: Preferences, now: Date = new Date()): Promise<DashboardData> {
   const enabled = new Set<ModuleKey>(usableModules(modules));
@@ -149,11 +160,12 @@ export async function loadDashboardData(token: string, modules: unknown, prefs: 
   const months = lastMonths(today, TREND_MONTHS);
   const days = lastDays(today, ACTIVITY_DAYS);
   const since = startOfMonths(months);
-  const [inventory, purchasing, sales, finance] = await Promise.all([
+  const [inventory, purchasing, sales, finance, pnl] = await Promise.all([
     enabled.has("inventory") ? loadInventory(token) : undefined,
     enabled.has("purchasing") ? loadPurchasing(token, since) : undefined,
     enabled.has("sales") ? loadSales(token, since) : undefined,
     enabled.has("finance") ? loadFinance(token) : undefined,
+    enabled.has("finance") ? loadPnl(token, now, enabled.has("sales")) : undefined,
   ]);
-  return { today, months, days, ...(inventory ? { inventory } : {}), ...(purchasing ? { purchasing } : {}), ...(sales ? { sales } : {}), ...(finance ? { finance } : {}) };
+  return { today, months, days, ...(inventory ? { inventory } : {}), ...(purchasing ? { purchasing } : {}), ...(sales ? { sales } : {}), ...(finance ? { finance } : {}), ...(pnl ? { pnl } : {}) };
 }

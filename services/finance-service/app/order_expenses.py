@@ -11,7 +11,7 @@ import uuid
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -103,6 +103,17 @@ def get_order_expenses(order_id: uuid.UUID, tenant: TenantContext = Tenant, db: 
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No expenses saved for this order.")
     return out(row)
+
+
+@router.delete("/order-expenses/{order_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["PNL calculator"])
+def delete_order_expenses(order_id: uuid.UUID, tenant: TenantContext = Tenant, db: Session = Depends(get_db)) -> Response:
+    """Remove what was saved for one order: it goes back to "not calculated". Only this calculator's notes are removed (never the order, and nothing in the books)."""
+    row = db.scalar(scoped_select(OrderExpense, tenant).where(OrderExpense.order_id == order_id).with_for_update())
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No expenses saved for this order.")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/order-expenses/{order_id}", tags=["PNL calculator"])

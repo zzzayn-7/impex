@@ -101,3 +101,26 @@ def test_all_returns_every_saved_order_of_the_organization_only(two_orgs):
 
 def api_empty(api, order_id):
     return api.client.get(URL, params={"order_ids": order_id}, headers=api.headers).json()["items"]
+
+
+def test_deleting_removes_only_the_saved_expenses_and_the_order_goes_back_to_not_calculated(two_orgs, session_factory):
+    alpha, beta = two_orgs["alpha"], two_orgs["beta"]
+    order = str(uuid.uuid4())
+    put(alpha, order)
+    put(beta, order, goods_cost="1")
+    assert beta.client.delete(f"{URL}/{order}", headers=beta.headers).status_code == 204  # beta's own row only
+    assert alpha.client.get(f"{URL}/{order}", headers=alpha.headers).status_code == 200
+    assert alpha.client.delete(f"{URL}/{order}", headers=alpha.headers).status_code == 204
+    assert alpha.client.get(f"{URL}/{order}", headers=alpha.headers).status_code == 404
+    assert alpha.client.delete(f"{URL}/{order}", headers=alpha.headers).status_code == 404  # nothing left to delete
+    assert alpha.client.get(URL, params={"all": "true"}, headers=alpha.headers).json() == {"items": []}
+    put(alpha, order, goods_cost="7")  # and it can be saved again
+    assert alpha.client.get(f"{URL}/{order}", headers=alpha.headers).json()["goods_cost"] == "7.0000"
+    with session_factory() as db:
+        assert db.execute(text("SELECT count(*) FROM journal_entries")).scalar() == 0  # nothing in the books was touched
+
+
+def test_delete_needs_a_signed_in_administrator_and_a_real_id(api, client):
+    assert client.delete(f"{URL}/{uuid.uuid4()}").status_code == 401
+    assert client.delete(f"{URL}/{uuid.uuid4()}", headers=bearer("nobody")).status_code == 401
+    assert api.client.delete(f"{URL}/not-a-uuid", headers=api.headers).status_code == 422

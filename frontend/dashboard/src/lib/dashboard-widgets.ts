@@ -27,6 +27,7 @@ export const ORG_WIDGETS: readonly OrgWidget[] = [
   { id: "org.list.open-purchase-orders", name: "Open purchase orders", description: "The purchase orders waiting to be received.", size: "medium", icon: "list", needs: "purchasing" },
   { id: "org.list.recent-stock-movements", name: "Recent stock movements", description: "The latest additions and removals of stock.", size: "medium", icon: "list", needs: "inventory" },
   { id: "org.finance.snapshot", name: "Finance snapshot", description: "Posted and draft entries, expenses, revenue and expenses by currency.", size: "medium", icon: "ledger", needs: "finance" },
+  { id: "org.chart.pnl", name: "Profit & loss", description: "The profit or loss of your delivered orders as a line, for 1 day, 1 week, 1 month, 6 months or 1 year.", size: "medium", icon: "trend", needs: "finance" },
   { id: "org.panel.modules", name: "Your modules", description: "The modules enabled for your organization and their pages.", size: "medium", icon: "grid", needs: "organization" },
   { id: "org.panel.quick-actions", name: "Quick actions", description: "Shortcuts to the things you do most.", size: "medium", icon: "bolt", needs: "organization" },
   { id: "org.panel.organization", name: "Organization details", description: "Your organization's name, identifier, country and contact.", size: "medium", icon: "building", needs: "organization" },

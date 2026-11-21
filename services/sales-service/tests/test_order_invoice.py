@@ -500,3 +500,22 @@ def test_delivered_orders_are_private_to_their_organization_and_need_a_session(t
     assert beta.client.get(DELIVERED, params={"since": "2000-01-01T00:00:00Z"}, headers=beta.headers).json()["total"] == 0
     assert client.get(DELIVERED, params={"since": "2000-01-01T00:00:00Z"}).status_code == 401
     assert client.get(DELIVERED, params={"since": "2000-01-01T00:00:00Z"}, headers=bearer("nobody")).status_code == 401
+
+
+# ---- the invoice shows only what the client receives ---------------------------------------------------------------------------------------
+@pytest.mark.parametrize("unit,printed", [("pcs", "PCS"), (" kg ", "KG"), ("400", ""), ("12.5", ""), ("", ""), ("500ml", "500ML"), ("قطعة", "قطعة"), ("box_24", "BOX_24")])
+def test_a_unit_with_no_letter_in_it_is_not_printed_next_to_the_quantity(unit, printed):
+    from app.invoice_pdf import _unit_label
+
+    assert _unit_label(unit) == printed
+
+
+def test_the_pdf_prints_the_quantity_and_a_real_unit_and_no_stock_figure(api, goods):
+    from app.invoice_pdf import _plain
+
+    acme = api.new_client("Acme Ltd")
+    made = invoice_of(api, make_order(api, acme, (goods["bolt"], 7, "30"))).json()
+    body = api.client.get(f"{ORDER_INVOICES}/{made['id']}/pdf", headers=api.headers).content
+    assert b"7 PCS" in body and _plain(Decimal("7")) == "7"
+    for stock_word in (b"on hand", b"in stock", b"Available", b"1000 PCS", b"7/1000", b"7 / 1000"):  # goods() put 1000 of each in stock: that figure never reaches the client
+        assert stock_word not in body, stock_word

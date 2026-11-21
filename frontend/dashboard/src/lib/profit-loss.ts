@@ -109,3 +109,85 @@ export function buildReport(delivered: DeliveredOrder[], saved: OrderExpenses[])
   });
   return { rows, portfolios, notCalculated };
 }
+
+// ---- the home-page widget: profit over time, as a line --------------------------------------------------------------------------------------------------------
+// For each of the five periods, the profit (or loss) of the orders delivered in each slice of time (hours in a day, days in a week or a month, months in 6 months or a year), per currency.
+// Only orders whose expenses were entered count (the others have no profit to plot). Slices are counted in UTC and end now; a slice with nothing delivered is a flat zero.
+
+export type PnlPoint = { label: string; value: string };
+export type PnlPeriodCurrency = {
+  currency: string;
+  points: PnlPoint[];
+  /** the profit (signed) and the investment of the whole period, and the return on it in hundredths of a percent */
+  profit: string;
+  invested: string;
+  bps: number | null;
+  calculated: number;
+};
+export type PnlWidgetData = { needsSales: boolean; periods: Record<PeriodKey, PnlPeriodCurrency[]> };
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+type Bucket = { start: number; end: number; label: string };
+
+/** The slices of a period, oldest first, the last one ending at `now`. */
+export function pnlBuckets(key: PeriodKey, now: Date): Bucket[] {
+  const HOUR = 3600 * 1000, DAY = 24 * HOUR;
+  const out: Bucket[] = [];
+  if (key === "1d") {
+    const top = Math.floor(now.getTime() / HOUR) * HOUR + HOUR; // the end of the current hour
+    for (let i = 24; i >= 1; i--) {
+      const start = top - i * HOUR;
+      out.push({ start, end: start + HOUR, label: `${String(new Date(start).getUTCHours()).padStart(2, "0")}:00` });
+    }
+    return out;
+  }
+  if (key === "1w" || key === "1m") {
+    const days = key === "1w" ? 7 : 30;
+    const top = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + DAY;
+    for (let i = days; i >= 1; i--) {
+      const start = top - i * DAY;
+      const d = new Date(start);
+      out.push({ start, end: start + DAY, label: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}` });
+    }
+    return out;
+  }
+  const months = key === "6m" ? 6 : 12;
+  for (let i = months - 1; i >= 0; i--) {
+    const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1);
+    const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 1);
+    out.push({ start, end, label: MONTHS[new Date(start).getUTCMonth()] });
+  }
+  return out;
+}
+
+/** The start of the earliest slice of any period: how far back delivered orders have to be read. */
+export const pnlSince = (now: Date): Date => new Date(pnlBuckets("1y", now)[0].start);
+
+export function buildPnlWidget(rows: ReportRow[], now: Date, needsSales = false): PnlWidgetData {
+  const worked = rows.filter((r) => (r.state === "profit" || r.state === "loss" || r.state === "even") && r.currency_code && r.profit !== null && r.invested !== null);
+  const periods = {} as Record<PeriodKey, PnlPeriodCurrency[]>;
+  for (const { key } of PERIODS) {
+    const buckets = pnlBuckets(key, now);
+    const from = buckets[0].start, to = buckets[buckets.length - 1].end;
+    const inside = worked.filter((r) => { const at = Date.parse(r.completed_at); return at >= from && at < to; });
+    const currencies = Array.from(new Set(inside.map((r) => r.currency_code!))).sort();
+    periods[key] = currencies.map((currency) => {
+      const mine = inside.filter((r) => r.currency_code === currency);
+      const sums = buckets.map(() => BigInt(0));
+      let profit = BigInt(0), invested = BigInt(0);
+      for (const r of mine) {
+        const at = Date.parse(r.completed_at);
+        const slot = buckets.findIndex((b) => at >= b.start && at < b.end);
+        const p = toUnits(r.profit!);
+        sums[slot] += p;
+        profit += p;
+        invested += toUnits(r.invested!);
+      }
+      return {
+        currency, points: buckets.map((b, i) => ({ label: b.label, value: fromUnits(sums[i]) })), profit: fromUnits(profit), invested: fromUnits(invested),
+        bps: invested > BigInt(0) ? bpsOf(fromUnits(profit), fromUnits(invested)) : null, calculated: mine.length,
+      };
+    });
+  }
+  return { needsSales, periods };
+}

@@ -445,7 +445,7 @@ describe("Create Order", () => {
       expect(screen.getByText("Review your selected products and enter the selling price for each item.")).toBeTruthy();
       expect(screen.getByTestId("checkout-client").textContent).toBe("Acme Ltd");
       const table = screen.getByRole("table");
-      expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "SKU", "Quantity", "Unit", "Per Piece Price", "Line Total"]);
+      expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Product", "SKU", "Quantity", "Unit", "Buying Price", "Per Piece Price", "Line Total"]);
       const rows = within(table).getAllByRole("row").slice(1);
       expect(rows).toHaveLength(2);
       expect(rows[0].textContent).toContain("Water bottle");

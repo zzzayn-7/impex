@@ -105,7 +105,7 @@ describe("the Organization widget registry", () => {
     expect(ORG_WIDGET_IDS).toEqual([
       "org.overview", "org.kpi.active-products", "org.kpi.open-purchase-orders", "org.kpi.invoiced-this-month", "org.kpi.outstanding-receivables",
       "org.chart.sales-purchasing-trend", "org.chart.collections", "org.chart.inventory-activity", "org.list.recent-invoices", "org.list.open-purchase-orders",
-      "org.list.recent-stock-movements", "org.finance.snapshot", "org.panel.modules", "org.panel.quick-actions", "org.panel.organization",
+      "org.list.recent-stock-movements", "org.finance.snapshot", "org.chart.pnl", "org.panel.modules", "org.panel.quick-actions", "org.panel.organization",
     ]);
     expect(new Set(ORG_WIDGET_IDS).size).toBe(ORG_WIDGET_IDS.length);
     expect(new Set(ORG_WIDGETS.map((w) => w.name)).size).toBe(ORG_WIDGETS.length);
