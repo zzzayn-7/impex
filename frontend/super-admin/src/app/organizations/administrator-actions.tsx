@@ -16,12 +16,13 @@ type Props = {
   };
 };
 
-type Mode = "idle" | "edit" | "delete";
+type Mode = "idle" | "edit" | "delete" | "reset";
 
 const secondaryButton =
   "rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium transition hover:bg-slate-800 disabled:opacity-60";
 
-// Edit / Resend / Delete for one administrator row.
+// Edit / Resend / Reset password / Delete for one administrator row. Reset password is for an administrator who has activated their account and forgot the password: it emails a strong
+// temporary password to the address they registered with (they must choose their own when they sign in). The Super Admin never sees the password.
 export default function AdministratorActions({ admin, demoMode }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("idle");
@@ -87,6 +88,31 @@ export default function AdministratorActions({ admin, demoMode }: Props) {
     if (await call("PATCH", `/api/administrators/${admin.id}`, body, "Saved")) setMode("idle");
   }
 
+  async function resetPassword() {
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/administrators/${admin.id}/reset-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organizationId: admin.organizationId }) });
+      const data = await res.json().catch(() => null);
+      if (res.status === 401) {
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
+      if (!res.ok) {
+        setMessage({ ok: false, text: data?.error ?? "That did not work. Please try again." });
+        return;
+      }
+      setMessage({ ok: true, text: `A new temporary password was emailed to ${data?.sentTo ?? admin.email}. It works for 24 hours and they must choose their own when they sign in.` });
+      setMode("idle");
+    } catch {
+      setMessage({ ok: false, text: "Unable to reach the server." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (await call("DELETE", `/api/administrators/${admin.id}`, { organizationId: admin.organizationId }, "Deleted")) {
       setMode("idle");
@@ -129,6 +155,26 @@ export default function AdministratorActions({ admin, demoMode }: Props) {
     );
   }
 
+  if (mode === "reset") {
+    return (
+      <div className="w-64 space-y-2">
+        <p className="text-xs text-slate-300">
+          Send a new password to <strong className="text-white">{admin.email}</strong>? Their current password stops working at once, and everyone signed in as them is signed out. A strong temporary
+          password is emailed to that address; they must choose their own when they sign in.
+        </p>
+        {message && !message.ok && <p role="alert" className="text-xs text-red-400">{message.text}</p>}
+        <div className="flex gap-2">
+          <button type="button" onClick={resetPassword} disabled={busy} className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60">
+            {busy ? "Sending…" : "Send new password"}
+          </button>
+          <button type="button" disabled={busy} onClick={() => { setMode("idle"); setMessage(null); }} className={`${secondaryButton} text-slate-300`}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (mode === "delete") {
     return (
       <div className="w-64 space-y-2">
@@ -160,6 +206,11 @@ export default function AdministratorActions({ admin, demoMode }: Props) {
         {canResend && (
           <button type="button" onClick={resend} disabled={busy} aria-label={`${resendLabel} to ${admin.email}`} className={`${secondaryButton} text-indigo-300`}>
             {busy ? "Sending…" : resendLabel}
+          </button>
+        )}
+        {admin.status === "active" && (
+          <button type="button" onClick={() => { setMessage(null); setMode("reset"); }} aria-label={`Reset password of ${admin.email}`} className={`${secondaryButton} text-amber-300`}>
+            Reset password
           </button>
         )}
         <button type="button" onClick={() => { setMessage(null); setMode("delete"); }} aria-label={`Delete ${admin.email}`} className={`${secondaryButton} text-red-300`}>

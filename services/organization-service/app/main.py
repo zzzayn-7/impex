@@ -23,6 +23,7 @@ from app.administrators import (
     delete_administrator,
     invite_administrator,
     list_administrators,
+    reset_administrator_password,
     resend_administrator_invitation,
     update_administrator,
 )
@@ -382,6 +383,23 @@ def remove_organization_administrator(
     org = find_organization(db, org_id)
     delete_administrator(db, auth_client, org, admin_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordResetResponse(BaseModel):
+    """What the Super Admin is told: where the new password was sent and until when it works. The password itself is never part of an answer."""
+
+    sent_to: str
+    expires_at: datetime
+
+
+@app.post("/api/v1/organizations/{org_id}/administrators/{admin_id}/reset-password", response_model=PasswordResetResponse, tags=["Administrators"], dependencies=super_admin_only)
+def reset_organization_administrator_password(
+    org_id: str, admin_id: str, db: Session = Depends(get_db), auth_client=Depends(get_internal_auth_client)
+):
+    """The administrator forgot their password: send a strong temporary one to the email they registered with (they must choose their own at the next sign-in)."""
+    org = find_organization(db, org_id)
+    sent = reset_administrator_password(db, auth_client, org, admin_id)
+    return PasswordResetResponse(sent_to=sent["email"], expires_at=sent["expires_at"])
 
 
 @app.post("/api/v1/organizations/{org_id}/administrators/{admin_id}/resend", response_model=AdministratorResponse, status_code=status.HTTP_201_CREATED, tags=["Administrators"], dependencies=super_admin_only)

@@ -98,8 +98,10 @@ export function describeFailure(result: OrgServiceResult): { status: number; mes
       return { status: 409, message: detail ?? "This administrator already exists." };
     case 422:
       return { status: 400, message: detail ?? "Please check the administrator's details." };
+    case 429:
+      return { status: 429, message: detail ?? "Please wait a minute before doing that again." };
     case 502:
-      return { status: 502, message: detail ?? "The invitation email could not be sent. Please try again." };
+      return { status: 502, message: detail ?? "The email could not be sent. Please try again." };
     case 503:
       return { status: 503, message: detail ?? "The service is temporarily unavailable. Please try again." };
     default:

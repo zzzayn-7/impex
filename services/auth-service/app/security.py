@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+import string
 from typing import List
 
 
@@ -36,3 +37,25 @@ def password_problems(password: str, email: str) -> List[str]:
     if len(local_part) >= 3 and local_part in password.lower():
         problems.append("no part of your email address")
     return problems
+
+
+# Characters that cannot be mistaken for each other when a person copies a password from an email (no 0/O, 1/l/I) and symbols that survive being pasted anywhere.
+_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+_LOWER = "abcdefghijkmnopqrstuvwxyz"
+_DIGITS = "23456789"
+_SYMBOLS = "!@#$%&*?+="
+TEMPORARY_PASSWORD_LENGTH = 16
+
+
+def generate_temporary_password(email: str = "") -> str:
+    """A strong random password from the operating system's secure generator: 16 characters with at least two of each kind, nothing that looks alike, and (checked) nothing that fails the
+    portal's own password rules, including "no part of your email address"."""
+    rng = secrets.SystemRandom()
+    while True:
+        chars = [secrets.choice(_UPPER) for _ in range(3)] + [secrets.choice(_LOWER) for _ in range(4)] + [secrets.choice(_DIGITS) for _ in range(3)] + [secrets.choice(_SYMBOLS) for _ in range(2)]
+        pool = _UPPER + _LOWER + _DIGITS + _SYMBOLS
+        chars += [secrets.choice(pool) for _ in range(TEMPORARY_PASSWORD_LENGTH - len(chars))]
+        rng.shuffle(chars)
+        password = "".join(chars)
+        if not password_problems(password, email):
+            return password

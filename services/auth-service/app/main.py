@@ -25,6 +25,7 @@ from app.organization_admins import (
     require_internal_key,
     update_organization_admin,
 )
+from app.password_reset import change_own_password, reset_organization_admin_password, temporary_password_expired
 from app.profile import complete_profile, update_profile
 from app.purge import purge_organization_users
 from app.security import hash_password, verify_password
@@ -80,6 +81,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    # True while the person is on a TEMPORARY password (after a reset by the Super Admin): the portal sends them to choose their own before anything else.
+    must_change_password: bool = False
 
 
 class UserProfile(BaseModel):
@@ -100,14 +103,22 @@ class UserProfile(BaseModel):
     # Whether the person has a profile picture, and a version that changes with it (a cache-buster for the picture's address).
     has_avatar: bool = False
     avatar_version: Optional[str] = None
+    # True while the person is on a temporary password and must choose their own (see app/password_reset.py).
+    must_change_password: bool = False
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def create_access_token(user_id: str) -> str:
+def password_version(user: User) -> int:
+    """Which password a sign-in was made with: 0 until the password is ever reset or changed, then the moment of that change (milliseconds). A sign-in carries it and is only accepted while it
+    still matches, so a reset or a change ends every older sign-in exactly (no timing window)."""
+    return int(user.password_changed_at.timestamp() * 1000) if user.password_changed_at else 0
+
+
+def create_access_token(user_id: str, pv: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode({"sub": user_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode({"sub": user_id, "exp": expire, "pv": pv}, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def to_profile(user: User) -> UserProfile:
@@ -126,6 +137,7 @@ def to_profile(user: User) -> UserProfile:
         dashboard_layout=layout_of(user),
         has_avatar=user.avatar_updated_at is not None,
         avatar_version=str(int(user.avatar_updated_at.timestamp() * 1000)) if user.avatar_updated_at else None,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -136,11 +148,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        user_id = uuid.UUID(jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub"))
+        claims = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = uuid.UUID(claims.get("sub"))
     except (JWTError, ValueError, TypeError):
         raise unauthorized
     user = db.get(User, user_id)
     if user is None or not user.is_active:
+        raise unauthorized
+    # A sign-in made with an earlier password (before a reset by the Super Admin, or the person's own change) is no longer accepted.
+    if claims.get("pv", 0) != password_version(user):
         raise unauthorized
     return user
 
@@ -190,9 +206,16 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+    if temporary_password_expired(user):
+        # The temporary password was sent more than 24 hours ago and never used: it no longer works; the Super Admin has to send a new one.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "temporary_password_expired", "message": "Your temporary password has expired. Ask your administrator to send you a new one."},
+        )
     return TokenResponse(
-        access_token=create_access_token(str(user.id)),
+        access_token=create_access_token(str(user.id), password_version(user)),
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -226,6 +249,23 @@ def update_my_profile(payload: ProfileUpdate, current_user: User = Depends(get_c
 def complete_my_profile(payload: ProfileComplete, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Confirm your profile (optionally with a corrected name) in one step. Safe to repeat."""
     return to_profile(complete_profile(db, current_user, payload.full_name))
+
+
+class PasswordChange(BaseModel):
+    """Your current password (the temporary one, after a reset) and the new one you choose. Nothing else is accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    new_password: str
+
+
+@app.post("/api/v1/auth/me/password", response_model=TokenResponse, tags=["Auth"])
+def change_my_password(payload: PasswordChange, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Choose YOUR OWN password (required after the Super Admin resets it). The current password must be right and the new one strong. Every older sign-in stops working, so a fresh one
+    is returned and the person stays signed in."""
+    user = change_own_password(db, current_user, payload.current_password, payload.new_password)
+    return TokenResponse(access_token=create_access_token(str(user.id), password_version(user)), expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60, must_change_password=False)
 
 
 class ThemeUpdate(BaseModel):
@@ -311,6 +351,14 @@ class OrganizationAdminUpdate(BaseModel):
 class OrganizationAdminRef(BaseModel):
     organization_id: uuid.UUID
     email: EmailStr
+
+
+@app.post("/internal/organization-admins/reset-password", include_in_schema=False, dependencies=[Depends(require_internal_key)])
+def reset_admin_password(payload: OrganizationAdminRef, db: Session = Depends(get_db)):
+    """The Super Admin reset this administrator's password: a strong temporary password replaces it (valid 24 hours, must be changed at the first sign-in) and is returned ONCE to the
+    Organization Service, which emails it. It is never logged and only its hash is kept."""
+    user, password, expires_at = reset_organization_admin_password(db, organization_id=payload.organization_id, email=str(payload.email))
+    return {"email": user.email, "full_name": user.full_name, "password": password, "expires_at": expires_at.isoformat()}
 
 
 @app.post("/internal/organization-admins/update", include_in_schema=False, dependencies=[Depends(require_internal_key)])

@@ -37,6 +37,8 @@ export type Workspace =
   | { kind: "unavailable"; admin: TenantAdmin };
 
 export async function loadWorkspace(admin: TenantAdmin): Promise<Workspace> {
+  // On a TEMPORARY password (the Super Admin reset it) nothing else opens until the administrator has chosen their own: every page of the portal goes through here.
+  if (admin.must_change_password === true) redirect("/change-password");
   const result = await fetchTenantOrganization(getTenantToken() ?? "");
   if (!result.ok) {
     if (result.reason === "unauthorized") redirect("/login");

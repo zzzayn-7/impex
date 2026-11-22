@@ -10,6 +10,7 @@ convenience; never enable it on a real deployment.
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import httpx
@@ -26,7 +27,7 @@ from app.invitations import (
     issue_invitation,
     utcnow,
 )
-from app.mailer import EmailDeliveryError, send_credentials_email
+from app.mailer import EmailDeliveryError, send_credentials_email, send_password_reset_email
 from app.models import Organization, OrganizationInvitation
 
 logger = logging.getLogger("impex.administrators")
@@ -240,6 +241,45 @@ def resend_administrator_invitation(
         raise HTTPException(status.HTTP_409_CONFLICT, "This administrator has already activated their account.")
     check_email_available(auth_client, organization.id, row.email)
     return issue_invitation(db, organization, resend=True, email=row.email, full_name=row.full_name)
+
+
+# --- reset password ------------------------------------------------------------
+def reset_administrator_password(db: Session, auth_client: httpx.Client, organization: Organization, admin_id: str) -> dict:
+    """The administrator forgot their password: the Auth Service replaces it with a strong TEMPORARY one (valid 24 hours, must be changed at the first sign-in) and it is emailed to the
+    address they registered with. Only an administrator who has activated their account can be reset (a pending invitation has no password yet: resend it instead). The password never
+    reaches the Super Admin, the response or the logs."""
+    row = _find_row(db, organization, admin_id)
+    if row.accepted_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This administrator has not activated their account yet, so there is no password to reset. Resend their invitation instead.")
+    response = _auth_post(auth_client, "/internal/organization-admins/reset-password", {"organization_id": str(organization.id), "email": row.email})
+    if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, _detail(response).get("message") or "A new password was sent a moment ago. Please wait a minute.")
+    if response.status_code == status.HTTP_409_CONFLICT and _detail(response).get("code") == "account_disabled":
+        raise HTTPException(status.HTTP_409_CONFLICT, "This account is disabled, so its password cannot be reset.")
+    if response.status_code != status.HTTP_200_OK:
+        _raise_for_account_service(response)
+    body = response.json()
+    try:
+        expires_at = datetime.fromisoformat(str(body["expires_at"]))
+        password = str(body["password"])
+        full_name = body.get("full_name") or row.full_name
+    except (KeyError, ValueError):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Administrator accounts are temporarily unavailable.")
+    try:
+        send_password_reset_email(
+            to_email=row.email, organization_name=organization.name, login_url=build_login_url(), password=password, expires_at=expires_at, recipient_name=full_name,
+        )
+    except EmailDeliveryError as exc:
+        # The account already has the new password, which nobody has seen: the person cannot sign in until a reset is delivered. Say so plainly so the Super Admin presses it again.
+        logger.error("Password reset email could not be sent (organization %s, administrator %s)", organization.id, row.id)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"The new password was set but the email could not be sent ({exc}). The administrator cannot sign in until it is delivered: press Reset password again in a minute.",
+        )
+    finally:
+        password = ""  # never kept longer than the request
+    logger.info("Password reset for administrator %s of organization %s", row.id, organization.id)  # no password, no email address
+    return {"email": row.email, "expires_at": expires_at}
 
 
 # --- update ------------------------------------------------------------------

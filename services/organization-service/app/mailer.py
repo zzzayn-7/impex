@@ -181,6 +181,70 @@ def build_credentials_message(
     return message
 
 
+def build_password_reset_message(
+    settings: SmtpSettings,
+    to_email: str,
+    organization_name: str,
+    login_url: str,
+    password: str,
+    expires_at: datetime,
+    recipient_name: Optional[str] = None,
+) -> EmailMessage:
+    """The Super Admin reset this administrator's password: the TEMPORARY password goes to the address they registered with. It works until `expires_at` and must be replaced at the first
+    sign-in. The password is in the message by design (that is what a reset sends); it is never logged."""
+    safe_name = " ".join(organization_name.split())
+    safe_recipient = " ".join(recipient_name.split()) if recipient_name else ""
+    greeting = f"Hello {safe_recipient}," if safe_recipient else "Hello,"
+    expires = expires_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    message = EmailMessage()
+    message["Subject"] = f"Your Impex password for {safe_name} was reset"
+    message["From"] = formataddr((settings.from_name, settings.from_address))
+    message["To"] = to_email
+    message["Date"] = formatdate(localtime=False)
+    message.set_content(
+        "\n".join(
+            [
+                greeting,
+                "",
+                f"The password of your Impex administrator account for {safe_name} was reset by the platform administrator.",
+                "",
+                f"Organization:  {safe_name}",
+                f"Email (username):  {to_email}",
+                f"Temporary password:  {password}",
+                "",
+                "Sign in here with it:",
+                login_url,
+                "",
+                f"You will be asked to choose a new password straight away. The temporary password works until {expires} (24 hours after it was sent) and only until you choose your own.",
+                "",
+                "If you did not ask for this, contact your platform administrator.",
+                "",
+            ]
+        )
+    )
+    message.add_alternative(
+        f"""<!doctype html>
+<html><body style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.5">
+  <h2 style="margin:0 0 12px">Your Impex password was reset</h2>
+  <p>{html.escape(greeting)}</p>
+  <p>The password of your administrator account for <strong>{html.escape(safe_name)}</strong> was reset by the platform administrator.</p>
+  <table style="border-collapse:collapse;margin:12px 0">
+    <tr><td style="padding:4px 14px 4px 0;color:#475569">Organization</td><td><strong>{html.escape(safe_name)}</strong></td></tr>
+    <tr><td style="padding:4px 14px 4px 0;color:#475569">Email (username)</td><td><strong>{html.escape(to_email)}</strong></td></tr>
+    <tr><td style="padding:4px 14px 4px 0;color:#475569">Temporary password</td><td><strong style="font-family:Consolas,Menlo,monospace;font-size:16px;letter-spacing:0.5px">{html.escape(password)}</strong></td></tr>
+  </table>
+  <p><a href="{html.escape(login_url, quote=True)}"
+        style="display:inline-block;background:#4f46e5;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">
+     Sign in</a></p>
+  <p style="font-size:13px;color:#475569">You will be asked to choose a new password straight away. The temporary password works until {expires} (24 hours after it was sent) and only until you choose your own.<br>
+  If you did not ask for this, contact your platform administrator.</p>
+</body></html>""",
+        subtype="html",
+    )
+    return message
+
+
 def send_message(settings: SmtpSettings, message: EmailMessage) -> None:
     if settings.username and not settings.password:
         # Providers such as Gmail just drop the connection on an empty password; say what is wrong instead.
@@ -267,4 +331,20 @@ def send_credentials_email(
     send_message(
         settings,
         build_credentials_message(settings, to_email, organization_name, login_url, password, recipient_name),
+    )
+
+
+def send_password_reset_email(
+    to_email: str,
+    organization_name: str,
+    login_url: str,
+    password: str,
+    expires_at: datetime,
+    recipient_name: Optional[str] = None,
+) -> None:
+    """The temporary password is in the message by design; it is never logged."""
+    settings = load_smtp_settings()
+    send_message(
+        settings,
+        build_password_reset_message(settings, to_email, organization_name, login_url, password, expires_at, recipient_name),
     )

@@ -21,6 +21,8 @@ export type AuthUser = {
   // The administrator's own profile picture: whether there is one, and a version that changes with it (a cache-buster for its address).
   has_avatar?: boolean;
   avatar_version?: string | null;
+  // True while the administrator is on a TEMPORARY password (the Super Admin reset it): the portal sends them to choose their own before anything else.
+  must_change_password?: boolean;
 };
 
 export type TenantAdmin = AuthUser & { role: "organization-admin"; organization_id: string; is_active: true };
@@ -61,7 +63,7 @@ export async function fetchCurrentUser(token: string): Promise<AuthUser | null> 
 }
 
 export type SignInResult =
-  | { ok: true; token: string; expiresIn: number; user: TenantAdmin }
+  | { ok: true; token: string; expiresIn: number; user: TenantAdmin; mustChangePassword: boolean }
   | { ok: false; status: number; message: string };
 
 const DEFAULT_SESSION_SECONDS = 3600;
@@ -81,7 +83,12 @@ export async function signInTenantAdmin(email: string, password: string): Promis
     return { ok: false, status: 503, message: "The authentication service is unavailable. Please try again shortly." };
   }
   if (res.status === 401) return { ok: false, status: 401, message: "Invalid email or password." };
-  if (res.status === 403) return { ok: false, status: 403, message: "This account is disabled." };
+  if (res.status === 403) {
+    // A temporary password that was never used stops working after 24 hours: say so (and what to do), not "disabled".
+    const refused = (await res.json().catch(() => null)) as { detail?: { code?: unknown; message?: unknown } } | null;
+    const expired = refused?.detail?.code === "temporary_password_expired";
+    return { ok: false, status: 403, message: expired ? "Your temporary password has expired. Ask your administrator to send you a new one." : "This account is disabled." };
+  }
   if (res.status === 422) return { ok: false, status: 400, message: "Enter a valid email address and password." };
   if (!res.ok) return { ok: false, status: 502, message: "Sign-in failed. Please try again." };
 
@@ -102,5 +109,5 @@ export async function signInTenantAdmin(email: string, password: string): Promis
 
   const expiresIn =
     typeof body.expires_in === "number" && body.expires_in > 0 ? Math.floor(body.expires_in) : DEFAULT_SESSION_SECONDS;
-  return { ok: true, token, expiresIn, user };
+  return { ok: true, token, expiresIn, user, mustChangePassword: user.must_change_password === true };
 }

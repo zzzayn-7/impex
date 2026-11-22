@@ -43,6 +43,8 @@ class FakeAuthService:
         self.prechecks = []  # json bodies of precheck calls
         self.updates = []  # json bodies of update calls
         self.deletes = []  # json bodies of delete calls
+        self.resets = []  # json bodies of password-reset calls
+        self.reset_override = None  # (status, json) to answer every reset with
         self.demo = True  # does the "Auth Service" accept demo (weak) passwords?
         self.mode = None  # "down" | "500"
         self.delay = 0.0
@@ -58,6 +60,8 @@ class FakeAuthService:
                 self.updates.append(body)
             elif request.url.path.endswith("/delete"):
                 self.deletes.append(body)
+            elif request.url.path.endswith("/reset-password"):
+                self.resets.append(body)
             else:
                 self.calls.append((body, dict(request.headers)))
         if self.delay:
@@ -68,6 +72,17 @@ class FakeAuthService:
             return httpx.Response(500, json={"detail": "boom"})
         if request.headers.get("x-internal-key") != AUTH_KEY:
             return httpx.Response(401, json={"detail": "Invalid service credentials"})
+        if request.url.path.endswith("/reset-password"):
+            if self.reset_override:
+                return httpx.Response(self.reset_override[0], json=self.reset_override[1])
+            with self._lock:
+                record = self.users.get(body["email"])
+                if not record or record["org"] != body["organization_id"]:
+                    return httpx.Response(404, json={"detail": {"code": "not_found", "message": "Administrator account not found."}})
+                record["password"] = f"Tmp-Reset{len(self.resets)}!xyz9QW"
+                from datetime import datetime, timedelta, timezone
+                return httpx.Response(200, json={"email": body["email"], "full_name": record["name"], "password": record["password"],
+                                                 "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()})
         if is_precheck:
             existing = self.users.get(body["email"])
             if existing is None:

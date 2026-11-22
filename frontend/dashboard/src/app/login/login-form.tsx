@@ -30,7 +30,9 @@ export default function LoginForm() {
         return;
       }
 
-      router.replace("/");
+      const data = await res.json().catch(() => null);
+      // After the Super Admin reset the password, the first sign-in goes straight to choosing a new one.
+      router.replace(data?.mustChangePassword ? "/change-password" : "/");
       router.refresh();
     } catch {
       setError("Unable to reach the server. Check your connection and try again.");

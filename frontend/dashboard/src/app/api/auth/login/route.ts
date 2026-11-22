@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   // The token goes into an HttpOnly cookie, never into the response body or browser storage.
   const res = NextResponse.json(
-    { user: { full_name: result.user.full_name } },
+    { user: { full_name: result.user.full_name }, mustChangePassword: result.mustChangePassword },
     { headers: { "Cache-Control": "no-store" } }
   );
   res.cookies.set({

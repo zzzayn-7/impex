@@ -9,6 +9,7 @@ vi.mock("next/headers", () => ({
 
 import { POST as addAdministrator } from "@/app/api/administrators/route";
 import { POST as resendInvitation } from "@/app/api/administrators/[id]/resend/route";
+import { POST as resetPassword } from "@/app/api/administrators/[id]/reset-password/route";
 import { DELETE as deleteAdministrator, PATCH as editAdministrator } from "@/app/api/administrators/[id]/route";
 import { POST as createOrganization } from "@/app/api/organizations/route";
 import { POST as lookup } from "@/app/api/activate/lookup/route";
@@ -178,6 +179,67 @@ describe("POST /api/administrators/[id]/resend", () => {
     const res = await resendInvitation(resendRequest({ organizationId: ORG }), ctx());
     expect(res.status).toBe(409);
     expect((await res.json()).error).toContain("already activated");
+  });
+});
+
+describe("POST /api/administrators/[id]/reset-password", () => {
+  const resetRequest = (body: unknown, headers?: Record<string, string>) => post(`http://localhost:3000/api/administrators/${ADMIN_ID}/reset-password`, body, headers);
+  const ctx = (id = ADMIN_ID) => ({ params: { id } });
+  const sent = { sent_to: "ada@example.org", expires_at: "2026-11-23T10:00:00+00:00" };
+
+  it("requires a Super Admin session, and the organization portal's cookie is not one", async () => {
+    delete jar["impex_session"];
+    expect((await resetPassword(resetRequest({ organizationId: ORG }), ctx())).status).toBe(401);
+    jar["impex_tenant_session"] = "tenant-token";
+    expect((await resetPassword(resetRequest({ organizationId: ORG }), ctx())).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("validates the ids and the request before calling the backend", async () => {
+    expect((await resetPassword(resetRequest({ organizationId: ORG }), ctx("not-a-uuid"))).status).toBe(404);
+    expect((await resetPassword(resetRequest({ organizationId: "nope" }), ctx())).status).toBe(400);
+    expect((await resetPassword(resetRequest({}), ctx())).status).toBe(400);
+    expect((await resetPassword(resetRequest("x", { "content-type": "text/plain" }), ctx())).status).toBe(415);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("asks the backend to reset within the named organization as the Super Admin, forwarding nothing from the browser", async () => {
+    stubOrgService(() => json(200, sent));
+    const res = await resetPassword(resetRequest({ organizationId: ORG, password: "Chosen!By1Browser", role: "super-admin", email: "evil@x.y" }), ctx());
+    expect(res.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`http://organization-service:8001/api/v1/organizations/${ORG}/administrators/${ADMIN_ID}/reset-password`);
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect(init.body).toBeUndefined(); // the browser cannot name a password, an email or a role
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("answers only where the password was sent and until when: never the password", async () => {
+    stubOrgService(() => json(200, { ...sent, password: "Leaked!Pass1234", token: "x" }));
+    const res = await resetPassword(resetRequest({ organizationId: ORG }), ctx());
+    const body = await res.json();
+    expect(body).toEqual({ sentTo: "ada@example.org", expiresAt: "2026-11-23T10:00:00+00:00" });
+    expect(JSON.stringify(body)).not.toContain("Leaked");
+  });
+
+  it("tells the refusals in words: not activated, too soon, the email could not be sent, the service is down", async () => {
+    stubOrgService(() => json(409, { detail: "This administrator has not activated their account yet, so there is no password to reset. Resend their invitation instead." }));
+    const notActive = await resetPassword(resetRequest({ organizationId: ORG }), ctx());
+    expect(notActive.status).toBe(409);
+    expect((await notActive.json()).error).toContain("not activated");
+    stubOrgService(() => json(429, { detail: "A new password was sent a moment ago. Wait 42 seconds before sending another." }));
+    const soon = await resetPassword(resetRequest({ organizationId: ORG }), ctx());
+    expect(soon.status).toBe(429);
+    expect((await soon.json()).error).toContain("42 seconds");
+    stubOrgService(() => json(502, { detail: "The new password was set but the email could not be sent (x). Press Reset password again in a minute." }));
+    const mail = await resetPassword(resetRequest({ organizationId: ORG }), ctx());
+    expect(mail.status).toBe(502);
+    expect((await mail.json()).error).toContain("could not be sent");
+    stubOrgService(() => { throw new Error("down"); });
+    expect((await resetPassword(resetRequest({ organizationId: ORG }), ctx())).status).toBe(503);
+    stubOrgService(() => json(401, { detail: "x" }));
+    expect((await resetPassword(resetRequest({ organizationId: ORG }), ctx())).status).toBe(401);
   });
 });
 

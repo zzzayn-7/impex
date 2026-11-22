@@ -43,3 +43,10 @@ class User(Base):
     # The person's own profile picture: a small square PNG re-encoded from the decoded upload (see app/avatar.py). NULL = none (the portals show the initials).
     avatar_png: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True, deferred=True)
     avatar_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Password reset by the Super Admin (see app/password_reset.py). `must_change_password` is true while the person is on a TEMPORARY password: they can sign in with it
+    # (until `password_reset_expires_at`) but the portal sends them straight to choose their own. `password_changed_at` ends every older sign-in. `password_reset_sent_at`
+    # limits how often a reset can be sent.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_reset_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

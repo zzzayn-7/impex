@@ -55,7 +55,7 @@ describe("POST /api/auth/login", () => {
     stubAuthService(standardAccounts());
     const res = await login(loginRequest({ email: "owner@acme.example", password: PASSWORD }));
     const text = await res.text();
-    expect(JSON.parse(text)).toEqual({ user: { full_name: "Olivia Owner" } });
+    expect(JSON.parse(text)).toEqual({ user: { full_name: "Olivia Owner" } , mustChangePassword: false });
     expect(text).not.toContain("token-for");
   });
 
