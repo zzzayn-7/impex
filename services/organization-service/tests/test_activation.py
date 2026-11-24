@@ -115,10 +115,10 @@ class FakeAuthService:
             return httpx.Response(200, json={"deleted": deleted})
         if body.get("allow_weak_password") and not self.demo:
             return httpx.Response(403, json={"detail": {"code": "demo_disabled", "message": "Demo passwords are not enabled."}})
-        if len(body["password"]) < (8 if body.get("allow_weak_password") else 12):
+        if len(body["password"]) < 8:
             return httpx.Response(422, json={"detail": {
-                "code": "weak_password", "message": "Password must contain: at least 12 characters.",
-                "problems": ["at least 12 characters"]}})
+                "code": "weak_password", "message": "Password must contain: at least 8 characters.",
+                "problems": ["at least 8 characters"]}})
         with self._lock:
             existing = self.users.get(body["email"])
             if existing is None:

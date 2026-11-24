@@ -1,7 +1,7 @@
 // Mirrors the Auth Service's password policy for privileged accounts. The Auth Service is the
 // authority and re-checks everything; this gives instant feedback and a clean error before the request.
 
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 256;
 
 export type PasswordCheck = { id: string; label: string; ok: boolean };

@@ -1,7 +1,7 @@
 // The rules for a password of the organization portal, the SAME ones the Auth Service enforces (services/auth-service/app/security.py: password_problems). They are here only so the
 // person can see what is missing while they type; the Auth Service is the one that decides.
 
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 256;
 
 export type PasswordCheck = { id: string; label: string; ok: boolean };

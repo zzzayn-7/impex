@@ -89,7 +89,7 @@ def test_public_registration_cannot_create_privileged_or_organization_accounts(c
 
 # --- validation -------------------------------------------------------------
 @pytest.mark.parametrize("password,missing", [
-    ("short1!A", "at least 12 characters"),
+    ("sh0rt!A", "at least 8 characters"),
     ("alllowercase1!x", "an uppercase letter"),
     ("NoDigitsHere!!x", "a digit"),
     ("NoSymbolsHere12", "a symbol"),

@@ -204,7 +204,7 @@ def test_the_current_password_must_be_right(client, session_factory):
     assert login(client, password=OLD).status_code == 200  # nothing changed
 
 
-@pytest.mark.parametrize("weak,expected", [("short", "at least 12 characters"), ("alllowercase123!", "an uppercase letter"), ("ALLUPPERCASE123!", "a lowercase letter"),
+@pytest.mark.parametrize("weak,expected", [("short", "at least 8 characters"), ("alllowercase123!", "an uppercase letter"), ("ALLUPPERCASE123!", "a lowercase letter"),
                                             ("NoDigitsHere!!!!", "a digit"), ("NoSymbols12345Aa", "a symbol"), ("Owner!Passphrase9", "no part of your email address")])
 def test_a_weak_new_password_is_refused_with_the_missing_pieces_and_nothing_changes(client, session_factory, weak, expected):
     add_user(session_factory)
